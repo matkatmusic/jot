@@ -1,6 +1,11 @@
 # e2e test scratch directories
 .jot-e2e-scratch/
 /tmp-jot-*/
+.e2e-data/
+.test-data/
+
+# jot's own runtime output — if a /jot runs with cwd=this repo it lands here
+Todos/
 
 # OS
 .DS_Store

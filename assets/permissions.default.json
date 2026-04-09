@@ -1,0 +1,11 @@
+{
+  "_doc": "Portable default permissions allowlist for the background jot claude worker. jot.sh reads this file on every /jot invocation, expands ${CWD} and ${HOME} template placeholders, and injects the result into the per-invocation settings.json. The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to add or remove permissions for your environment; changes take effect on the next /jot. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
+  "permissions": {
+    "allow": [
+      "Read(${CWD}/**)",
+      "Write(${CWD}/Todos/*)",
+      "Edit(${CWD}/Todos/*)",
+      "Read(${HOME}/.claude/projects/**)"
+    ]
+  }
+}
