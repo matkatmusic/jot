@@ -165,7 +165,7 @@ You are creating a TODO from a jotted idea. Steps:
 
 3. IF "## Recent Conversation" has NO relevant context (or only contains the fallback string "No conversation history available."):
    a. Read the "## Transcript Path" value from the input — it is the absolute path to the live .jsonl transcript.
-   b. Use the Read tool on that path. Each line is a JSON object; parse user/assistant entries.
+   b. Use the Read tool DIRECTLY on that path. Do NOT run any Bash command to check whether it exists first — that will trigger a permission prompt and block the workflow. Just call Read. If Read returns an error (file not found, unreadable, empty), treat it as "no relevant context" and jump straight to step 3e.
    c. Walk the transcript from the END backwards, collecting up to ~50 user/assistant pairs that mention any keyword from the idea (case-insensitive substring match on the noun/verb tokens).
    d. If you find relevant context, use it as your context source for steps 5-6.
    e. If you find NOTHING relevant, proceed with the literal context string: "(no relevant prior context found in transcript)". Never crash, never ask, never block.
@@ -201,6 +201,7 @@ branch: ${BRANCH}
 
 Rules:
 - NEVER ask questions. Zero interaction.
+- NEVER run Bash commands. Use ONLY the Read, Write, and Edit tools for every step. Bash is not in the allowlist and will trigger a permission prompt that blocks this workflow. In particular, do NOT use \`ls\`, \`cat\`, \`test -f\`, or any other shell command to check whether a file exists before reading it — just call Read and handle the error case inline.
 - Store conversation pairs verbatim. No summarization.
 - Keep ## Context concise. No file contents, no diffs, no quoted code blocks.
 - The TODO file is the PRIMARY artifact; the PROCESSED: marker on ${INPUT_REL} is the success signal.
