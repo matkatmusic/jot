@@ -1,0 +1,17 @@
+{
+  "name": "jot",
+  "version": "1.0.0",
+  "description": "Capture mid-development ideas via /jot <idea> without losing focus. Writes to Todos/ and a background Claude in tmux converts input into a proper TODO.",
+  "author": {
+    "name": "Matkat Music LLC"
+  },
+  "repository": "https://github.com/matkatmusic/jot",
+  "license": "MIT",
+  "keywords": [
+    "todo",
+    "capture",
+    "productivity",
+    "hook",
+    "tmux"
+  ]
+}

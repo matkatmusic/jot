@@ -1,0 +1,11 @@
+# e2e test scratch directories
+.jot-e2e-scratch/
+/tmp-jot-*/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
