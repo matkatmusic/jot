@@ -1,0 +1,29 @@
+{
+  "name": "matkatmusic-jot",
+  "owner": {
+    "name": "Matkat Music LLC"
+  },
+  "metadata": {
+    "description": "matkatmusic/jot — capture mid-development ideas via /jot",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "jot",
+      "source": "./",
+      "description": "Capture mid-development ideas via /jot <idea> without losing focus. Writes to Todos/ and a background Claude in tmux converts input into a proper TODO.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Matkat Music LLC"
+      },
+      "category": "productivity",
+      "keywords": [
+        "todo",
+        "capture",
+        "productivity",
+        "hook",
+        "tmux"
+      ]
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 {
-  "_doc": "Portable default permissions allowlist for the background jot claude worker. jot.sh reads this file on every /jot invocation, expands ${CWD} and ${HOME} template placeholders, and injects the result into the per-invocation settings.json. The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to add or remove permissions for your environment; changes take effect on the next /jot. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
+  "_doc": "Portable default permissions allowlist for the background jot claude worker. jot.sh reads this file on every /jot invocation, expands ${HOME} template placeholders, and injects the result into the per-invocation settings.json. Patterns for files under the user's project directory are RELATIVE to the worker's cwd — Claude Code passes relative paths to Read/Write/Edit and the permission matcher compares literal strings, so absolute patterns like Write(/abs/path/Todos/**) do NOT match a tool arg of Write(Todos/foo.md). The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to add or remove permissions for your environment; changes take effect on the next /jot. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
   "permissions": {
     "allow": [
-      "Read(${CWD}/**)",
-      "Write(${CWD}/Todos/*)",
-      "Edit(${CWD}/Todos/*)",
+      "Read(**)",
+      "Write(Todos/**)",
+      "Edit(Todos/**)",
       "Read(${HOME}/.claude/projects/**)"
     ]
   }
