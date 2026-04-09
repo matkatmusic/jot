@@ -14,3 +14,4 @@ Todos/
 .vscode/
 .idea/
 *.swp
+node-compile-cache
