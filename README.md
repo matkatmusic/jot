@@ -68,6 +68,22 @@ The background worker's permission allowlist lives at `~/.claude/plugins/data/jo
 
 Plugin upgrades detect edits via sha256: if the installed file matches the previously-shipped default it gets refreshed, if it was user-edited it's left alone and a one-line hint is logged.
 
+### Updating
+
+```bash
+claude plugin update jot@matkatmusic-jot
+```
+
+Restart Claude Code to apply. Your customized `permissions.local.json` is preserved (see [Customizing permissions](#customizing-permissions)).
+
+### Uninstalling
+
+```bash
+claude plugin uninstall jot@matkatmusic-jot
+```
+
+The per-install data directory at `~/.claude/plugins/data/jot/` is left intact so a reinstall keeps your custom permissions. Delete it manually for a clean slate.
+
 ## Verification
 
 After install, fire a `/jot` in any Claude Code session inside a trusted project directory:
