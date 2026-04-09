@@ -475,5 +475,5 @@ phase2_launch_window() {
 phase2_launch_window
 
 # ── Return block reason to user ────────────────────────────────────────
-emit_block "Jotted: $IDEA"
+emit_block "[✓] Jotted → $INPUT_REL"
 exit 0
