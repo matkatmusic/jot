@@ -1,18 +1,40 @@
 #!/bin/bash
-# jot-session-start.sh — SessionStart hook for per-invocation claude windows.
-# Fires once when claude starts up in a fresh tmux window. Sends the initial
-# "Read <input.txt> and follow the instructions" prompt via tmux send-keys.
+# jot-session-start.sh — SessionStart hook for per-invocation claude panes.
+# Fires once when claude starts up in a fresh tmux pane. Reads the pane id
+# from "$TMPDIR_INV/tmux_target" (written by phase2_launch_window after
+# split-window), then sends the initial "Read <input.txt> and follow the
+# instructions" prompt via tmux send-keys.
 #
 # Args:
 #   $1 = absolute path to the input.txt for THIS jot invocation
-#   $2 = tmux target (e.g. "jot:authv3_vps-2026-04-08T14-00-12")
+#   $2 = absolute path to the per-invocation tmpdir (e.g. /tmp/jot.abcXYZ)
 set -uo pipefail
 
 INPUT_FILE="${1:-}"
-TMUX_TARGET="${2:-}"
+TMPDIR_INV="${2:-}"
 
-if [ -z "$INPUT_FILE" ] || [ -z "$TMUX_TARGET" ]; then
-  echo "[jot-session-start] missing args (input_file, tmux_target)" >&2
+if [ -z "$INPUT_FILE" ] || [ -z "$TMPDIR_INV" ]; then
+  echo "[jot-session-start] missing args (input_file, tmpdir_inv)" >&2
+  exit 0
+fi
+
+# Read the tmux pane id sidecar written atomically by phase2_launch_window
+# immediately after `tmux split-window` returned. The retry loop is a
+# belt-and-suspenders guard: in practice the sidecar is always present by
+# the time claude's SessionStart fires (claude takes ~1-2s to boot, the
+# sidecar is written in microseconds after split-window).
+TARGET_FILE="$TMPDIR_INV/tmux_target"
+TMUX_TARGET=""
+for _ in 1 2 3 4 5; do
+  if [ -s "$TARGET_FILE" ]; then
+    TMUX_TARGET=$(head -1 "$TARGET_FILE")
+    [ -n "$TMUX_TARGET" ] && break
+  fi
+  sleep 0.2
+done
+
+if [ -z "$TMUX_TARGET" ]; then
+  echo "[jot-session-start] tmux_target sidecar empty after retries" >&2
   exit 0
 fi
 

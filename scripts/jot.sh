@@ -364,8 +364,6 @@ build_claude_cmd() {
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
   PERMISSIONS_FILE="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
 
-  local tmux_target="jot:$WINDOW_NAME"
-
   # ── Lifecycle-safe worker launch ───────────────────────────────────────
   # Each background worker owns a self-contained copy of its lifecycle hook
   # scripts inside $TMPDIR_INV. The emitted settings.json references these
@@ -379,10 +377,13 @@ build_claude_cmd() {
   local hooks_scripts="$TMPDIR_INV"
 
   # Hooks wired per-invocation:
-  # - SessionStart: receives INPUT_FILE + tmux_target; sends the
-  #   "Read <input.txt> and follow instructions" prompt via send-keys.
-  # - Stop: receives INPUT_FILE + tmux_target + STATE_DIR; verifies the
-  #   PROCESSED: marker, appends to audit.log, kills THIS window.
+  # - SessionStart: receives INPUT_FILE + TMPDIR_INV; reads the tmux pane id
+  #   from "$TMPDIR_INV/tmux_target" (written by phase2_launch_window after
+  #   split-window), then sends the "Read <input.txt> and follow
+  #   instructions" prompt via send-keys.
+  # - Stop: receives INPUT_FILE + TMPDIR_INV + STATE_DIR; reads the sidecar
+  #   synchronously BEFORE forking its kill-pane subshell, verifies the
+  #   PROCESSED: marker, appends to audit.log, kills THIS pane.
   # - SessionEnd: wipes $TMPDIR_INV on claude exit. Safe because each claude
   #   has its own tmpdir and no other process references it.
   #
@@ -419,8 +420,8 @@ print(json.dumps(expanded))
     "allow": $allow_json
   },
   "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-start.sh '$INPUT_FILE' '$tmux_target'"}]}],
-    "Stop":         [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-stop.sh '$INPUT_FILE' '$tmux_target' '$STATE_DIR'"}]}],
+    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-start.sh '$INPUT_FILE' '$TMPDIR_INV'"}]}],
+    "Stop":         [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-stop.sh '$INPUT_FILE' '$TMPDIR_INV' '$STATE_DIR'"}]}],
     "SessionEnd":   [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-end.sh '$TMPDIR_INV'"}]}]
   }
 }
@@ -431,17 +432,19 @@ JSON
   CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD'"
 }
 
-# phase2_launch_window: create a new tmux window running its own claude
-# instance for THIS jot invocation. Each /jot gets a unique window named
-# "<project>-<timestamp>" so multiple concurrent jots coexist without
-# clobbering each other. The Stop hook (configured in build_claude_cmd)
-# kills the window when claude finishes, terminating that claude cleanly.
+# phase2_launch_window: spawn a new tmux PANE running its own claude
+# instance for THIS jot invocation. All panes live inside a single
+# window "jot:jots" alongside a SIGINT-hardened keepalive pane that
+# holds the window (and therefore the session) open forever. The Stop
+# hook (configured in build_claude_cmd) kills the specific pane when
+# claude finishes, which terminates that claude cleanly while leaving
+# the rest of the dashboard intact.
 # No shared state, no queue drain, no /clear contamination.
 phase2_launch_window() {
   STATE_DIR="$CWD/Todos/.jot-state"
   jot_state_init "$STATE_DIR"
   PROJECT=$(basename "$CWD")
-  WINDOW_NAME="${PROJECT}-${TIMESTAMP}"
+  local pane_label="${PROJECT}-${TIMESTAMP}"
 
   # ── GLOBAL tmux-launch lock ─────────────────────────────────────────────
   # The `jot` tmux session is a cross-project singleton. Two /jot invocations
@@ -460,13 +463,57 @@ phase2_launch_window() {
 
   build_claude_cmd  # generates $TMPDIR_INV, $SETTINGS_FILE, $CLAUDE_CMD
 
+  # ── Ensure jot session + jots window + keepalive pane exist ─────────────
+  # The keepalive pane runs `tail -f /dev/null` wrapped by an `sh` that
+  # traps INT/HUP/TERM, so an accidental C-c in that pane cannot kill it
+  # and cascade window/session death. Once this pane exists, the jot
+  # session is immortal until the user explicitly `tmux kill-session -t jot`.
+  local keepalive_cmd='exec sh -c '\''trap "" INT HUP TERM; printf "[jot keepalive — do not kill]\n"; exec tail -f /dev/null'\'''
   if ! tmux has-session -t jot 2>/dev/null; then
-    tmux new-session -d -s jot -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
-    tmux set-option -t jot remain-on-exit off >/dev/null 2>&1 || true
-    tmux set-option -t jot mouse on >/dev/null 2>&1 || true
+    tmux new-session -d -s jot -n jots -c "$CWD" "$keepalive_cmd"
+    tmux set-option -t jot remain-on-exit off           >/dev/null 2>&1 || true
+    tmux set-option -t jot mouse on                     >/dev/null 2>&1 || true
+    tmux set-option -t jot pane-border-status top       >/dev/null 2>&1 || true
+    tmux set-option -t jot pane-border-format ' #{pane_title} ' >/dev/null 2>&1 || true
+    tmux select-pane -t jot:jots.0 -T 'jot: keepalive'  >/dev/null 2>&1 || true
+  elif ! tmux list-windows -t jot -F '#{window_name}' 2>/dev/null | grep -qx jots; then
+    tmux new-window -t jot -n jots -c "$CWD" "$keepalive_cmd"
+    tmux select-pane -t jot:jots.0 -T 'jot: keepalive'  >/dev/null 2>&1 || true
   else
-    tmux new-window -t jot -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
+    # ── Ensure keepalive pane still exists inside jots window ───────────
+    # Guards case (c): session + jots window exist but keepalive pane was
+    # manually killed or crashed. Without this, the last worker pane to
+    # finish would cascade the window and session into death. Probes by
+    # pane_title (not index) because worker panes outlive keepalive and
+    # shift indices. (Added per 4-of-4 unanimous debate review.)
+    if ! tmux list-panes -t jot:jots -F '#{pane_title}' 2>/dev/null \
+         | grep -qx 'jot: keepalive'; then
+      local KA_ID
+      KA_ID=$(tmux split-window -t jot:jots -c "$CWD" -P -F '#{pane_id}' "$keepalive_cmd")
+      [ -n "$KA_ID" ] && tmux select-pane -t "$KA_ID" -T 'jot: keepalive' >/dev/null 2>&1 || true
+      tmux select-layout -t jot:jots tiled >/dev/null 2>&1 || true
+    fi
   fi
+
+  # ── Split a new pane for this worker; capture its stable pane id ────────
+  local PANE_ID
+  PANE_ID=$(tmux split-window -t jot:jots -c "$CWD" -P -F '#{pane_id}' "$CLAUDE_CMD")
+  if [ -z "$PANE_ID" ]; then
+    echo "[jot] tmux split-window returned empty pane id" >> "$LOG_FILE" 2>/dev/null || true
+    jot_lock_release "$tmux_lock"
+    return 1
+  fi
+
+  # ── Handoff: write pane id for SessionStart/Stop hooks to read ──────────
+  # Atomic rename (printf to .tmp, then mv) guarantees hooks never see a
+  # partially-written sidecar. Write BEFORE any cosmetic tmux calls to
+  # minimise the window where claude could fire SessionStart ahead of the
+  # sidecar being present.
+  printf '%s\n' "$PANE_ID" > "$TMPDIR_INV/tmux_target.tmp"
+  mv "$TMPDIR_INV/tmux_target.tmp" "$TMPDIR_INV/tmux_target"
+
+  tmux select-pane -t "$PANE_ID" -T "$pane_label"    >/dev/null 2>&1 || true
+  tmux select-layout -t jot:jots tiled               >/dev/null 2>&1 || true
 
   jot_lock_release "$tmux_lock"
   spawn_terminal_if_needed
