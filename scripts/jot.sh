@@ -7,7 +7,7 @@
 #
 # Phase 2 architecture: per-project persistent claude instance running in
 #   a tmux window inside the shared `jot` session. Jobs are appended to a
-#   FIFO queue at $CWD/Todos/.jot-state/queue.txt. SessionStart and Stop
+#   FIFO queue at $REPO_ROOT/Todos/.jot-state/queue.txt. SessionStart and Stop
 #   hooks (defined in /tmp/jot.XXXXXX/settings.json) drain the queue via
 #   tmux send-keys. See:
 #     ~/.claude/hooks/scripts/jot-session-start.sh
@@ -123,12 +123,25 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")
 [ -z "$CWD" ] && CWD="$PWD"
 TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
 
-# ── Target dir ─────────────────────────────────────────────────────────
-TARGET_DIR="$CWD/Todos"
+# ── Repo root (required — abort if not in a git repo) ─────────────────
+# All jot-authored files (TODO .md, input.txt, state dir) live under
+# $REPO_ROOT/Todos/, never under the session CWD. This guarantees that
+# /jot from any subdirectory of a repo always lands in the same Todos/.
+REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || true)
+if [ -z "$REPO_ROOT" ]; then
+  emit_block "jot requires a git repository. Run 'git init' in your project root."
+  exit 0
+fi
+
+# ── Target dir (always repo root, never session CWD) ──────────────────
+TARGET_DIR="$REPO_ROOT/Todos"
 mkdir -p "$TARGET_DIR"
 
+# INPUT_ABS replaces the old INPUT_REL — variable now holds an absolute
+# path so it can be safely passed to background tools (Write/Edit) that
+# don't honour the worker's tmux cwd. Renamed from INPUT_REL for clarity.
 INPUT_FILE="$TARGET_DIR/${TIMESTAMP}_input.txt"
-INPUT_REL="Todos/${TIMESTAMP}_input.txt"
+INPUT_ABS="${REPO_ROOT}/Todos/${TIMESTAMP}_input.txt"
 
 # ── DURABLE-FIRST: write the raw idea immediately ─────────────────────
 {
@@ -140,7 +153,7 @@ INPUT_REL="Todos/${TIMESTAMP}_input.txt"
 BRANCH=$(safe "$SCRIPTS_DIR/git-branch.sh" "$CWD")
 COMMITS=$(safe "$SCRIPTS_DIR/git-commits.sh" "$CWD")
 UNCOMMITTED=$(safe "$SCRIPTS_DIR/git-uncommitted.sh" "$CWD")
-OPEN_TODOS=$(safe "$SCRIPTS_DIR/scan-open-todos.sh" "$CWD")
+OPEN_TODOS=$(safe "$SCRIPTS_DIR/scan-open-todos.sh" "$REPO_ROOT")
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   CONVERSATION=$(safe python3 "$SCRIPTS_DIR/capture-conversation.py" "$TRANSCRIPT_PATH")
 else
@@ -157,6 +170,9 @@ fi
 
 # ── INSTRUCTIONS heredoc (the prompt the background claude follows) ──
 INSTRUCTIONS=$(cat <<JOT_INSTRUCTIONS
+IMPORTANT: All file paths named in these instructions are absolute. Use
+absolute file paths in every tool call — never emit relative paths.
+
 You are creating a TODO from a jotted idea. Steps:
 
 1. Read each file listed under "## Open TODO Files" to check for existing TODOs related to this idea (skip if the value is the literal "(unavailable)").
@@ -172,7 +188,7 @@ You are creating a TODO from a jotted idea. Steps:
 
 4. Decide: CREATE NEW TODO, OR APPEND to an existing TODO if there is a strong semantic match in step 1.
 
-5a. CREATE NEW: Write to Todos/${TIMESTAMP}_<slug>.md where <slug> is the idea kebab-cased and truncated to 5-6 words. Use this frontmatter format:
+5a. CREATE NEW: Write to ${REPO_ROOT}/Todos/${TIMESTAMP}_<slug>.md where <slug> is the idea kebab-cased and truncated to 5-6 words. Use this frontmatter format:
 ---
 id: ${TIMESTAMP}
 title: <short title from idea>
@@ -193,19 +209,20 @@ branch: ${BRANCH}
 
 6. Read your written file with the Read tool to verify ## Idea is present and matches the input.
 
-7. ONLY AFTER step 6 succeeds, use the Write tool to OVERWRITE ${INPUT_REL} with this exact single-line content (no header, no extra lines):
-   PROCESSED: Todos/<the slug filename you wrote in step 5>
+7. ONLY AFTER step 6 succeeds, use the Write tool to OVERWRITE ${INPUT_ABS} with this exact single-line content (no header, no extra lines):
+   PROCESSED: ${REPO_ROOT}/Todos/<the slug filename you wrote in step 5>
    This is the success marker AND audit trail. The sandbox blocks rm; do NOT attempt to delete the file. Overwriting via Write is allowed and is the canonical success signal.
 
-8. Output ONLY the relative path of the TODO file (Todos/<slug>.md) to stdout. Nothing else. No commentary.
+8. Output ONLY the absolute path of the TODO file to stdout. Nothing else. No commentary.
 
 Rules:
 - NEVER ask questions. Zero interaction.
 - NEVER run Bash commands. Use ONLY the Read, Write, and Edit tools for every step. Bash is not in the allowlist and will trigger a permission prompt that blocks this workflow. In particular, do NOT use \`ls\`, \`cat\`, \`test -f\`, or any other shell command to check whether a file exists before reading it — just call Read and handle the error case inline.
 - Store conversation pairs verbatim. No summarization.
 - Keep ## Context concise. No file contents, no diffs, no quoted code blocks.
-- The TODO file is the PRIMARY artifact; the PROCESSED: marker on ${INPUT_REL} is the success signal.
-- NEVER attempt to rm or delete ${INPUT_REL}. Overwrite it via the Write tool instead.
+- The TODO file is the PRIMARY artifact; the PROCESSED: marker on ${INPUT_ABS} is the success signal.
+- NEVER attempt to rm or delete ${INPUT_ABS}. Overwrite it via the Write tool instead.
+- All file paths MUST be absolute. Never use relative paths like Todos/foo.md.
 - If the transcript fallback in step 3 fails (file missing, unreadable, no matches), use the literal context string and continue. Never crash.
 JOT_INSTRUCTIONS
 )
@@ -399,16 +416,51 @@ build_claude_cmd() {
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
   jot_seed_permissions "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file"
 
-  # Expand ${CWD} and ${HOME} in the allow array, emit a JSON array literal.
+  # Expand ${CWD}, ${HOME}, ${REPO_ROOT} in the allow array, emit a JSON
+  # array literal. Includes a backward-compat migration shim for legacy
+  # cwd-relative Write(Todos/**)/Edit(Todos/**) entries (see comments below).
   local allow_json
-  allow_json=$(CWD="$CWD" HOME="$HOME" python3 -c '
+  allow_json=$(CWD="$CWD" HOME="$HOME" REPO_ROOT="$REPO_ROOT" python3 -c '
 import json, os, sys
 path = os.environ.get("PERMISSIONS_FILE") or sys.argv[1]
 with open(path) as f:
     data = json.load(f)
 allow = data.get("permissions", {}).get("allow", [])
+repo_root = os.environ["REPO_ROOT"].lstrip("/")
+
+# ── Backward-compat migration shim (in-memory, non-destructive) ──────
+# Existing installs may have edited permissions.local.json with the
+# legacy cwd-relative form Write(Todos/**)/Edit(Todos/**). Post-upgrade
+# the worker emits absolute tool args, which never match cwd-relative
+# patterns when the worker cwd is a subdirectory of the repo root.
+# Without this shim every Write would silently deny on first /jot.
+#
+# Strategy: detect legacy entries, auto-inject the absolute //${REPO_ROOT}
+# rules into the in-memory allow array, and warn the user on stderr.
+# We do NOT mutate the on-disk file — that would clobber custom
+# formatting and other user edits the user is entitled to keep.
+LEGACY_PATTERNS = ("Write(Todos/", "Edit(Todos/")
+has_legacy = any(item.startswith(LEGACY_PATTERNS) for item in allow)
+required = [
+    "Write(//${REPO_ROOT}/Todos/**)",
+    "Edit(//${REPO_ROOT}/Todos/**)",
+]
+for rule in required:
+    if rule not in allow:
+        allow.append(rule)
+if has_legacy:
+    sys.stderr.write(
+        "[jot] WARN: legacy cwd-relative Write(Todos/**)/Edit(Todos/**) "
+        "rules detected in permissions.local.json. Auto-granting absolute "
+        "Write/Edit access to ${REPO_ROOT}/Todos/. Update your local file "
+        "to silence this warning.\n"
+    )
+
 expanded = [
-    item.replace("${CWD}", os.environ["CWD"]).replace("${HOME}", os.environ["HOME"])
+    item
+      .replace("${CWD}", os.environ["CWD"])
+      .replace("${HOME}", os.environ["HOME"])
+      .replace("${REPO_ROOT}", repo_root)
     for item in allow
 ]
 print(json.dumps(expanded))
@@ -427,9 +479,10 @@ print(json.dumps(expanded))
 }
 JSON
 
-  # Launch claude. cwd is set by tmux `-c "$CWD"` (already trusted per
-  # ~/.claude.json). --add-dir is defensive in case cwd ever changes.
-  CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD'"
+  # Launch claude. cwd is set by tmux `-c "$CWD"` (the user's session
+  # subdirectory). --add-dir grants the agent access to repo-root Todos/
+  # even when cwd is a subdirectory deeper in the tree.
+  CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD' --add-dir '$REPO_ROOT'"
 }
 
 # phase2_launch_window: spawn a new tmux PANE running its own claude
@@ -441,10 +494,11 @@ JSON
 # the rest of the dashboard intact.
 # No shared state, no queue drain, no /clear contamination.
 phase2_launch_window() {
-  STATE_DIR="$CWD/Todos/.jot-state"
+  STATE_DIR="$REPO_ROOT/Todos/.jot-state"
   jot_state_init "$STATE_DIR"
-  PROJECT=$(basename "$CWD")
-  local pane_label="${PROJECT}-${TIMESTAMP}"
+  # NOTE: pane_label is generated AFTER tmux-launch.lock is acquired so
+  # the monotonic counter read/increment/write is serialized across all
+  # concurrent /jot invocations. See the counter block below.
 
   # ── GLOBAL tmux-launch lock ─────────────────────────────────────────────
   # The `jot` tmux session is a cross-project singleton. Two /jot invocations
@@ -460,6 +514,19 @@ phase2_launch_window() {
     echo "[jot] failed to acquire global tmux-launch lock at $tmux_lock" >> "$LOG_FILE" 2>/dev/null || true
     return 1
   fi
+
+  # ── Monotonic pane counter (1..20, wraps) ──────────────────────────────
+  # MUST live AFTER jot_lock_acquire — the lock serializes concurrent /jots
+  # across all projects so the read/increment/write below is atomic. If
+  # this block were placed earlier (before the lock), two simultaneous
+  # /jots would both read N, both write N+1, and both label their panes
+  # the same. Verified by debate review (4-of-4 unanimous, 2026-04-10).
+  local counter_file="${CLAUDE_PLUGIN_DATA}/pane-counter.txt"
+  local n
+  n=$(cat "$counter_file" 2>/dev/null || echo 0)
+  n=$(( n % 20 + 1 ))
+  printf '%s\n' "$n" > "$counter_file"
+  local pane_label="jot${n}"
 
   build_claude_cmd  # generates $TMPDIR_INV, $SETTINGS_FILE, $CLAUDE_CMD
 
@@ -522,5 +589,5 @@ phase2_launch_window() {
 phase2_launch_window
 
 # ── Return block reason to user ────────────────────────────────────────
-emit_block "Done! Jotted idea in $INPUT_REL"
+emit_block "Done! Jotted idea in $INPUT_ABS"
 exit 0

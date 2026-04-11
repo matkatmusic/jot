@@ -1,10 +1,10 @@
 {
-  "_doc": "Portable default permissions allowlist for the background jot claude worker. jot.sh reads this file on every /jot invocation, expands ${HOME} template placeholders, and injects the result into the per-invocation settings.json. Patterns for files under the user's project directory are RELATIVE to the worker's cwd — Claude Code passes relative paths to Read/Write/Edit and the permission matcher compares literal strings, so absolute patterns like Write(/abs/path/Todos/**) do NOT match a tool arg of Write(Todos/foo.md). The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to add or remove permissions for your environment; changes take effect on the next /jot. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
+  "_doc": "Default permissions for the background jot worker. Expanded per-invocation by jot.sh's python heredoc. Path anchors follow Claude Code's permission syntax (docs.claude.com/en/docs/claude-code/permissions): // = filesystem absolute, ~ = home, / = project root, bare = cwd-relative. We use // with ${REPO_ROOT} (lstripped of leading / during expansion) so the worker can write to repo-root Todos/ even when its tmux cwd is a subdirectory. The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to customise; changes take effect on the next /jot. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
   "permissions": {
     "allow": [
       "Read(**)",
-      "Write(Todos/**)",
-      "Edit(Todos/**)",
+      "Write(//${REPO_ROOT}/Todos/**)",
+      "Edit(//${REPO_ROOT}/Todos/**)",
       "Read(${HOME}/.claude/projects/**)"
     ]
   }

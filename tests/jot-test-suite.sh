@@ -88,10 +88,12 @@ phase1_tests() {
   R=$(echo '{"prompt":"hello","transcript_path":"/tmp/empty.jsonl","cwd":"'$TEST_DIR'","session_id":"t"}' | bash "$JOT" 2>&1)
   [ -z "$R" ] && pass "4: pass-through silent" || fail "4: $R"
 
-  # 5: durability in non-git dir
+  # 5: non-git directory aborts with block message (no longer durable in non-git)
   rm -rf /tmp/jot-test-nongit; mkdir -p /tmp/jot-test-nongit
-  echo '{"prompt":"/jot DURABLE","transcript_path":"/tmp/missing.jsonl","cwd":"/tmp/jot-test-nongit","session_id":"t"}' | bash "$JOT" >/dev/null 2>&1
-  grep -rq "DURABLE" /tmp/jot-test-nongit/Todos/ && pass "5: durable in non-git" || fail "5"
+  R=$(echo '{"prompt":"/jot DURABLE","transcript_path":"/tmp/missing.jsonl","cwd":"/tmp/jot-test-nongit","session_id":"t"}' | bash "$JOT" 2>&1)
+  echo "$R" | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"' && pass "5a: non-git blocked" || fail "5a: expected block, got: $R"
+  echo "$R" | grep -qi 'git init' && pass "5b: block message mentions git init" || fail "5b: no git init hint"
+  [ ! -d /tmp/jot-test-nongit/Todos ] && pass "5c: no Todos/ created" || fail "5c: Todos/ leaked"
   rm -rf /tmp/jot-test-nongit
 
   # 6: multi-line indentation preserved
@@ -130,6 +132,148 @@ phase1_tests() {
 
   # 11: Instructions DOES mention PROCESSED marker
   grep -q 'PROCESSED:' "$F" && pass "11: PROCESSED marker mentioned" || fail "11"
+
+  # ── 12: /jot from a SUBDIRECTORY of a git repo lands in REPO_ROOT/Todos/ ──
+  # The core use case for the repo-root anchor: launching /jot from a deep
+  # subdir must still write the input.txt under the repo root, not under
+  # the subdir. This test creates a fresh repo with a `sub/` subdir, fires
+  # /jot from `sub/`, and asserts the input.txt is at $REPO_ROOT/Todos/.
+  local SUBDIR_REPO
+  SUBDIR_REPO=$(mktemp -d /tmp/jot-test-subdir.XXXXXX)
+  (cd "$SUBDIR_REPO" && git init -q && mkdir -p deep/nested/sub)
+  echo '{"prompt":"/jot SUBDIR_TEST_42","transcript_path":"/tmp/empty.jsonl","cwd":"'$SUBDIR_REPO'/deep/nested/sub","session_id":"t"}' \
+    | bash "$JOT" >/dev/null 2>&1
+  if [ -d "$SUBDIR_REPO/Todos" ] && ls "$SUBDIR_REPO"/Todos/*_input.txt >/dev/null 2>&1; then
+    pass "12a: subdir /jot wrote to REPO_ROOT/Todos/"
+  else
+    fail "12a: REPO_ROOT/Todos/ has no input.txt"
+  fi
+  if [ -d "$SUBDIR_REPO/deep/nested/sub/Todos" ]; then
+    fail "12b: subdir leaked Todos/ at $SUBDIR_REPO/deep/nested/sub/Todos"
+  else
+    pass "12b: no leaked Todos/ at subdir"
+  fi
+  grep -rq "SUBDIR_TEST_42" "$SUBDIR_REPO/Todos/" 2>/dev/null \
+    && pass "12c: idea content reached repo-root Todos/" || fail "12c"
+  rm -rf "$SUBDIR_REPO"
+
+  # ── 13: INSTRUCTIONS heredoc embeds absolute REPO_ROOT paths in prompt ──
+  # The agent prompt must use absolute file paths (post-debate decision 7).
+  # Asserts that step 5a names ${REPO_ROOT}/Todos/... not bare Todos/...,
+  # that step 7 PROCESSED marker is absolute, and that step 8 says "absolute".
+  # NOTE: on macOS git resolves /tmp → /private/tmp, so the prompt's
+  # ${REPO_ROOT} expansion uses the resolved form, not $TEST_DIR.
+  local INST_FILE="$F"  # reuse $F from test 10 (latest input.txt under TEST_DIR)
+  local RESOLVED_REPO
+  RESOLVED_REPO=$(git -C "$TEST_DIR" rev-parse --show-toplevel)
+  grep -q "$RESOLVED_REPO/Todos/.*\.md" "$INST_FILE" \
+    && pass "13a: prompt names absolute path under repo root" \
+    || fail "13a: no absolute repo-root path in prompt"
+  grep -q "PROCESSED: $RESOLVED_REPO/Todos/" "$INST_FILE" \
+    && pass "13b: PROCESSED marker template uses absolute path" \
+    || fail "13b: PROCESSED marker is not absolute"
+  grep -q "Output ONLY the absolute path" "$INST_FILE" \
+    && pass "13c: step 8 instructs absolute output" \
+    || fail "13c: step 8 still references relative path"
+  grep -q "All file paths.*absolute" "$INST_FILE" \
+    && pass "13d: explicit absolute-path note present" \
+    || fail "13d: missing absolute-path note"
+
+  # ── 14: scan-open-todos.sh sees TODOs from REPO_ROOT, not session CWD ──
+  # Behavioral test: pre-create an open TODO at REPO_ROOT/Todos/canary14.md,
+  # also create a decoy TODO at SUBDIR/Todos/decoy.md, then fire /jot from
+  # SUBDIR. The "## Open TODO Files" section in the resulting input.txt
+  # must list canary14.md (proving scan-open-todos was called with the
+  # repo root) and must NOT list decoy.md (proving it was NOT called with
+  # the subdir).
+  local SCAN_REPO SCAN_INPUT
+  SCAN_REPO=$(mktemp -d /tmp/jot-test-scan.XXXXXX)
+  (cd "$SCAN_REPO" && git init -q && mkdir -p Todos sub/Todos)
+  cat > "$SCAN_REPO/Todos/canary14.md" <<'EOF'
+---
+id: scan-canary
+title: Scan canary at repo root
+status: open
+created: 2026-04-10T20:00:00-07:00
+branch: main
+---
+## Idea
+canary placed at REPO_ROOT/Todos/ to prove scan-open-todos uses repo root
+EOF
+  cat > "$SCAN_REPO/sub/Todos/decoy.md" <<'EOF'
+---
+id: scan-decoy
+title: Scan decoy at subdir
+status: open
+created: 2026-04-10T20:00:00-07:00
+branch: main
+---
+## Idea
+decoy at SUBDIR/Todos/ that must NOT show up if scan-open-todos uses repo root
+EOF
+  echo '{"prompt":"/jot SCAN14","transcript_path":"/tmp/empty.jsonl","cwd":"'$SCAN_REPO'/sub","session_id":"t"}' \
+    | bash "$JOT" >/dev/null 2>&1
+  SCAN_INPUT=$(ls -t "$SCAN_REPO"/Todos/*_input.txt 2>/dev/null | head -1)
+  if [ -z "$SCAN_INPUT" ]; then
+    fail "14a: no input.txt found at REPO_ROOT/Todos/ after subdir /jot"
+  else
+    grep -q "canary14.md" "$SCAN_INPUT" && pass "14a: scan saw canary at REPO_ROOT/Todos/" || fail "14a: canary missing from Open TODO Files (input.txt: $(cat $SCAN_INPUT | head -40))"
+    grep -q "decoy.md" "$SCAN_INPUT" && fail "14b: scan picked up decoy from subdir Todos/ (wrong dir)" || pass "14b: scan ignored subdir decoy"
+  fi
+  rm -rf "$SCAN_REPO"
+
+  # ── 15: Permissions migration shim — legacy patterns trigger warning ──
+  # Run jot.sh's expansion python directly with a synthetic permissions
+  # file that contains the legacy cwd-relative entries. Assert the shim
+  # auto-injects the absolute //$REPO_ROOT/Todos/** rules AND emits the
+  # stderr warning AND does NOT mutate the input file.
+  local LEGACY_FILE LEGACY_BEFORE_SHA SHIM_OUT SHIM_ERR
+  LEGACY_FILE=$(mktemp /tmp/jot-test-legacy-perms.XXXXXX.json)
+  cat > "$LEGACY_FILE" <<'EOF'
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write(Todos/**)",
+      "Edit(Todos/**)"
+    ]
+  }
+}
+EOF
+  LEGACY_BEFORE_SHA=$(shasum -a 256 "$LEGACY_FILE" | awk '{print $1}')
+  SHIM_OUT=$(mktemp); SHIM_ERR=$(mktemp)
+  CWD="$TEST_DIR" HOME="$HOME" REPO_ROOT="$TEST_DIR" python3 -c '
+import json, os, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+allow = data.get("permissions", {}).get("allow", [])
+repo_root = os.environ["REPO_ROOT"].lstrip("/")
+LEGACY_PATTERNS = ("Write(Todos/", "Edit(Todos/")
+has_legacy = any(item.startswith(LEGACY_PATTERNS) for item in allow)
+required = ["Write(//${REPO_ROOT}/Todos/**)", "Edit(//${REPO_ROOT}/Todos/**)"]
+for rule in required:
+    if rule not in allow:
+        allow.append(rule)
+if has_legacy:
+    sys.stderr.write("[jot] WARN: legacy cwd-relative Write(Todos/**)/Edit(Todos/**) rules detected in permissions.local.json. Auto-granting absolute Write/Edit access to ${REPO_ROOT}/Todos/. Update your local file to silence this warning.\n")
+expanded = [
+    item.replace("${CWD}", os.environ["CWD"]).replace("${HOME}", os.environ["HOME"]).replace("${REPO_ROOT}", repo_root)
+    for item in allow
+]
+print(json.dumps(expanded))
+' "$LEGACY_FILE" > "$SHIM_OUT" 2> "$SHIM_ERR"
+  grep -q "legacy cwd-relative" "$SHIM_ERR" && pass "15a: shim emits stderr warning" || fail "15a: no warning"
+  # NOTE: lstrip('/') is applied during expansion, so the //${REPO_ROOT}
+  # token expands to //tmp/... not ///tmp/.... We strip the leading /
+  # from $TEST_DIR before building the grep pattern to match.
+  local TEST_DIR_NOSLASH="${TEST_DIR#/}"
+  grep -q "Write(//$TEST_DIR_NOSLASH/Todos/\*\*)" "$SHIM_OUT" && pass "15b: shim injects absolute Write rule" || fail "15b: missing Write rule (got: $(cat $SHIM_OUT))"
+  grep -q "Edit(//$TEST_DIR_NOSLASH/Todos/\*\*)" "$SHIM_OUT" && pass "15c: shim injects absolute Edit rule" || fail "15c: missing Edit rule"
+  local LEGACY_AFTER_SHA
+  LEGACY_AFTER_SHA=$(shasum -a 256 "$LEGACY_FILE" | awk '{print $1}')
+  [ "$LEGACY_BEFORE_SHA" = "$LEGACY_AFTER_SHA" ] && pass "15d: legacy file untouched on disk" || fail "15d: file mutated"
+  rm -f "$LEGACY_FILE" "$SHIM_OUT" "$SHIM_ERR"
 
   cd /tmp
   rm -rf "$TEST_DIR"

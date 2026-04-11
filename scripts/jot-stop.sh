@@ -20,7 +20,7 @@
 # Args:
 #   $1 = absolute path to the input.txt this claude was told to process
 #   $2 = absolute path to the per-invocation tmpdir (e.g. /tmp/jot.abcXYZ)
-#   $3 = state_dir (for audit.log; e.g. "$CWD/Todos/.jot-state")
+#   $3 = state_dir (for audit.log; e.g. "$REPO_ROOT/Todos/.jot-state")
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

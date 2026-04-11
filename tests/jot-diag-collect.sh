@@ -17,9 +17,15 @@ set -uo pipefail
 
 OUT="${1:-/tmp/jot-diag-$(date +%Y%m%d-%H%M%S).log}"
 CWD=$(pwd)
-PROJECT=$(basename "$CWD")
-TMUX_TARGET="jot:$PROJECT"
-STATE_DIR="$CWD/Todos/.jot-state"
+REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || echo "$CWD")
+PROJECT=$(basename "$REPO_ROOT")
+# IMPORTANT: tmux topology changed when pane-per-jot landed — there is
+# now exactly ONE window named 'jots' inside the singleton 'jot' session,
+# regardless of which project owns the pane. The old per-project window
+# (`jot:$PROJECT`) no longer exists. Targeting it returns no panes and
+# diag section 3 silently fails. The constant 'jot:jots' is correct.
+TMUX_TARGET="jot:jots"
+STATE_DIR="$REPO_ROOT/Todos/.jot-state"
 
 # ── helpers ──────────────────────────────────────────────────────────────
 section() { printf '\n═══════════════════════════════════════════════════════════\n%s\n═══════════════════════════════════════════════════════════\n' "$1"; }
@@ -35,9 +41,9 @@ kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
   # ── 1. Latest input.txt ───────────────────────────────────────────────
   section "1. Latest Todos/*_input.txt"
-  LATEST=$(ls -t "$CWD"/Todos/*_input.txt 2>/dev/null | head -1 || true)
+  LATEST=$(ls -t "$REPO_ROOT"/Todos/*_input.txt 2>/dev/null | head -1 || true)
   if [ -z "$LATEST" ]; then
-    echo "(no input.txt found in $CWD/Todos/)"
+    echo "(no input.txt found in $REPO_ROOT/Todos/)"
   else
     kv "path" "$LATEST"
     kv "size (bytes)" "$(wc -c < "$LATEST" | tr -d ' ')"
@@ -166,10 +172,10 @@ kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
   # ── 6. Recent Todos/ directory ────────────────────────────────────────
   section "6. Todos/ directory listing (newest first)"
-  if [ -d "$CWD/Todos" ]; then
-    ls -lat "$CWD/Todos/" 2>&1 | head -20 | indent
+  if [ -d "$REPO_ROOT/Todos" ]; then
+    ls -lat "$REPO_ROOT/Todos/" 2>&1 | head -20 | indent
   else
-    echo "(no Todos/ dir in $CWD)"
+    echo "(no Todos/ dir in $REPO_ROOT)"
   fi
 
   # ── 7. Installed plugin script sanity check ──────────────────────────
