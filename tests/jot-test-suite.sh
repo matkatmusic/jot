@@ -322,31 +322,44 @@ phase2_tests() {
   : > "$QUEUE"
 
   # ── jot-stop.sh: SUCCESS path (PROCESSED marker present) ─────────────
-  # New architecture: jot-stop takes INPUT_FILE, TMUX_TARGET, STATE_DIR.
-  # It appends SUCCESS to audit.log and schedules a background window kill.
-  # We can't observe the window kill here (no real tmux), but we CAN verify
-  # the audit line, which is the canonical source of truth.
+  # Post pane-per-jot migration: jot-stop takes INPUT_FILE, TMPDIR_INV,
+  # STATE_DIR. TMPDIR_INV is the per-invocation tmpdir; jot-stop reads the
+  # worker pane id from "$TMPDIR_INV/tmux_target" (written by phase2 in
+  # jot.sh). We fake the sidecar with a dummy pane id so jot-stop gets
+  # past its sidecar-read gate and reaches the audit-write logic. The
+  # backgrounded kill-pane subshell at jot-stop.sh:89-93 fires against
+  # the dummy id and silently fails — safe because stderr is suppressed
+  # and the audit row is written BEFORE the fork.
+  P2_STOP_TMPDIR=$(mktemp -d /tmp/jot-test-stop.XXXXXX)
+  printf '%%test-pane\n' > "$P2_STOP_TMPDIR/tmux_target"
   PROCESSED_TEST="/tmp/jot-test-processed.txt"
   printf 'PROCESSED: Todos/foo.md\n' > "$PROCESSED_TEST"
   : > "$AUDIT"
-  bash "$SCRIPTS/jot-stop.sh" "$PROCESSED_TEST" "$STUB_SESSION" "$STATE_DIR" 2>&1
+  bash "$SCRIPTS/jot-stop.sh" "$PROCESSED_TEST" "$P2_STOP_TMPDIR" "$STATE_DIR" 2>&1
   grep -q "SUCCESS $PROCESSED_TEST" "$AUDIT" && pass "P2.stop1: SUCCESS logged" || fail "P2.stop1: audit=$(cat $AUDIT)"
   rm -f "$PROCESSED_TEST"
+  rm -rf "$P2_STOP_TMPDIR"
 
   # ── jot-stop.sh: FAIL path (no PROCESSED marker) ─────────────────────
+  P2_STOP_TMPDIR=$(mktemp -d /tmp/jot-test-stop.XXXXXX)
+  printf '%%test-pane\n' > "$P2_STOP_TMPDIR/tmux_target"
   PENDING_TEST="/tmp/jot-test-pending.txt"
   printf '# Jot Task\n## Idea\nfoo\n' > "$PENDING_TEST"
   : > "$AUDIT"
-  bash "$SCRIPTS/jot-stop.sh" "$PENDING_TEST" "$STUB_SESSION" "$STATE_DIR" 2>&1
+  bash "$SCRIPTS/jot-stop.sh" "$PENDING_TEST" "$P2_STOP_TMPDIR" "$STATE_DIR" 2>&1
   grep -q "FAIL $PENDING_TEST" "$AUDIT" && pass "P2.stop2: FAIL logged" || fail "P2.stop2: audit=$(cat $AUDIT)"
   rm -f "$PENDING_TEST"
+  rm -rf "$P2_STOP_TMPDIR"
 
   # ── jot-stop.sh: FAIL path (input.txt missing entirely) ──────────────
+  P2_STOP_TMPDIR=$(mktemp -d /tmp/jot-test-stop.XXXXXX)
+  printf '%%test-pane\n' > "$P2_STOP_TMPDIR/tmux_target"
   MISSING_INPUT="/tmp/jot-test-missing.txt"
   rm -f "$MISSING_INPUT"
   : > "$AUDIT"
-  bash "$SCRIPTS/jot-stop.sh" "$MISSING_INPUT" "$STUB_SESSION" "$STATE_DIR" 2>&1
+  bash "$SCRIPTS/jot-stop.sh" "$MISSING_INPUT" "$P2_STOP_TMPDIR" "$STATE_DIR" 2>&1
   grep -q "FAIL $MISSING_INPUT" "$AUDIT" && pass "P2.stop3: FAIL on missing input.txt" || fail "P2.stop3: audit=$(cat $AUDIT)"
+  rm -rf "$P2_STOP_TMPDIR"
 
   # ── audit.log rotation ───────────────────────────────────────────────
   python3 -c 'print("\n".join(f"line{i}" for i in range(1500)))' > "$AUDIT"
