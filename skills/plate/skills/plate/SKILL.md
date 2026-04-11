@@ -15,14 +15,20 @@ Read the pending registration file the hook dropped for you:
 .plate/pending-registration.json
 ```
 
-It contains `session_id`, `transcript_path`, and `cwd`. Call these `$SID`, `$TP`, `$CWD` internally.
+It contains:
+- `session_id` — your current session ID (call this `$SID`)
+- `transcript_path` — path to your conversation transcript (`$TP`)
+- `cwd` — absolute working directory (`$CWD`)
+- `plate_scripts_dir` — absolute path to the plate plugin's `scripts/` directory (`$SCRIPTS`)
+
+**Do NOT use `$CLAUDE_PLUGIN_ROOT` or any bash env variable to locate plate scripts.** The user may have other plugins loaded that set that variable to a different plugin's path. Always use `plate_scripts_dir` from the registration JSON.
 
 ## Step 2 — Enumerate candidate parents
 
-Run this bash command to list all paused plates across every instance:
+Run this bash command (substituting the actual path from the registration JSON):
 
 ```
-bash "$CLAUDE_PLUGIN_ROOT/scripts/list-paused-plates.sh"
+bash <plate_scripts_dir>/list-paused-plates.sh
 ```
 
 Each output row is pipe-delimited: `convoID|plateID|label|synopsis|pushed_at`.
@@ -31,9 +37,9 @@ Each output row is pipe-delimited: `convoID|plateID|label|synopsis|pushed_at`.
 
 **If output is EMPTY** (no paused plates anywhere):
 1. Register as top-level:
-   `bash "$CLAUDE_PLUGIN_ROOT/scripts/register-parent.sh" "$SID" "none"`
+   `bash <plate_scripts_dir>/register-parent.sh <session_id> none`
 2. Push:
-   `bash "$CLAUDE_PLUGIN_ROOT/scripts/push.sh" "$SID" "$TP" "$CWD"`
+   `bash <plate_scripts_dir>/push.sh <session_id> <transcript_path> <cwd>`
 3. Delete `.plate/pending-registration.json`
 4. Reply: `plate registered + pushed (top-level)`
 
@@ -47,9 +53,9 @@ Each output row is pipe-delimited: `convoID|plateID|label|synopsis|pushed_at`.
    - multiSelect: false
 3. Parse the user's selection. Extract the `convoID` and `plateID` from the row they picked (or pass `none ""` for top-level).
 4. Register:
-   `bash "$CLAUDE_PLUGIN_ROOT/scripts/register-parent.sh" "$SID" "<parent_convo>" "<parent_plate>"`
+   `bash <plate_scripts_dir>/register-parent.sh <session_id> <parent_convo> <parent_plate>`
 5. Push:
-   `bash "$CLAUDE_PLUGIN_ROOT/scripts/push.sh" "$SID" "$TP" "$CWD"`
+   `bash <plate_scripts_dir>/push.sh <session_id> <transcript_path> <cwd>`
 6. Delete `.plate/pending-registration.json`
 7. Reply in one line: `plate registered + pushed: <synopsis>`
 
@@ -58,4 +64,5 @@ Each output row is pipe-delimited: `convoID|plateID|label|synopsis|pushed_at`.
 - NEVER push before registration completes — parent_ref must be set first.
 - NEVER skip the `AskUserQuestion` step when paused plates exist — the user must explicitly choose.
 - If the pending-registration file is missing, reply: `plate: no registration context — rerun /plate` and stop.
-- All scripts live under `$CLAUDE_PLUGIN_ROOT/scripts/` which is set by the Claude Code plugin harness.
+- Always resolve script paths via `plate_scripts_dir` from the registration JSON. Do not trust `$CLAUDE_PLUGIN_ROOT` in the shell env — it may point at a different plugin.
+- When running push.sh, you MUST export `CLAUDE_PLUGIN_ROOT=<plate_plugin_root>` and `CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/plate-jot-dev` (or the appropriate plate data dir) so the script can find its lib + python helpers. Use `plate_plugin_root` from the registration JSON.

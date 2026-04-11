@@ -3,9 +3,10 @@
 # Args: $1=convo_id  $2=instance_file
 set -euo pipefail
 
-: "${CLAUDE_PLUGIN_ROOT:?}"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
+PYTHON_DIR="$PLUGIN_ROOT/python"
+export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 # shellcheck source=lib/paths.sh
 . "$SCRIPTS_DIR/lib/paths.sh"

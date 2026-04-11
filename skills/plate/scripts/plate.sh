@@ -144,15 +144,27 @@ case "$VARIANT" in
     elif [ -d "${PLATE_ROOT}/instances" ] && \
          find "${PLATE_ROOT}/instances" -name "*.json" -maxdepth 1 2>/dev/null | read -r _; then
       # PATH 3: other instances exist → let prompt through for parent selection.
+      # Create a fully-populated instance file NOW so register-parent.sh and
+      # push.sh (which run later from the SKILL.md body) mutate a complete
+      # dict rather than an empty {}. Without this, top-level fields like
+      # convo_id/cwd/created_at end up missing because load() on a missing
+      # file returns {} and neither downstream script calls new_instance().
+      python3 "$PYTHON_DIR/instance_rw.py" create-instance \
+        "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
+        "$(git symbolic-ref --short HEAD 2>/dev/null || echo 'detached')"
+
       # Drop a registration-context file so the SKILL.md body (running in
       # the foreground claude) can read session_id/transcript_path/cwd
-      # without relying on unexpanded `${SESSION_ID}` placeholders.
+      # without relying on `${SESSION_ID}`-style shell expansion that
+      # never happens inside a skill body.
       REG_FILE="${PLATE_ROOT}/pending-registration.json"
       cat > "$REG_FILE" <<REG
 {
   "session_id": "$SESSION_ID",
   "transcript_path": "$TRANSCRIPT_PATH",
   "cwd": "$CWD",
+  "plate_plugin_root": "$CLAUDE_PLUGIN_ROOT",
+  "plate_scripts_dir": "$SCRIPTS_DIR",
   "created_at": "$(date -Iseconds)"
 }
 REG

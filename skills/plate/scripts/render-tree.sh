@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
 # shellcheck source=lib/paths.sh
 . "$SCRIPTS_DIR/lib/paths.sh"
 plate_discover_root

@@ -21,6 +21,37 @@ plate_ensure_dirs() {
   fi
 }
 
+# plate_spawn_terminal_if_needed: open Terminal.app attached to the plate
+# session on first run, if no tmux client is currently attached. macOS only.
+# On non-Darwin hosts or when osascript is missing, no-op and log a hint.
+# Requires: $LOG_FILE in caller's scope (optional; silent fallback if unset).
+plate_spawn_terminal_if_needed() {
+  local clients
+  clients=$(tmux list-clients -t '=plate' 2>/dev/null || true)
+  if [ -n "$clients" ]; then
+    return 0
+  fi
+  case "${OSTYPE:-}" in
+    darwin*)
+      if ! command -v osascript >/dev/null 2>&1; then
+        printf '%s plate: osascript unavailable; attach manually via `tmux attach -t plate`\n' \
+          "$(date -Iseconds)" >> "${LOG_FILE:-/dev/null}" 2>/dev/null || true
+        return 0
+      fi
+      osascript >/dev/null 2>&1 <<'OSA' &
+tell application "Terminal"
+  do script "tmux attach -t plate"
+  set frontmost of window 1 to false
+end tell
+OSA
+      ;;
+    *)
+      printf '%s plate: non-Darwin host; attach manually via `tmux attach -t plate`\n' \
+        "$(date -Iseconds)" >> "${LOG_FILE:-/dev/null}" 2>/dev/null || true
+      ;;
+  esac
+}
+
 # plate_seed_permissions: three-state first-run / upgrade seeder for the
 # user-editable permissions allowlist. Mirrors jot_seed_permissions.
 #

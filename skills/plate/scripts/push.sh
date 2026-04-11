@@ -5,12 +5,19 @@
 #   launches background agent in tmux.
 set -euo pipefail
 
-: "${CLAUDE_PLUGIN_ROOT:?}"
-: "${CLAUDE_PLUGIN_DATA:?}"
-
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-PROMPTS_DIR="${CLAUDE_PLUGIN_ROOT}/prompts"
+# Derive paths from this script's own location so we don't trust
+# CLAUDE_PLUGIN_ROOT — in multi-plugin sessions the foreground claude may
+# have that env var set to a different (jot, superpowers, etc.) plugin.
+SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
+PYTHON_DIR="$PLUGIN_ROOT/python"
+PROMPTS_DIR="$PLUGIN_ROOT/prompts"
+# Export CLAUDE_PLUGIN_ROOT so child calls that still read it (legacy, or
+# lib/paths.sh logging) see the right value.
+export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+: "${CLAUDE_PLUGIN_DATA:=$HOME/.claude/plugins/data/plate-jot-dev}"
+export CLAUDE_PLUGIN_DATA
+mkdir -p "$CLAUDE_PLUGIN_DATA"
 
 # shellcheck source=lib/paths.sh
 . "$SCRIPTS_DIR/lib/paths.sh"
@@ -233,3 +240,8 @@ else
 fi
 
 plate_lock_release "$TMUX_LOCK"
+
+# If no terminal is currently attached to the plate tmux session, spawn
+# Terminal.app on macOS so the bg-agent window is actually visible.
+LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}" \
+  plate_spawn_terminal_if_needed
