@@ -1,0 +1,14 @@
+{"type":"user","parentUuid":"root","uuid":"u1","timestamp":"2026-04-10T12:00:00Z","message":{"role":"user","content":"fix the auth middleware"}}
+{"type":"assistant","parentUuid":"u1","uuid":"a1","timestamp":"2026-04-10T12:00:05Z","message":{"role":"assistant","content":"looking at auth.py now"}}
+{"type":"tool_use","parentUuid":"a1","uuid":"t1","timestamp":"2026-04-10T12:00:06Z","name":"Read","input":{"file_path":"auth.py"}}
+{"type":"tool_result","parentUuid":"t1","uuid":"tr1","timestamp":"2026-04-10T12:00:07Z","content":"...file contents..."}
+{"type":"user","parentUuid":"a1","uuid":"u2a","timestamp":"2026-04-10T12:01:00Z","message":{"role":"user","content":"wait, fix the auth middlware"}}
+{"type":"user","parentUuid":"a1","uuid":"u2b","timestamp":"2026-04-10T12:01:03Z","message":{"role":"user","content":"wait, fix the auth middleware"}}
+{"type":"user","parentUuid":"a1","uuid":"u2c","timestamp":"2026-04-10T12:01:08Z","message":{"role":"user","content":"actually fix the auth middleware with rate limiting"}}
+{"type":"assistant","parentUuid":"u2c","uuid":"a2","timestamp":"2026-04-10T12:01:15Z","message":{"role":"assistant","content":"ok, adding rate limiting"}}
+{"type":"user","parentUuid":"a2","uuid":"u3","timestamp":"2026-04-10T12:05:00Z","message":{"role":"user","content":"Error: rate limiter fails on concurrent requests"}}
+{"type":"assistant","parentUuid":"u3","uuid":"a3","timestamp":"2026-04-10T12:05:10Z","message":{"role":"assistant","content":"need to add a mutex"}}
+{"type":"user","parentUuid":"a3","uuid":"u4a","timestamp":"2026-04-10T12:10:00Z","message":{"role":"user","content":"typo: use RWMutex not Mutex"}}
+{"type":"user","parentUuid":"a3","uuid":"u4b","timestamp":"2026-04-10T12:10:05Z","message":{"role":"user","content":"use RWMutex not Mutex"}}
+{"type":"assistant","parentUuid":"u4b","uuid":"a4","timestamp":"2026-04-10T12:10:10Z","message":{"role":"assistant","content":"switching to RWMutex"}}
+{"type":"user","parentUuid":"a4","uuid":"u5","timestamp":"2026-04-10T12:15:00Z","message":{"role":"user","content":"now run the tests"}}

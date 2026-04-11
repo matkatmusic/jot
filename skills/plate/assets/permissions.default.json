@@ -1,0 +1,14 @@
+{
+  "_doc": "Default permissions for the background plate worker. Expanded per-invocation by push.sh. Path anchors follow Claude Code's permission syntax (docs.claude.com/en/docs/claude-code/permissions): // = filesystem absolute, ~ = home, / = project root, bare = cwd-relative. The bg-agent only needs to read the transcript + instance JSON and edit the instance JSON + INPUT_FILE. It MUST NOT execute Bash. The installed copy lives at ${CLAUDE_PLUGIN_DATA}/permissions.local.json — edit that file to customise; changes take effect on the next /plate. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
+  "permissions": {
+    "allow": [
+      "Read(//${PLATE_ROOT}/**)",
+      "Write(//${PLATE_ROOT}/**)",
+      "Edit(//${PLATE_ROOT}/**)",
+      "Read(${HOME}/.claude/projects/**)"
+    ],
+    "deny": [
+      "Bash(*)"
+    ]
+  }
+}
