@@ -139,7 +139,11 @@ fi
 # ── Build per-invocation settings.json (jot pattern) ─────────────────────
 TMPDIR_INV=$(mktemp -d /tmp/plate.XXXXXX)
 SETTINGS_FILE="$TMPDIR_INV/settings.json"
-WINDOW_NAME="$(basename "$CWD")-${TIMESTAMP}"
+# Sanitize for tmux target syntax: tmux parses '.' as window.pane separator
+# and ':' as session:window, so strip both from the window name.
+RAW_WINDOW="$(basename "$CWD")-${TIMESTAMP}"
+WINDOW_NAME="${RAW_WINDOW//./-}"
+WINDOW_NAME="${WINDOW_NAME//:/-}"
 TMUX_TARGET="plate:$WINDOW_NAME"
 
 # Record the tmux target so plate-worker-end.sh can find it if needed
@@ -221,11 +225,11 @@ if ! plate_lock_acquire "$TMUX_LOCK" 10; then
   exit 1
 fi
 
-if ! tmux has-session -t plate 2>/dev/null; then
+if ! tmux has-session -t '=plate' 2>/dev/null; then
   tmux new-session -d -s plate -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
-  tmux set-option -t plate remain-on-exit off >/dev/null 2>&1 || true
+  tmux set-option -t '=plate' remain-on-exit off >/dev/null 2>&1 || true
 else
-  tmux new-window -t plate -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
+  tmux new-window -t '=plate:' -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
 fi
 
 plate_lock_release "$TMUX_LOCK"

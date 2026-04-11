@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "jot",
-      "source": "/Users/matkatmusicllc/Programming/jot",
+      "source": "./jot",
       "description": "DEV build of jot — capture mid-development ideas via /jot",
       "version": "dev",
       "author": {
@@ -27,7 +27,7 @@
     },
     {
       "name": "plate",
-      "source": "/Users/matkatmusicllc/Programming/jot/skills/plate",
+      "source": "./plate",
       "description": "DEV build of plate — stack-of-plates WIP tracker that captures uncommitted work context when switching tasks",
       "version": "0.1.0-dev",
       "author": {

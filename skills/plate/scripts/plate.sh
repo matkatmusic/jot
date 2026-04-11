@@ -75,13 +75,15 @@ printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$P
 # Full stack trace lands in $LOG_FILE; user-visible emit_block stays short
 # and points at the log for diagnosis.
 plate_log_stack_trace() {
-  local rc="$1" line="$2" ts
+  local rc="$1" line="$2" cmd="$3" ts
   ts="$(date -Iseconds)"
   {
     printf '\n---- plate ERR %s ----\n' "$ts"
     printf 'session=%s rc=%s line=%s\n' "$SESSION_ID" "$rc" "$line"
+    printf 'last_command=%s\n' "$cmd"
     printf 'prompt=%q\n' "$PROMPT"
     printf 'cwd=%s\n' "$CWD"
+    printf 'plate_root=%s\n' "${PLATE_ROOT:-<unset>}"
     printf 'stack:\n'
     local i=0
     while [ "$i" -lt "${#FUNCNAME[@]}" ]; do
@@ -90,7 +92,7 @@ plate_log_stack_trace() {
     done
   } >> "$LOG_FILE" 2>/dev/null || true
 }
-trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO"; emit_block "plate crashed (rc=$rc line=$LINENO) — see $LOG_FILE"; exit 0' ERR
+trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
 
 # ── Drift alert injection (§11.3) ────────────────────────────────────────
 plate_discover_root 2>/dev/null || true
