@@ -1,28 +1,26 @@
 # plate
 
-Stack-of-plates WIP tracker for Claude Code. Push the current working state onto a named stack when you need to pivot, come back later, `--done` to replay it as real commits.
+Stack-of-plates WIP tracker for Claude Code. Snapshots your current working state (uncommitted changes, conversation intent, files touched) without modifying the working tree. Later, `--done` replays snapshots as structured commits.
 
-Think: `git stash` with intent + conversation context, scoped to a single Claude session, structured for multi-task juggling.
+Your files stay exactly as they are — plate only records, never resets.
 
 ## The mental model
 
-You are debugging auth. A production alert fires: you need to fix logging NOW. Without plate, your uncommitted auth work is in the way.
-
-With plate:
+You are debugging auth. A production alert fires. You `/plate` to capture what you were doing and why, then pivot to logging. When you come back, `--done` replays your auth snapshot as a commit with full context.
 
 ```
-/plate            # snapshots auth work, clears the deck, captures "fixing auth" intent
-# ... fix logging, commit, push
-/plate --done     # replays the auth plate as a commit, resumes where you left off
+/plate            # snapshots auth work + intent — working tree unchanged
+# ... pivot to logging, commit, push
+/plate --done     # replays the auth snapshot as a structured commit
 ```
 
-The stack grows when you push multiple plates. `--done` replays them oldest-first as sequential commits, each with structured context (what, why, hypothesis, hedged confidence).
+The stack grows when you push multiple plates. `--done` replays them oldest-first as sequential commits, each with extracted context (what, why, hypothesis, hedged confidence).
 
 ## Commands
 
 | Command | Behavior |
 |---|---|
-| `/plate` | Snapshot current git state → push plate onto stack. Background agent extracts intent fields from transcript. |
+| `/plate` | Snapshot current git state (non-destructive — working tree untouched). Background agent extracts intent fields from transcript. |
 | `/plate --done` | Replay stack as sequential commits. Cascade up through delegated parents. |
 | `/plate --drop` | Abandon top plate. Work saved as recoverable patch file in `.plate/dropped/`. |
 | `/plate --next` | Walk parent delegation chain upward, print resume command for next paused ancestor. |
