@@ -18,6 +18,8 @@ The stack grows when you push multiple plates. `--done` replays them oldest-firs
 
 ## Commands
 
+Here are the commands that are currently implemented (git stash create step 1 test)
+
 | Command | Behavior |
 |---|---|
 | `/plate` | Snapshot current git state (non-destructive — working tree untouched). Background agent extracts intent fields from transcript. |
