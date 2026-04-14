@@ -9,6 +9,8 @@ Capture a mid-development idea without losing focus. Typing `/jot <idea>` writes
 
 ## Requirements
 
+Here are the required tools and versions needed to use the jot skill/hook (git stash create step 2 test)
+
 | Tool | Install |
 |---|---|
 | `claude` (Claude Code CLI) | [claude.ai/download](https://claude.ai/download) |
