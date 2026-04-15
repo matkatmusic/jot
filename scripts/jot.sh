@@ -1,22 +1,31 @@
 #!/bin/bash
-# jot.sh — /jot UserPromptSubmit hook. Phase 1 + Phase 2 (queue-driven).
+# jot.sh — /jot UserPromptSubmit hook. Thin orchestrator composing the
+# reusable libraries under scripts/lib/.
 #
 # Phase 1 invariant: the user's idea must survive every partial failure.
 #   Whatever goes wrong during enrichment or Phase 2 launch, the input.txt
 #   is already on disk (durable-first) so the user can retrieve their idea.
 #
-# Phase 2 architecture: per-project persistent claude instance running in
-#   a tmux window inside the shared `jot` session. Jobs are appended to a
-#   FIFO queue at $REPO_ROOT/Todos/.jot-state/queue.txt. SessionStart and Stop
-#   hooks (defined in /tmp/jot.XXXXXX/settings.json) drain the queue via
-#   tmux send-keys. See:
-#     ~/.claude/hooks/scripts/jot-session-start.sh
-#     ~/.claude/hooks/scripts/jot-stop.sh
-#     ~/.claude/hooks/scripts/jot-session-end.sh
+# Phase 2: one claude per invocation, running in its own tmux pane inside
+#   the cross-project `jot:jots` window. Lifecycle hooks (SessionStart,
+#   Stop, SessionEnd) live in scripts/jot-session-start.sh, jot-stop.sh,
+#   jot-session-end.sh; they are copied into /tmp/jot.XXXXXX/ at launch
+#   so `claude plugin update` cannot yank them mid-run.
+#
+# Module layout (see plans/jot-generalizing-refactor.md):
+#   lib/hook-json.sh         emit_block, check_requirements
+#   lib/platform.sh          spawn_terminal_if_needed
+#   lib/tmux-launcher.sh     tmux session/window/pane primitives
+#   lib/claude-launcher.sh   generalized build_claude_cmd
+#   lib/permissions-seed.sh  three-state permissions.local.json seeder
+#   lib/expand_permissions.py   expand ${CWD}/${HOME}/${REPO_ROOT}
+#   lib/render_template.py      expand ${VAR} in template files
+#   lib/strip_stdin.py          read stdin, print stripped
+#   assets/jot-instructions.md  background-worker prompt template
 #
 # Testing hook: set JOT_SKIP_LAUNCH=1 in the environment to skip Phase 2
-#   entirely (no enqueue, no tmux, no claude). The canary suite uses this
-#   to verify Phase 1 output without spawning real tmux sessions.
+#   entirely (no tmux, no claude). The canary suite uses this to verify
+#   Phase 1 output without spawning real tmux sessions.
 set -euo pipefail
 
 # ── Plugin-env assertions ────────────────────────────────────────────────
