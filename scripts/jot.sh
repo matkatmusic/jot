@@ -417,54 +417,12 @@ build_claude_cmd() {
   jot_seed_permissions "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file"
 
   # Expand ${CWD}, ${HOME}, ${REPO_ROOT} in the allow array, emit a JSON
-  # array literal. Includes a backward-compat migration shim for legacy
-  # cwd-relative Write(Todos/**)/Edit(Todos/**) entries (see comments below).
+  # array literal. The helper also applies a backward-compat migration shim
+  # for legacy cwd-relative Write(Todos/**)/Edit(Todos/**) entries; see
+  # scripts/lib/expand_permissions.py for details.
   local allow_json
-  allow_json=$(CWD="$CWD" HOME="$HOME" REPO_ROOT="$REPO_ROOT" python3 -c '
-import json, os, sys
-path = os.environ.get("PERMISSIONS_FILE") or sys.argv[1]
-with open(path) as f:
-    data = json.load(f)
-allow = data.get("permissions", {}).get("allow", [])
-repo_root = os.environ["REPO_ROOT"].lstrip("/")
-
-# ── Backward-compat migration shim (in-memory, non-destructive) ──────
-# Existing installs may have edited permissions.local.json with the
-# legacy cwd-relative form Write(Todos/**)/Edit(Todos/**). Post-upgrade
-# the worker emits absolute tool args, which never match cwd-relative
-# patterns when the worker cwd is a subdirectory of the repo root.
-# Without this shim every Write would silently deny on first /jot.
-#
-# Strategy: detect legacy entries, auto-inject the absolute //${REPO_ROOT}
-# rules into the in-memory allow array, and warn the user on stderr.
-# We do NOT mutate the on-disk file — that would clobber custom
-# formatting and other user edits the user is entitled to keep.
-LEGACY_PATTERNS = ("Write(Todos/", "Edit(Todos/")
-has_legacy = any(item.startswith(LEGACY_PATTERNS) for item in allow)
-required = [
-    "Write(//${REPO_ROOT}/Todos/**)",
-    "Edit(//${REPO_ROOT}/Todos/**)",
-]
-for rule in required:
-    if rule not in allow:
-        allow.append(rule)
-if has_legacy:
-    sys.stderr.write(
-        "[jot] WARN: legacy cwd-relative Write(Todos/**)/Edit(Todos/**) "
-        "rules detected in permissions.local.json. Auto-granting absolute "
-        "Write/Edit access to ${REPO_ROOT}/Todos/. Update your local file "
-        "to silence this warning.\n"
-    )
-
-expanded = [
-    item
-      .replace("${CWD}", os.environ["CWD"])
-      .replace("${HOME}", os.environ["HOME"])
-      .replace("${REPO_ROOT}", repo_root)
-    for item in allow
-]
-print(json.dumps(expanded))
-' "$permissions_file")
+  allow_json=$(CWD="$CWD" HOME="$HOME" REPO_ROOT="$REPO_ROOT" \
+    python3 "$SCRIPTS_DIR/lib/expand_permissions.py" "$permissions_file")
 
   cat > "$SETTINGS_FILE" <<JSON
 {
