@@ -47,6 +47,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # shellcheck source=scripts/lib/tmux-launcher.sh
 . "$SCRIPTS_DIR/lib/tmux-launcher.sh"
 
+# ── Claude launcher (settings.json + claude command builder) ─────────────
+# shellcheck source=scripts/lib/claude-launcher.sh
+. "$SCRIPTS_DIR/lib/claude-launcher.sh"
+
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
 
@@ -273,7 +277,7 @@ jot_seed_permissions() {
 #   This supersedes an earlier symlink-based approach where
 #   $TMPDIR_INV/.claude/settings.local.json was symlinked into a persistent
 #   host file — that mechanism is no longer used.
-build_claude_cmd() {
+jot_build_claude_cmd() {
   TMPDIR_INV=$(mktemp -d /tmp/jot.XXXXXX)
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
   PERMISSIONS_FILE="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
@@ -290,22 +294,9 @@ build_claude_cmd() {
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-end.sh"   "$TMPDIR_INV/jot-session-end.sh"
   local hooks_scripts="$TMPDIR_INV"
 
-  # Hooks wired per-invocation:
-  # - SessionStart: receives INPUT_FILE + TMPDIR_INV; reads the tmux pane id
-  #   from "$TMPDIR_INV/tmux_target" (written by phase2_launch_window after
-  #   split-window), then sends the "Read <input.txt> and follow
-  #   instructions" prompt via send-keys.
-  # - Stop: receives INPUT_FILE + TMPDIR_INV + STATE_DIR; reads the sidecar
-  #   synchronously BEFORE forking its kill-pane subshell, verifies the
-  #   PROCESSED: marker, appends to audit.log, kills THIS pane.
-  # - SessionEnd: wipes $TMPDIR_INV on claude exit. Safe because each claude
-  #   has its own tmpdir and no other process references it.
-  #
   # Permissions: loaded from the persistent allowlist at
   # ${CLAUDE_PLUGIN_DATA}/permissions.local.json. The file supports ${CWD}
-  # and ${HOME} template placeholders that are expanded per-invocation here.
-  # Users can edit the installed copy to add site-specific grants; changes
-  # take effect on the next /jot.
+  # and ${HOME} template placeholders that are expanded per-invocation.
   local permissions_file="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
   local default_file="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json"
   local default_sha_file="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json.sha256"
@@ -313,31 +304,29 @@ build_claude_cmd() {
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
   jot_seed_permissions "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file"
 
-  # Expand ${CWD}, ${HOME}, ${REPO_ROOT} in the allow array, emit a JSON
-  # array literal. The helper also applies a backward-compat migration shim
-  # for legacy cwd-relative Write(Todos/**)/Edit(Todos/**) entries; see
-  # scripts/lib/expand_permissions.py for details.
+  # Expand permissions allow array (with legacy-form migration shim).
   local allow_json
   allow_json=$(CWD="$CWD" HOME="$HOME" REPO_ROOT="$REPO_ROOT" \
     python3 "$SCRIPTS_DIR/lib/expand_permissions.py" "$permissions_file")
 
-  cat > "$SETTINGS_FILE" <<JSON
+  # Hooks wired per-invocation:
+  # - SessionStart: receives INPUT_FILE + TMPDIR_INV; reads the tmux pane id
+  #   sidecar at "$TMPDIR_INV/tmux_target", sends Read-and-follow prompt.
+  # - Stop: receives INPUT_FILE + TMPDIR_INV + STATE_DIR; verifies PROCESSED:
+  #   marker, appends audit.log, kills pane.
+  # - SessionEnd: wipes $TMPDIR_INV on claude exit.
+  local hooks_json_file="$TMPDIR_INV/hooks.json"
+  cat > "$hooks_json_file" <<JSON
 {
-  "permissions": {
-    "allow": $allow_json
-  },
-  "hooks": {
-    "SessionStart": [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-start.sh '$INPUT_FILE' '$TMPDIR_INV'"}]}],
-    "Stop":         [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-stop.sh '$INPUT_FILE' '$TMPDIR_INV' '$STATE_DIR'"}]}],
-    "SessionEnd":   [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-end.sh '$TMPDIR_INV'"}]}]
-  }
+  "SessionStart": [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-start.sh '$INPUT_FILE' '$TMPDIR_INV'"}]}],
+  "Stop":         [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-stop.sh '$INPUT_FILE' '$TMPDIR_INV' '$STATE_DIR'"}]}],
+  "SessionEnd":   [{"hooks": [{"type": "command", "command": "bash $hooks_scripts/jot-session-end.sh '$TMPDIR_INV'"}]}]
 }
 JSON
 
-  # Launch claude. cwd is set by tmux `-c "$CWD"` (the user's session
-  # subdirectory). --add-dir grants the agent access to repo-root Todos/
-  # even when cwd is a subdirectory deeper in the tree.
-  CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD' --add-dir '$REPO_ROOT'"
+  # Launch claude via the generalized builder. cwd is set by tmux (subdir);
+  # --add-dir grants access to repo-root Todos/ from any subdir.
+  CLAUDE_CMD=$(build_claude_cmd "$SETTINGS_FILE" "$allow_json" "$hooks_json_file" "$CWD" "$REPO_ROOT")
 }
 
 # phase2_launch_window: spawn a new tmux PANE running its own claude
@@ -383,7 +372,7 @@ phase2_launch_window() {
   printf '%s\n' "$n" > "$counter_file"
   local pane_label="jot${n}"
 
-  build_claude_cmd  # generates $TMPDIR_INV, $SETTINGS_FILE, $CLAUDE_CMD
+  jot_build_claude_cmd  # generates $TMPDIR_INV, $SETTINGS_FILE, $CLAUDE_CMD
 
   # ── Ensure jot session + jots window + keepalive pane exist ─────────────
   # The keepalive pane runs `tail -f /dev/null` wrapped by an `sh` that
