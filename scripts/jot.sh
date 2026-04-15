@@ -43,6 +43,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # shellcheck source=scripts/lib/platform.sh
 . "$SCRIPTS_DIR/lib/platform.sh"
 
+# ── Tmux launcher primitives (session/window/pane choreography) ──────────
+# shellcheck source=scripts/lib/tmux-launcher.sh
+. "$SCRIPTS_DIR/lib/tmux-launcher.sh"
+
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
 
@@ -387,36 +391,11 @@ phase2_launch_window() {
   # and cascade window/session death. Once this pane exists, the jot
   # session is immortal until the user explicitly `tmux kill-session -t jot`.
   local keepalive_cmd='exec sh -c '\''trap "" INT HUP TERM; printf "[jot keepalive — do not kill]\n"; exec tail -f /dev/null'\'''
-  if ! tmux has-session -t jot 2>/dev/null; then
-    tmux new-session -d -s jot -n jots -c "$CWD" "$keepalive_cmd"
-    tmux set-option -t jot remain-on-exit off           >/dev/null 2>&1 || true
-    tmux set-option -t jot mouse on                     >/dev/null 2>&1 || true
-    tmux set-option -t jot pane-border-status top       >/dev/null 2>&1 || true
-    tmux set-option -t jot pane-border-format ' #{pane_title} ' >/dev/null 2>&1 || true
-    tmux select-pane -t jot:jots.0 -T 'jot: keepalive'  >/dev/null 2>&1 || true
-  elif ! tmux list-windows -t jot -F '#{window_name}' 2>/dev/null | grep -qx jots; then
-    tmux new-window -t jot -n jots -c "$CWD" "$keepalive_cmd"
-    tmux select-pane -t jot:jots.0 -T 'jot: keepalive'  >/dev/null 2>&1 || true
-  else
-    # ── Ensure keepalive pane still exists inside jots window ───────────
-    # Guards case (c): session + jots window exist but keepalive pane was
-    # manually killed or crashed. Without this, the last worker pane to
-    # finish would cascade the window and session into death. Probes by
-    # pane_title (not index) because worker panes outlive keepalive and
-    # shift indices. (Added per 4-of-4 unanimous debate review.)
-    if ! tmux list-panes -t jot:jots -F '#{pane_title}' 2>/dev/null \
-         | grep -qx 'jot: keepalive'; then
-      local KA_ID
-      KA_ID=$(tmux split-window -t jot:jots -c "$CWD" -P -F '#{pane_id}' "$keepalive_cmd")
-      [ -n "$KA_ID" ] && tmux select-pane -t "$KA_ID" -T 'jot: keepalive' >/dev/null 2>&1 || true
-      tmux select-layout -t jot:jots tiled >/dev/null 2>&1 || true
-    fi
-  fi
+  tmux_ensure_session jot jots "$CWD" "$keepalive_cmd" 'jot: keepalive'
 
   # ── Split a new pane for this worker; capture its stable pane id ────────
   local PANE_ID
-  PANE_ID=$(tmux split-window -t jot:jots -c "$CWD" -P -F '#{pane_id}' "$CLAUDE_CMD")
-  if [ -z "$PANE_ID" ]; then
+  if ! PANE_ID=$(tmux_split_worker_pane jot:jots "$CWD" "$CLAUDE_CMD"); then
     echo "[jot] tmux split-window returned empty pane id" >> "$LOG_FILE" 2>/dev/null || true
     jot_lock_release "$tmux_lock"
     return 1
@@ -430,8 +409,8 @@ phase2_launch_window() {
   printf '%s\n' "$PANE_ID" > "$TMPDIR_INV/tmux_target.tmp"
   mv "$TMPDIR_INV/tmux_target.tmp" "$TMPDIR_INV/tmux_target"
 
-  tmux select-pane -t "$PANE_ID" -T "$pane_label"    >/dev/null 2>&1 || true
-  tmux select-layout -t jot:jots tiled               >/dev/null 2>&1 || true
+  tmux_set_pane_title "$PANE_ID" "$pane_label"
+  tmux_retile jot:jots
 
   jot_lock_release "$tmux_lock"
   spawn_terminal_if_needed "jot" "$LOG_FILE" "jot"
