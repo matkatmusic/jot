@@ -35,37 +35,9 @@ SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 LOG_FILE="${JOT_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/jot-log.txt}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
-# ── emit_block: print {decision:block, reason:...} JSON. ─────────────────
-# Uses jq when available; falls back to hand-rolled JSON when jq itself
-# is missing (the requirements check needs to report THAT jq is missing).
-emit_block() {
-  local reason="$1"
-  if command -v jq >/dev/null 2>&1; then
-    jq -n --arg r "$reason" '{decision:"block", reason:$r}'
-  else
-    local esc="${reason//\\/\\\\}"   # backslashes first
-    esc="${esc//\"/\\\"}"            # then quotes
-    printf '{"decision":"block","reason":"%s"}\n' "$esc"
-  fi
-}
-
-# ── check_requirements: probe for required commands. ────────────────────
-check_requirements() {
-  local -a missing=()
-  command -v jq      >/dev/null 2>&1 || missing+=("jq (brew install jq)")
-  command -v python3 >/dev/null 2>&1 || missing+=("python3 (brew install python)")
-  command -v tmux    >/dev/null 2>&1 || missing+=("tmux (brew install tmux)")
-  command -v claude  >/dev/null 2>&1 || missing+=("claude (https://claude.com/claude-code)")
-  if [ ${#missing[@]} -eq 0 ]; then
-    return 0
-  fi
-  local list="" item
-  for item in "${missing[@]}"; do
-    if [ -z "$list" ]; then list="$item"; else list="$list, $item"; fi
-  done
-  emit_block "jot needs: $list — install and retry."
-  exit 0
-}
+# ── Hook JSON helpers (emit_block, check_requirements) ───────────────────
+# shellcheck source=scripts/lib/hook-json.sh
+. "$SCRIPTS_DIR/lib/hook-json.sh"
 
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
@@ -81,7 +53,7 @@ esac
 # don't leak non-jot prompts.
 printf '%s HOOK_INPUT %s\n' "$(date -Iseconds)" "$INPUT" >> "$LOG_FILE" 2>/dev/null || true
 
-check_requirements
+check_requirements "jot" jq python3 tmux claude
 
 # Source the shared state-lib helpers (used by phase2_enqueue_and_launch)
 # shellcheck source=scripts/jot-state-lib.sh
