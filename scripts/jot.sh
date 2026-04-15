@@ -39,6 +39,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # shellcheck source=scripts/lib/hook-json.sh
 . "$SCRIPTS_DIR/lib/hook-json.sh"
 
+# ── Platform helpers (spawn_terminal_if_needed) ──────────────────────────
+# shellcheck source=scripts/lib/platform.sh
+. "$SCRIPTS_DIR/lib/platform.sh"
+
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
 
@@ -218,40 +222,7 @@ fi
 
 # ── Phase 2 helpers (defined inside jot.sh; could be sourced from a lib) ─
 
-# spawn_terminal_if_needed: open Terminal.app attached to the jot session
-# only if no client is currently attached. No-op if a Terminal is already
-# showing the session.
-#
-# macOS-only. On non-Darwin hosts we log a hint and let the user attach to
-# the jot tmux session manually. `osascript` is documented in README as a
-# Darwin-only optional dependency; the plugin still works headless without
-# it, the user just won't get an auto-spawned Terminal window.
-spawn_terminal_if_needed() {
-  local clients
-  clients=$(tmux list-clients -t jot 2>/dev/null || true)
-  if [ -n "$clients" ]; then
-    return 0
-  fi
-  case "${OSTYPE:-}" in
-    darwin*)
-      if ! command -v osascript >/dev/null 2>&1; then
-        printf '%s jot: osascript unavailable; attach manually via `tmux attach -t jot`\n' \
-          "$(date -Iseconds)" >> "$LOG_FILE" 2>/dev/null || true
-        return 0
-      fi
-      osascript >/dev/null 2>&1 <<'OSA' &
-tell application "Terminal"
-  do script "tmux attach -t jot"
-  set frontmost of window 1 to false
-end tell
-OSA
-      ;;
-    *)
-      printf '%s jot: non-Darwin host; attach manually via `tmux attach -t jot`\n' \
-        "$(date -Iseconds)" >> "$LOG_FILE" 2>/dev/null || true
-      ;;
-  esac
-}
+# spawn_terminal_if_needed is provided by lib/platform.sh (sourced below).
 
 # jot_seed_permissions: three-state first-run / upgrade seeder for the
 # user-editable permissions allowlist.
@@ -513,7 +484,7 @@ phase2_launch_window() {
   tmux select-layout -t jot:jots tiled               >/dev/null 2>&1 || true
 
   jot_lock_release "$tmux_lock"
-  spawn_terminal_if_needed
+  spawn_terminal_if_needed "jot" "$LOG_FILE" "jot"
 }
 
 phase2_launch_window
