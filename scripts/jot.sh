@@ -51,6 +51,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # shellcheck source=scripts/lib/claude-launcher.sh
 . "$SCRIPTS_DIR/lib/claude-launcher.sh"
 
+# ── Permissions seeder (three-state first-run / upgrade logic) ────────────
+# shellcheck source=scripts/lib/permissions-seed.sh
+. "$SCRIPTS_DIR/lib/permissions-seed.sh"
+
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
 
@@ -182,73 +186,7 @@ fi
 
 # spawn_terminal_if_needed is provided by lib/platform.sh (sourced below).
 
-# jot_seed_permissions: three-state first-run / upgrade seeder for the
-# user-editable permissions allowlist.
-#
-# Args:
-#   $1 installed_file     ${CLAUDE_PLUGIN_DATA}/permissions.local.json
-#   $2 default_file       ${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json  (bundled)
-#   $3 default_sha_file   ${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json.sha256
-#   $4 prior_sha_file     ${CLAUDE_PLUGIN_DATA}/permissions.default.sha256  (what we shipped last time)
-#
-# Three states:
-#   (1) installed_file MISSING → copy default in, record prior_sha = current default sha.
-#   (2) installed_file sha matches prior_sha → safe to overwrite on upgrade
-#       (user never touched it, but we shipped a newer default). Copy default
-#       in, update prior_sha.
-#   (3) installed_file sha does NOT match prior_sha → user edited it. Leave
-#       alone. Log a one-line warning the first time we see a newer bundled
-#       default so the user knows to diff manually.
-jot_seed_permissions() {
-  local installed="$1" default="$2" default_sha_file="$3" prior_sha_file="$4"
-  local current_default_sha installed_sha prior_sha
-
-  # Bundled default must exist; if the plugin is broken we cannot seed.
-  if [ ! -f "$default" ] || [ ! -f "$default_sha_file" ]; then
-    printf '%s jot: bundled permissions default missing at %s — cannot seed\n' \
-      "$(date -Iseconds)" "$default" >> "$LOG_FILE" 2>/dev/null || true
-    return 0
-  fi
-  current_default_sha=$(awk '{print $1}' "$default_sha_file")
-
-  # State 1: nothing installed yet — fresh copy.
-  if [ ! -f "$installed" ]; then
-    cp "$default" "$installed"
-    printf '%s\n' "$current_default_sha" > "$prior_sha_file"
-    printf '%s jot: seeded %s from bundled default (sha=%s)\n' \
-      "$(date -Iseconds)" "$installed" "$current_default_sha" >> "$LOG_FILE" 2>/dev/null || true
-    return 0
-  fi
-
-  installed_sha=$(shasum -a 256 "$installed" 2>/dev/null | awk '{print $1}')
-  prior_sha=$([ -f "$prior_sha_file" ] && awk '{print $1}' "$prior_sha_file" || echo "")
-
-  # Already up-to-date: no action.
-  if [ "$installed_sha" = "$current_default_sha" ]; then
-    return 0
-  fi
-
-  # State 2: installed matches the prior shipped default. User hasn't edited
-  # → safe to overwrite with the newer bundled default.
-  if [ -n "$prior_sha" ] && [ "$installed_sha" = "$prior_sha" ]; then
-    cp "$default" "$installed"
-    printf '%s\n' "$current_default_sha" > "$prior_sha_file"
-    printf '%s jot: upgraded %s to new bundled default (was %s, now %s)\n' \
-      "$(date -Iseconds)" "$installed" "$prior_sha" "$current_default_sha" >> "$LOG_FILE" 2>/dev/null || true
-    return 0
-  fi
-
-  # State 3: user-edited. Leave it alone. Log a one-line hint the first time
-  # we see a new default so the user knows to diff manually.
-  if [ "$prior_sha" != "$current_default_sha" ]; then
-    printf '%s jot: %s is user-edited; bundled default updated — diff manually. installed_sha=%s prior_sha=%s current_default_sha=%s\n' \
-      "$(date -Iseconds)" "$installed" "$installed_sha" "$prior_sha" "$current_default_sha" >> "$LOG_FILE" 2>/dev/null || true
-    # Advance prior_sha so we don't log this warning on every /jot — only once
-    # per bundled-default upgrade.
-    printf '%s\n' "$current_default_sha" > "$prior_sha_file"
-  fi
-  return 0
-}
+# permissions_seed is provided by lib/permissions-seed.sh (sourced above).
 
 # build_claude_cmd: generate per-invocation settings.json + claude command
 # Inputs: CWD, STATE_DIR, INPUT_FILE, WINDOW_NAME
@@ -302,7 +240,7 @@ jot_build_claude_cmd() {
   local default_sha_file="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json.sha256"
   local prior_sha_file="${CLAUDE_PLUGIN_DATA}/permissions.default.sha256"
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
-  jot_seed_permissions "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file"
+  permissions_seed "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file" "$LOG_FILE" "jot"
 
   # Expand permissions allow array (with legacy-form migration shim).
   local allow_json
