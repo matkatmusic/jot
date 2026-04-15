@@ -88,7 +88,7 @@ check_requirements
 . "$SCRIPTS_DIR/jot-state-lib.sh"
 
 # ── Parse prompt (whole-string trim via python, NOT sed) ────────────────
-PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 -c 'import sys; print(sys.stdin.read().strip())')
+PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 "$SCRIPTS_DIR/lib/strip_stdin.py")
 
 # ── Exact-match prefix gate ──────────────────────────────────────────────
 if [[ "$PROMPT" != "/jot" && "$PROMPT" != "/jot "* ]]; then
@@ -97,7 +97,7 @@ fi
 
 IDEA="${PROMPT#/jot}"
 IDEA="${IDEA# }"
-IDEA=$(printf '%s' "$IDEA" | python3 -c 'import sys; print(sys.stdin.read().strip())')
+IDEA=$(printf '%s' "$IDEA" | python3 "$SCRIPTS_DIR/lib/strip_stdin.py")
 if [ -z "$IDEA" ]; then
   emit_block "jot: no idea provided"
   exit 0
