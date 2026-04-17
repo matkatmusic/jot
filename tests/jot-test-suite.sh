@@ -21,7 +21,7 @@ set -uo pipefail
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 
-JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/scripts/jot.sh}"
+JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/scripts/jot-orchestrator.sh}"
 SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/scripts}"
 # shellcheck source=../scripts/lib/tmux-launcher.sh
 . "$SCRIPTS/lib/tmux-launcher.sh"

@@ -1,55 +1,8 @@
 #!/usr/bin/env bash
-# plate.sh — UserPromptSubmit hook entry point.
-# Reads JSON from stdin. Dispatches /plate variants.
-# Matches jot.sh architecture: emit_block for suppression, self-filtering.
-set -euo pipefail
+# plate.sh — function definitions for the /plate hook.
+# Sourced by plate-orchestrator.sh. No side effects when sourced.
 
-: "${CLAUDE_PLUGIN_ROOT:?plate plugin env not set}"
-: "${CLAUDE_PLUGIN_DATA:?plate plugin env not set}"
-
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
-hide_errors mkdir -p "$(dirname "$LOG_FILE")"
-
-# shellcheck source=../../../scripts/lib/invoke_command.sh
-. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
-# shellcheck source=paths.sh
-. "$SCRIPTS_DIR/paths.sh"
-# shellcheck source=../../../scripts/lib/lock.sh
-. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
-
-# shellcheck source=../../../scripts/lib/hook-json.sh
-. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
-
-# ── Read hook input from stdin ────────────────────────────────────────────
-INPUT=$(cat)
-
-# ── Fast-path: bail if not /plate ─────────────────────────────────────────
-case "$INPUT" in
-  *'"/plate'*) ;;
-  *) exit 0 ;;
-esac
-
-check_requirements "plate" jq python3 tmux claude
-
-# ── Parse fields ──────────────────────────────────────────────────────────
-PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 -c 'import sys; print(sys.stdin.read().strip())')
-SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "unknown"') || SESSION_ID="unknown"
-TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
-CWD=$(printf '%s' "$INPUT" | hide_errors jq -r '.cwd // empty')
-[ -z "$CWD" ] && CWD="$PWD"
-
-# ── Regex gate: only /plate and its variants ──────────────────────────────
-if ! printf '%s' "$PROMPT" | grep -qE '^/plate(\s+(--done|--drop|--next|--show))?$'; then
-  exit 0
-fi
-
-hide_errors printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$PROMPT" >> "$LOG_FILE"
-
-# ── ERR trap ──────────────────────────────────────────────────────────────
-# Full stack trace lands in $LOG_FILE; user-visible emit_block stays short
-# and points at the log for diagnosis.
+# usage: plate_log_stack_trace <rc> <line> <command>
 plate_log_stack_trace() {
   local rc="$1" line="$2" cmd="$3" ts
   ts="$(date -Iseconds)"
@@ -68,53 +21,28 @@ plate_log_stack_trace() {
     done
   } >> "$LOG_FILE" 2>/dev/null
 }
-trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
 
-# ── Drift alert injection (§11.3) ────────────────────────────────────────
-hide_errors plate_discover_repo_root || PLATE_ROOT=""
-if [ -n "${PLATE_ROOT:-}" ]; then
-  DRIFT_INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
-  if [ -f "$DRIFT_INSTANCE_FILE" ]; then
-    DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" hide_errors python3 "$PYTHON_DIR/check_drift_alert.py")
-    if [ -n "$DRIFT_MSG" ]; then
-      printf '[plate drift] %s\n' "$DRIFT_MSG" >&2
-    fi
-  fi
-fi
+# usage: plate_dispatch
+# Reads globals: VARIANT, SCRIPTS_DIR, PYTHON_DIR, SESSION_ID, TRANSCRIPT_PATH,
+#   CWD, PLATE_ROOT, INSTANCE_FILE, CLAUDE_PLUGIN_ROOT
+plate_dispatch() {
+  case "$VARIANT" in
+    "")
+      plate_discover_repo_root
+      plate_ensure_dirs
+      INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
 
-# ── Extract variant ───────────────────────────────────────────────────────
-VARIANT=$(printf '%s' "$PROMPT" | sed 's|^/plate||; s|^ ||')
+      if [ -f "$INSTANCE_FILE" ]; then
+        bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
+        emit_block "[plate] pushed"
+      elif [ -d "${PLATE_ROOT}/instances" ] && \
+           hide_errors find "${PLATE_ROOT}/instances" -name "*.json" -maxdepth 1 | read -r _; then
+        python3 "$PYTHON_DIR/instance_rw.py" create-instance \
+          "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
+          "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
 
-# ── Dispatch by variant ───────────────────────────────────────────────────
-case "$VARIANT" in
-  "")
-    # /plate (push) — three-way gate (§8.1)
-    plate_discover_repo_root
-    plate_ensure_dirs
-    INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
-
-    if [ -f "$INSTANCE_FILE" ]; then
-      # PATH 1: this session has plate state → suppress + background push
-      bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
-      emit_block "[plate] pushed"
-    elif [ -d "${PLATE_ROOT}/instances" ] && \
-         hide_errors find "${PLATE_ROOT}/instances" -name "*.json" -maxdepth 1 | read -r _; then
-      # PATH 3: other instances exist → let prompt through for parent selection.
-      # Create a fully-populated instance file NOW so register-parent.sh and
-      # push.sh (which run later from the SKILL.md body) mutate a complete
-      # dict rather than an empty {}. Without this, top-level fields like
-      # convo_id/cwd/created_at end up missing because load() on a missing
-      # file returns {} and neither downstream script calls new_instance().
-      python3 "$PYTHON_DIR/instance_rw.py" create-instance \
-        "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
-        "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
-
-      # Drop a registration-context file so the SKILL.md body (running in
-      # the foreground claude) can read session_id/transcript_path/cwd
-      # without relying on `${SESSION_ID}`-style shell expansion that
-      # never happens inside a skill body.
-      REG_FILE="${PLATE_ROOT}/pending-registration.json"
-      cat > "$REG_FILE" <<REG
+        REG_FILE="${PLATE_ROOT}/pending-registration.json"
+        cat > "$REG_FILE" <<REG
 {
   "session_id": "$SESSION_ID",
   "transcript_path": "$TRANSCRIPT_PATH",
@@ -124,37 +52,84 @@ case "$VARIANT" in
   "created_at": "$(date -Iseconds)"
 }
 REG
-      # Do NOT emit_block. Exit 0 lets the prompt reach the SKILL.md body.
+        exit 0
+      else
+        python3 "$PYTHON_DIR/instance_rw.py" create-instance \
+          "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
+          "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
+        bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
+        emit_block "[plate] registered + pushed"
+      fi
+      ;;
+    "--done")
       exit 0
-    else
-      # PATH 2: virgin repo → auto-register as top-level + suppress + push
-      python3 "$PYTHON_DIR/instance_rw.py" create-instance \
-        "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
-        "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
-      bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
-      emit_block "[plate] registered + pushed"
-    fi
-    ;;
-  "--done")
-    # /plate --done — pass through to skill body which runs done.sh
-    # Foreground because user needs to see the commit output + resume command
-    exit 0
-    ;;
-  "--drop")
-    # /plate --drop — suppress + run drop.sh in background
-    plate_discover_repo_root
-    INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
-    bash "$SCRIPTS_DIR/drop.sh" "$SESSION_ID" "$INSTANCE_FILE"
-    emit_block "[plate] dropped"
-    ;;
-  "--next")
-    # /plate --next — pass through to skill body
-    exit 0
-    ;;
-  "--show")
-    # /plate --show — pass through to skill body
-    exit 0
-    ;;
-esac
+      ;;
+    "--drop")
+      plate_discover_repo_root
+      INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
+      bash "$SCRIPTS_DIR/drop.sh" "$SESSION_ID" "$INSTANCE_FILE"
+      emit_block "[plate] dropped"
+      ;;
+    "--next")
+      exit 0
+      ;;
+    "--show")
+      exit 0
+      ;;
+  esac
+}
 
-exit 0
+# usage: plate_main
+# Entry point. Reads hook JSON from stdin, dispatches /plate variants.
+plate_main() {
+  : "${CLAUDE_PLUGIN_ROOT:?plate plugin env not set}"
+  : "${CLAUDE_PLUGIN_DATA:?plate plugin env not set}"
+
+  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+  PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
+  LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
+
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
+  hide_errors mkdir -p "$(dirname "$LOG_FILE")"
+
+  . "$SCRIPTS_DIR/paths.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
+
+  INPUT=$(cat)
+  case "$INPUT" in
+    *'"/plate'*) ;;
+    *) exit 0 ;;
+  esac
+
+  check_requirements "plate" jq python3 tmux claude
+
+  PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 -c 'import sys; print(sys.stdin.read().strip())')
+  SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "unknown"') || SESSION_ID="unknown"
+  TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
+  CWD=$(printf '%s' "$INPUT" | hide_errors jq -r '.cwd // empty')
+  [ -z "$CWD" ] && CWD="$PWD"
+
+  if ! printf '%s' "$PROMPT" | grep -qE '^/plate(\s+(--done|--drop|--next|--show))?$'; then
+    exit 0
+  fi
+
+  hide_errors printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$PROMPT" >> "$LOG_FILE"
+
+  trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
+
+  hide_errors plate_discover_repo_root || PLATE_ROOT=""
+  if [ -n "${PLATE_ROOT:-}" ]; then
+    DRIFT_INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
+    if [ -f "$DRIFT_INSTANCE_FILE" ]; then
+      DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" hide_errors python3 "$PYTHON_DIR/check_drift_alert.py")
+      if [ -n "$DRIFT_MSG" ]; then
+        printf '[plate drift] %s\n' "$DRIFT_MSG" >&2
+      fi
+    fi
+  fi
+
+  VARIANT=$(printf '%s' "$PROMPT" | sed 's|^/plate||; s|^ ||')
+  plate_dispatch
+  exit 0
+}

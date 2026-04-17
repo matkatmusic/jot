@@ -36,7 +36,7 @@ CROSS_PROJECT="${CROSS_PROJECT:-${CLAUDE_PLUGIN_DATA}/e2e/cross-project-test}"
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 # shellcheck source=../scripts/lib/tmux-launcher.sh
 . "$SCRIPTS_DIR/lib/tmux-launcher.sh"
-JOT_SH="$SCRIPTS_DIR/jot.sh"
+JOT_SH="$SCRIPTS_DIR/jot-orchestrator.sh"
 DIAG_SH="$THIS_DIR/jot-diag-collect.sh"
 JOB_TIMEOUT="${JOB_TIMEOUT:-300}"
 
