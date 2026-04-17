@@ -1,67 +1,27 @@
-# tmux-launcher.sh — reusable tmux session/window/pane primitives.
+# tmux-launcher.sh — higher-level tmux session composites.
 #
-# This file is meant to be `source`d. All state is passed via explicit
-# arguments; nothing reads hidden globals. Functions return nonzero on
-# failure rather than `exit` so callers can recover.
+# Sources tmux.sh for primitives and provides composites on top:
 #
-# Requires tmux 2.9+ (pane-border-status, pane-border-format, select-pane -T).
-# The version is checked at source time; sourcing fails if tmux is too old.
-#
-# Exported functions:
-#   tmux_require_version <version>
-#   tmux_capture_pane <pane_id> [lines=10]
 #   tmux_ensure_session <session> <window> <cwd> <keepalive_cmd> <keepalive_title>
 #   tmux_ensure_keepalive_pane <target> <cwd> <keepalive_cmd> <title>
 #   tmux_split_worker_pane <target> <cwd> <cmd>
-#   tmux_set_pane_title <pane_id> <title>
-#   tmux_retile <target>
-#   tmux_kill_session <session>
 
-# ── Version gate ─────────────────────────────────────────────────────────
-
-tmux_require_version() {
-  local required="$1"
-  local installed
-  installed=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
-  if [ -z "$installed" ]; then
-    echo "[tmux-launcher] tmux not found" >&2
-    return 1
-  fi
-  if printf '%s\n%s\n' "$required" "$installed" | sort -V | head -1 | grep -qx "$required"; then
-    return 0
-  fi
-  echo "[tmux-launcher] tmux $required+ required (found $installed)" >&2
-  return 1
-}
-
-# Callers should invoke `tmux_require_version "2.9"` after confirming
-# tmux is installed (e.g. after check_requirements in hook-json.sh).
-
-# ── Functions ────────────────────────────────────────────────────────────
-
-tmux_capture_pane() {
-  local pane_id="$1" lines="${2:-10}"
-  if ! tmux list-panes -F '#{pane_id}' 2>/dev/null | grep -qx "$pane_id"; then
-    echo "[tmux-launcher] tmux_capture_pane: pane '$pane_id' does not exist" >&2
-    return 1
-  fi
-  tmux capture-pane -t "$pane_id" -p -S "-$lines"
-}
+source "$(dirname "${BASH_SOURCE[0]}")/tmux.sh"
 
 tmux_ensure_session() {
   local session="$1" window="$2" cwd="$3" keepalive_cmd="$4" keepalive_title="$5"
-  if ! tmux has-session -t "$session" 2>/dev/null; then
-    tmux new-session -d -s "$session" -n "$window" -c "$cwd" "$keepalive_cmd"
-    tmux set-option -t "$session" remain-on-exit off             >/dev/null 2>&1 || true
-    tmux set-option -t "$session" mouse on                       >/dev/null 2>&1 || true
-    tmux set-option -t "$session" pane-border-status top         >/dev/null 2>&1 || true
-    tmux set-option -t "$session" pane-border-format ' #{pane_title} ' >/dev/null 2>&1 || true
-    tmux select-pane -t "${session}:${window}.0" -T "$keepalive_title" >/dev/null 2>&1 || true
+  if ! tmux_has_session "$session"; then
+    tmux_new_session "$session" -n "$window" -c "$cwd" "$keepalive_cmd"
+    hide_output tmux_set_option_t "$session" remain-on-exit off
+    hide_output tmux_set_option_t "$session" mouse on
+    hide_output tmux_set_option_t "$session" pane-border-status top
+    hide_output tmux_set_option_t "$session" pane-border-format ' #{pane_title} '
+    hide_output tmux_set_pane_title "${session}:${window}.0" "$keepalive_title"
     return 0
   fi
-  if ! tmux list-windows -t "$session" -F '#{window_name}' 2>/dev/null | grep -qx "$window"; then
-    tmux new-window -t "$session" -n "$window" -c "$cwd" "$keepalive_cmd"
-    tmux select-pane -t "${session}:${window}.0" -T "$keepalive_title" >/dev/null 2>&1 || true
+  if ! tmux_window_exists "$session" "$window"; then
+    tmux_new_window "$session" "$window" -c "$cwd" "$keepalive_cmd"
+    hide_output tmux_set_pane_title "${session}:${window}.0" "$keepalive_title"
     return 0
   fi
   tmux_ensure_keepalive_pane "${session}:${window}" "$cwd" "$keepalive_cmd" "$keepalive_title"
@@ -69,33 +29,94 @@ tmux_ensure_session() {
 
 tmux_ensure_keepalive_pane() {
   local target="$1" cwd="$2" keepalive_cmd="$3" title="$4"
-  if tmux list-panes -t "$target" -F '#{pane_title}' 2>/dev/null | grep -qx "$title"; then
+  if tmux_pane_has_title "$target" "$title"; then
     return 0
   fi
   local ka_id
-  ka_id=$(tmux split-window -t "$target" -c "$cwd" -P -F '#{pane_id}' "$keepalive_cmd")
-  [ -n "$ka_id" ] && tmux select-pane -t "$ka_id" -T "$title" >/dev/null 2>&1 || true
-  tmux select-layout -t "$target" tiled >/dev/null 2>&1 || true
+  ka_id=$(tmux_new_pane "$target" -c "$cwd" -P -F '#{pane_id}' "$keepalive_cmd")
+  if [ -n "$ka_id" ]; then
+    hide_output tmux_set_pane_title "$ka_id" "$title"
+  fi
+  hide_output tmux_retile "$target"
 }
 
 tmux_split_worker_pane() {
   local target="$1" cwd="$2" cmd="$3"
   local pane_id
-  pane_id=$(tmux split-window -t "$target" -c "$cwd" -P -F '#{pane_id}' "$cmd")
+  pane_id=$(tmux_new_pane "$target" -c "$cwd" -P -F '#{pane_id}' "$cmd")
   if [ -z "$pane_id" ]; then
     return 1
   fi
   printf '%s\n' "$pane_id"
 }
 
-tmux_set_pane_title() {
-  tmux select-pane -t "$1" -T "$2" >/dev/null 2>&1 || true
-}
+tmux_launcher_tests() {
+  local test_session="tmux-sh-launcher-test-$$"
+  local pass=0 fail=0
 
-tmux_retile() {
-  tmux select-layout -t "$1" tiled >/dev/null 2>&1 || true
-}
+  # Path 1: ensure_session on a missing session creates it.
+  tmux_ensure_session "$test_session" "main" "/tmp" "sleep 30" "keepalive" >/dev/null 2>&1
+  if tmux_has_session "$test_session"; then
+    echo "PASS: ensure_session created new session"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: ensure_session did not create session"
+    fail=$((fail + 1))
+  fi
 
-tmux_kill_session() {
-  tmux kill-session -t "$1" 2>/dev/null || true
+  # Keepalive pane got its title set.
+  if tmux_pane_has_title "${test_session}:main" "keepalive"; then
+    echo "PASS: keepalive pane has correct title"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: keepalive title not found"
+    fail=$((fail + 1))
+  fi
+
+  # set_option_t applied pane-border-status=top.
+  local border_status
+  border_status=$(tmux show-options -t "$test_session" -v pane-border-status 2>/dev/null)
+  if [ "$border_status" = "top" ]; then
+    echo "PASS: set_option_t applied pane-border-status=top"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: pane-border-status is '$border_status', expected 'top'"
+    fail=$((fail + 1))
+  fi
+
+  # split_worker_pane creates a pane and prints its id.
+  local worker
+  worker=$(tmux_split_worker_pane "${test_session}:main" "/tmp" "sleep 30")
+  if [ -n "$worker" ] && [ "${worker:0:1}" = "%" ]; then
+    echo "PASS: split_worker_pane returned pane id $worker"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: split_worker_pane returned '$worker'"
+    fail=$((fail + 1))
+  fi
+
+  # Path 3: ensure_session on existing session+window is idempotent.
+  tmux_ensure_session "$test_session" "main" "/tmp" "sleep 30" "keepalive" >/dev/null 2>&1
+  if tmux_has_session "$test_session"; then
+    echo "PASS: ensure_session idempotent on existing session+window"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: ensure_session broke existing session"
+    fail=$((fail + 1))
+  fi
+
+  # Path 2: ensure_session on existing session, new window.
+  tmux_ensure_session "$test_session" "secondwin-$$" "/tmp" "sleep 30" "keepalive-2" >/dev/null 2>&1
+  if tmux_window_exists "$test_session" "secondwin-$$"; then
+    echo "PASS: ensure_session added new window to existing session"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: ensure_session did not add new window"
+    fail=$((fail + 1))
+  fi
+
+  tmux_kill_session "$test_session" 2>/dev/null
+
+  printf "launcher_tests: PASS=%d FAIL=%d\n" "$pass" "$fail"
+  [ "$fail" -eq 0 ]
 }
