@@ -67,59 +67,14 @@ ALL_FILES=$(printf '%s\n%s' "$FILES_CHANGED" "$FILES_UNCOMMITTED" | sort -u | gr
 CONVO_ID="$CONVO_ID" CWD="$CWD" BRANCH="$BRANCH" PLATE_ID="$PLATE_ID" \
 HEAD_SHA="$HEAD_SHA" STASH_SHA="$STASH_SHA" ALL_FILES="$ALL_FILES" \
 INSTANCE_FILE="$INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" \
-python3 <<'PY'
-import json, os, sys
-sys.path.insert(0, os.environ['PYTHON_DIR'])
-from instance_rw import load, atomic_write, new_instance, new_plate
-from pathlib import Path
-from datetime import datetime, timezone
-
-path = Path(os.environ['INSTANCE_FILE'])
-data = load(path)
-if not data:
-    data = new_instance(os.environ['CONVO_ID'], os.environ['CWD'], os.environ['BRANCH'])
-
-plate = new_plate(
-    os.environ['PLATE_ID'],
-    os.environ['HEAD_SHA'],
-    os.environ['STASH_SHA'],
-    os.environ['BRANCH'],
-)
-plate['files'] = [f for f in os.environ.get('ALL_FILES', '').strip().split('\n') if f]
-data.setdefault('stack', []).append(plate)
-data['last_touched'] = datetime.now(timezone.utc).isoformat()
-data['cwd'] = os.environ['CWD']
-
-atomic_write(path, data)
-PY
+python3 "$PYTHON_DIR/append_plate_to_stack.py"
 
 # ── 4. Launch background agent for field extraction ───────────────────────
 # Durable-first: write INPUT_FILE before spawning tmux window.
 INPUT_FILE="${PLATE_ROOT}/inputs/${CONVO_ID}_${TIMESTAMP}.txt"
 
 # Check if rolling intent needs refresh (§11)
-NEEDS_REFRESH=$(INSTANCE_FILE="$INSTANCE_FILE" hide_errors python3 <<'PY') || NEEDS_REFRESH="yes"
-import json, os
-from datetime import datetime, timezone, timedelta
-try:
-    d = json.load(open(os.environ['INSTANCE_FILE']))
-except Exception:
-    print('yes'); raise SystemExit
-ri = d.get('rolling_intent', {}) or {}
-snap = ri.get('snapshot_at')
-if not snap:
-    print('yes')
-else:
-    try:
-        snap_dt = datetime.fromisoformat(snap.replace('Z', '+00:00'))
-        if datetime.now(timezone.utc) - snap_dt > timedelta(minutes=5):
-            print('yes')
-        else:
-            print('no')
-    except Exception:
-        print('yes')
-PY
-)
+NEEDS_REFRESH=$(INSTANCE_FILE="$INSTANCE_FILE" hide_errors python3 "$PYTHON_DIR/check_rolling_intent_refresh.py") || NEEDS_REFRESH="yes"
 
 # Prepend bg-agent prompt before the JSON payload
 if [ -f "$PROMPTS_DIR/bg-agent.md" ]; then
@@ -178,53 +133,7 @@ permissions_seed "$PERM_INSTALLED" "$PERM_DEFAULT" "$PERM_DEFAULT_SHA" "$PERM_PR
 PERM_INSTALLED="$PERM_INSTALLED" SETTINGS_FILE="$SETTINGS_FILE" \
 PLATE_ROOT="$PLATE_ROOT" TRANSCRIPT_PATH="$TRANSCRIPT_PATH" \
 TMPDIR_INV="$TMPDIR_INV" INPUT_FILE="$INPUT_FILE" TMUX_TARGET="$TMUX_TARGET" \
-python3 <<'PY'
-import json, os
-from pathlib import Path
-
-perm_src = Path(os.environ['PERM_INSTALLED'])
-out = Path(os.environ['SETTINGS_FILE'])
-plate_root = os.environ['PLATE_ROOT']
-transcript = os.environ.get('TRANSCRIPT_PATH', '') or ''
-tmpdir = os.environ['TMPDIR_INV']
-input_file = os.environ['INPUT_FILE']
-tmux_target = os.environ['TMUX_TARGET']
-
-# Load template (user-editable or freshly-seeded default)
-template = json.loads(perm_src.read_text(encoding='utf-8')) if perm_src.exists() else {}
-perms = template.get('permissions', {}) or {}
-
-def expand(s: str) -> str:
-    # Substitute placeholders. lstrip leading '/' on PLATE_ROOT so that
-    # '//${PLATE_ROOT}/**' -> '//<absolute-path>/**' without collapsing to '/'.
-    return (s
-            .replace('${PLATE_ROOT}', plate_root.lstrip('/'))
-            .replace('${HOME}', os.environ.get('HOME','')))
-
-def expand_list(xs):
-    return [expand(x) for x in xs or []]
-
-allow = expand_list(perms.get('allow'))
-deny  = expand_list(perms.get('deny'))
-
-# Always add the transcript read rule so bg-agent can actually read the
-# conversation. Transcripts are under ~/.claude/projects/<hash>/...
-if transcript:
-    allow.append(f'Read({transcript})')
-
-settings = {
-    'permissions': {
-        'allow': allow,
-        **({'deny': deny} if deny else {}),
-    },
-    'hooks': {
-        'SessionStart': [{'hooks': [{'type':'command','command': f"bash {tmpdir}/plate-worker-start.sh '{input_file}' '{tmux_target}'"}]}],
-        'Stop':         [{'hooks': [{'type':'command','command': f"bash {tmpdir}/plate-worker-stop.sh '{input_file}' '{tmux_target}'"}]}],
-        'SessionEnd':   [{'hooks': [{'type':'command','command': f"bash {tmpdir}/plate-worker-end.sh '{tmpdir}'"}]}],
-    },
-}
-out.write_text(json.dumps(settings, indent=2) + '\n', encoding='utf-8')
-PY
+python3 "$PYTHON_DIR/build_settings_json.py"
 
 CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD'"
 

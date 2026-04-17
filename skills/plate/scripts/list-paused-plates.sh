@@ -11,18 +11,10 @@ SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPTS_DIR/paths.sh"
 plate_discover_repo_root
 
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
+
 shopt -s nullglob
 for f in "$PLATE_ROOT"/instances/*.json; do
-  hide_errors INSTANCE_FILE="$f" python3 <<'PY'
-import json, os
-d = json.load(open(os.environ['INSTANCE_FILE']))
-convo = d.get('convo_id', '')
-label = d.get('label') or convo[:12]
-for p in d.get('stack', []):
-    if p.get('state') == 'paused':
-        pushed = p.get('pushed_at', '')
-        action = p.get('summary_action') or '(no synopsis)'
-        print(f"{convo}|{p['plate_id']}|{label}|{action}|{pushed}")
-PY
+  hide_errors INSTANCE_FILE="$f" python3 "$PYTHON_DIR/list_paused_plates.py"
 done
 shopt -u nullglob

@@ -29,13 +29,7 @@ if [ "$STACK_COUNT" -eq 0 ]; then
 fi
 
 # ── Check for open delegated children (§9.3) ─────────────────────────────
-HAS_LIVE_CHILDREN=$(INSTANCE_FILE="$INSTANCE_FILE" python3 <<'PY'
-import json, os
-d = json.load(open(os.environ['INSTANCE_FILE']))
-live = any(p.get('delegated_to') for p in d.get('stack', []) if p.get('state') == 'delegated')
-print('yes' if live else 'no')
-PY
-)
+HAS_LIVE_CHILDREN=$(INSTANCE_FILE="$INSTANCE_FILE" python3 "$PYTHON_DIR/check_live_children.py")
 if [ "$HAS_LIVE_CHILDREN" = "yes" ]; then
   # The skill body (foreground claude) handles AskUserQuestion for this.
   # done.sh only runs after the user has chosen to proceed.
@@ -100,54 +94,11 @@ fi
 MAX_DEPTH=20
 INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" \
 CONVO_ID="$CONVO_ID" PYTHON_DIR="$PYTHON_DIR" MAX_DEPTH="$MAX_DEPTH" \
-python3 <<'PY'
-import os, sys
-sys.path.insert(0, os.environ['PYTHON_DIR'])
-from instance_rw import load, atomic_write
-from pathlib import Path
-
-instance_file = Path(os.environ['INSTANCE_FILE'])
-data = load(instance_file)
-parent_ref = data.get('parent_ref', {})
-max_depth = int(os.environ['MAX_DEPTH'])
-convo_id = os.environ['CONVO_ID']
-plate_root = Path(os.environ['PLATE_ROOT'])
-depth = 0
-
-while parent_ref and parent_ref.get('convo_id') and depth < max_depth:
-    parent_convo = parent_ref['convo_id']
-    parent_plate_id = parent_ref.get('plate_id', '')
-    parent_path = plate_root / 'instances' / f'{parent_convo}.json'
-    if not parent_path.exists():
-        break
-    parent_data = load(parent_path)
-    for plate in parent_data.get('stack', []):
-        if plate['plate_id'] == parent_plate_id:
-            dt = plate.get('delegated_to', [])
-            if convo_id in dt:
-                dt.remove(convo_id)
-            if not dt:
-                plate['state'] = 'paused'
-            break
-    atomic_write(parent_path, parent_data)
-    # Stop at first ancestor (§9.2 step 3)
-    break
-PY
+python3 "$PYTHON_DIR/cascade_parent_chain.py"
 
 # ── Print result ──────────────────────────────────────────────────────────
 BRANCH=$(hide_errors git symbolic-ref --short HEAD) || BRANCH="detached"
 echo "Committed ${#COMMIT_SHAS[@]} plates in ${CONVO_ID} -> ${BRANCH} (${COMMIT_SHAS[*]})"
 
 # Print resume pointer if parent exists
-hide_errors INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 <<'PY'
-import json, os
-from pathlib import Path
-d = json.load(open(os.environ['INSTANCE_FILE']))
-pr = d.get('parent_ref', {})
-if pr.get('convo_id'):
-    parent_path = Path(os.environ['PLATE_ROOT']) / 'instances' / f'{pr["convo_id"]}.json'
-    if parent_path.exists():
-        pd = json.load(open(parent_path))
-        cwd = pd.get('cwd', '.')
-        print(f'\nTo resume parent, run:\n  cd {cwd} && claude --resume {pr["convo_id"]}')
-PY
+hide_errors INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 "$PYTHON_DIR/print_resume_pointer.py"

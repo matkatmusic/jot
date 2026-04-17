@@ -22,40 +22,13 @@ INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
 [ -f "$INSTANCE_FILE" ] || exit 0
 
 # ── Verify stash refs are alive ───────────────────────────────────────────
-INSTANCE_FILE="$INSTANCE_FILE" SESSION_ID="$SESSION_ID" hide_errors python3 <<'PY'
-import json, os, subprocess, sys
-d = json.load(open(os.environ['INSTANCE_FILE']))
-session_id = os.environ['SESSION_ID']
-warnings = []
-for plate in d.get('stack', []):
-    ref = f"refs/plates/{session_id}/{plate['plate_id']}"
-    result = subprocess.run(['git', 'cat-file', '-t', ref], capture_output=True, text=True)
-    if result.returncode != 0:
-        warnings.append(f"  stash ref {ref} missing (may have been GC'd)")
-    head = plate.get('push_time_head_sha', '')
-    if head:
-        result2 = subprocess.run(['git', 'merge-base', '--is-ancestor', head, 'HEAD'], capture_output=True)
-        if result2.returncode != 0:
-            warnings.append(f"  push_time_head_sha {head[:8]} not reachable from HEAD (branch rewritten?)")
-if warnings:
-    print('plate freshness warnings:', file=sys.stderr)
-    for w in warnings:
-        print(w, file=sys.stderr)
-PY
+INSTANCE_FILE="$INSTANCE_FILE" SESSION_ID="$SESSION_ID" hide_errors python3 "$PYTHON_DIR/verify_stash_refs.py"
 
 # ── Update last_touched ──────────────────────────────────────────────────
 hide_errors python3 "$PYTHON_DIR/instance_rw.py" touch "$INSTANCE_FILE"
 
 # ── Clear stale drift alerts ─────────────────────────────────────────────
-hide_errors INSTANCE_FILE="$INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" python3 <<'PY'
-import os, sys
-sys.path.insert(0, os.environ['PYTHON_DIR'])
-from instance_rw import mutate
-from pathlib import Path
-def _clear(d):
-    d.setdefault('drift_alert', {})['pending'] = False
-mutate(Path(os.environ['INSTANCE_FILE']), _clear)
-PY
+hide_errors INSTANCE_FILE="$INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" python3 "$PYTHON_DIR/clear_drift_alert.py"
 
 # ── Re-render tree.md ─────────────────────────────────────────────────────
 hide_errors bash "$SCRIPTS_DIR/render-tree.sh"

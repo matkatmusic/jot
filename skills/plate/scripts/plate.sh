@@ -75,27 +75,7 @@ hide_errors plate_discover_repo_root || PLATE_ROOT=""
 if [ -n "${PLATE_ROOT:-}" ]; then
   DRIFT_INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
   if [ -f "$DRIFT_INSTANCE_FILE" ]; then
-    DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" hide_errors python3 <<'PY'
-import json, os, sys
-sys.path.insert(0, os.environ.get('PYTHON_DIR', ''))
-try:
-    from instance_rw import mutate
-    from pathlib import Path
-except Exception:
-    sys.exit(0)
-path = Path(os.environ['DRIFT_INSTANCE_FILE'])
-try:
-    d = json.load(open(path))
-except Exception:
-    sys.exit(0)
-da = d.get('drift_alert', {}) or {}
-if da.get('pending'):
-    def _clear(x):
-        x.setdefault('drift_alert', {})['pending'] = False
-    mutate(path, _clear)
-    print(da.get('message', 'drift detected'))
-PY
-)
+    DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" hide_errors python3 "$PYTHON_DIR/check_drift_alert.py")
     if [ -n "$DRIFT_MSG" ]; then
       printf '[plate drift] %s\n' "$DRIFT_MSG" >&2
     fi
