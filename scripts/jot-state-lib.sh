@@ -64,7 +64,9 @@ jot_send_prompt() {
   local tmux_target="$1"
   local job_path="$2"
   tmux send-keys -t "$tmux_target" \
-    "Read $job_path and follow the instructions at the top of that file" Enter
+    "Read $job_path and follow the instructions at the top of that file"
+  sleep 0.5
+  tmux send-keys -t "$tmux_target" Enter
 }
 
 # jot_audit_rotate <audit_log> [max_lines=1000]

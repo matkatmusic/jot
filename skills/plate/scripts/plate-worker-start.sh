@@ -24,7 +24,9 @@ fi
 (
   sleep 2
   tmux send-keys -t "$TMUX_TARGET" \
-    "Read $INPUT_FILE and follow the instructions at the top of that file" Enter \
+    "Read $INPUT_FILE and follow the instructions at the top of that file"
+  sleep 0.5
+  tmux send-keys -t "$TMUX_TARGET" Enter \
     >> "$LOG" 2>&1
   printf '[%s] send-keys rc=%s\n' "$(date -Iseconds)" "$?" >> "$LOG" 2>/dev/null
 ) >/dev/null 2>&1 &
