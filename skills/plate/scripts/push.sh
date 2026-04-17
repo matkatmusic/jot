@@ -13,22 +13,26 @@ PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 PYTHON_DIR="$PLUGIN_ROOT/python"
 PROMPTS_DIR="$PLUGIN_ROOT/prompts"
 # Export CLAUDE_PLUGIN_ROOT so child calls that still read it (legacy, or
-# lib/paths.sh logging) see the right value.
+# paths.sh logging) see the right value.
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 : "${CLAUDE_PLUGIN_DATA:=$HOME/.claude/plugins/data/plate-jot-dev}"
 export CLAUDE_PLUGIN_DATA
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-# shellcheck source=lib/lock.sh
-. "$SCRIPTS_DIR/lib/lock.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+# shellcheck source=../../../scripts/lib/lock.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
+# shellcheck source=../../../scripts/lib/permissions-seed.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/permissions-seed.sh"
+# shellcheck source=../../../scripts/lib/platform.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/platform.sh"
 
 CONVO_ID="${1:?}"
 TRANSCRIPT_PATH="${2:-}"
 CWD="${3:-$PWD}"
 
-plate_discover_root
+plate_discover_repo_root
 plate_ensure_dirs
 
 INSTANCE_FILE="${PLATE_ROOT}/instances/${CONVO_ID}.json"
@@ -39,11 +43,11 @@ BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
 
 # ── Reentrancy lock ──────────────────────────────────────────────────────
 LOCK_DIR="${PLATE_ROOT}/.push.lock"
-if ! plate_lock_acquire "$LOCK_DIR" 5; then
+if ! lock_acquire "$LOCK_DIR" 5; then
   echo "[plate] push already in progress, skipping duplicate" >&2
   exit 0
 fi
-trap 'plate_lock_release "$LOCK_DIR"' EXIT
+trap 'lock_release "$LOCK_DIR"' EXIT
 
 # ── 1. Git snapshot (synchronous — must complete before agent starts) ─────
 STASH_SHA=$(bash "$SCRIPTS_DIR/snapshot-stash.sh" "$CONVO_ID" "$PLATE_ID")
@@ -166,7 +170,7 @@ PERM_INSTALLED="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
 PERM_DEFAULT="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json"
 PERM_DEFAULT_SHA="${PERM_DEFAULT}.sha256"
 PERM_PRIOR_SHA="${CLAUDE_PLUGIN_DATA}/permissions.default.sha256"
-plate_seed_permissions "$PERM_INSTALLED" "$PERM_DEFAULT" "$PERM_DEFAULT_SHA" "$PERM_PRIOR_SHA"
+permissions_seed "$PERM_INSTALLED" "$PERM_DEFAULT" "$PERM_DEFAULT_SHA" "$PERM_PRIOR_SHA" "${LOG_FILE:-/dev/null}" "plate"
 
 # Expand ${PLATE_ROOT} / ${HOME} placeholders in the installed template
 # into a per-invocation settings.json. Python handles JSON merge + lstrip
@@ -227,7 +231,7 @@ CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD'"
 # ── Global tmux-launch lock (prevents session-creation race) ──────────────
 TMUX_LOCK="${CLAUDE_PLUGIN_DATA}/tmux-launch.lock"
 mkdir -p "${CLAUDE_PLUGIN_DATA}"
-if ! plate_lock_acquire "$TMUX_LOCK" 10; then
+if ! lock_acquire "$TMUX_LOCK" 10; then
   echo "[plate] failed to acquire tmux-launch lock" >&2
   exit 1
 fi
@@ -239,9 +243,8 @@ else
   tmux new-window -t '=plate:' -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
 fi
 
-plate_lock_release "$TMUX_LOCK"
+lock_release "$TMUX_LOCK"
 
 # If no terminal is currently attached to the plate tmux session, spawn
 # Terminal.app on macOS so the bg-agent window is actually visible.
-LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}" \
-  plate_spawn_terminal_if_needed
+spawn_terminal_if_needed "plate" "${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}" "plate"

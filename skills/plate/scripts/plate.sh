@@ -12,10 +12,10 @@ PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-# shellcheck source=lib/lock.sh
-. "$SCRIPTS_DIR/lib/lock.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+# shellcheck source=../../../scripts/lib/lock.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
 
 # ── emit_block: suppress prompt from reaching the LLM ────────────────────
 emit_block() {
@@ -95,7 +95,7 @@ plate_log_stack_trace() {
 trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
 
 # ── Drift alert injection (§11.3) ────────────────────────────────────────
-plate_discover_root 2>/dev/null || true
+plate_discover_repo_root 2>/dev/null || true
 if [ -n "${PLATE_ROOT:-}" ]; then
   DRIFT_INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
   if [ -f "$DRIFT_INSTANCE_FILE" ]; then
@@ -133,7 +133,7 @@ VARIANT=$(printf '%s' "$PROMPT" | sed 's|^/plate||; s|^ ||')
 case "$VARIANT" in
   "")
     # /plate (push) — three-way gate (§8.1)
-    plate_discover_root
+    plate_discover_repo_root
     plate_ensure_dirs
     INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
 
@@ -186,7 +186,7 @@ REG
     ;;
   "--drop")
     # /plate --drop — suppress + run drop.sh in background
-    plate_discover_root
+    plate_discover_repo_root
     INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
     bash "$SCRIPTS_DIR/drop.sh" "$SESSION_ID" "$INSTANCE_FILE"
     emit_block "[plate] dropped"

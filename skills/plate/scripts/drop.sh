@@ -8,9 +8,9 @@ PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
 PYTHON_DIR="$PLUGIN_ROOT/python"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
 
 CONVO_ID="${1:?usage: drop.sh <convo_id> <instance_file>}"
 INSTANCE_FILE="${2:?usage: drop.sh <convo_id> <instance_file>}"

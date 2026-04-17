@@ -26,6 +26,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=jot-state-lib.sh
 . "$SCRIPT_DIR/jot-state-lib.sh"
+# invoke_command.sh and tmux.sh are already sourced by jot-state-lib.sh
 
 INPUT_FILE="${1:-}"
 TMPDIR_INV="${2:-}"
@@ -63,7 +64,7 @@ AUDIT="$STATE_DIR/audit.log"
 # Definitive success check: PROCESSED: marker on head -1 of input.txt.
 ts=$(date -Iseconds)
 if [ -f "$INPUT_FILE" ]; then
-  first_line=$(head -1 "$INPUT_FILE" 2>/dev/null || true)
+  first_line=$(head -1 "$INPUT_FILE")
   if [[ "$first_line" == PROCESSED:* ]]; then
     printf '%s SUCCESS %s\n' "$ts" "$INPUT_FILE" >> "$AUDIT"
   else
@@ -86,10 +87,10 @@ jot_audit_rotate "$AUDIT" 1000
 # BEFORE this fork. The subshell below holds the pane id in memory; by
 # the time SessionEnd wipes $TMPDIR_INV the subshell no longer needs
 # the file. Do NOT move the sidecar read into this subshell.
-( sleep 0.5 \
-  && tmux kill-pane -t "$TMUX_TARGET" 2>/dev/null \
-  && tmux select-layout -t jot:jots tiled 2>/dev/null \
-) >/dev/null 2>&1 &
-disown 2>/dev/null || true
+( sleep 0.5
+  hide_output hide_errors tmux_kill_pane "$TMUX_TARGET"
+  hide_output hide_errors tmux_retile "jot:jots"
+) &
+hide_errors disown
 
 exit 0

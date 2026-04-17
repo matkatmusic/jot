@@ -15,7 +15,7 @@
 # Module layout (see plans/jot-generalizing-refactor.md):
 #   lib/hook-json.sh         emit_block, check_requirements
 #   lib/platform.sh          spawn_terminal_if_needed
-#   lib/tmux-send.sh          reliable send-keys for Claude Code TUI
+#   lib/tmux.sh          reliable send-keys for Claude Code TUI
 #   lib/tmux-launcher.sh     tmux session/window/pane primitives
 #   lib/claude-launcher.sh   generalized build_claude_cmd
 #   lib/permissions-seed.sh  three-state permissions.local.json seeder
@@ -39,11 +39,17 @@ set -euo pipefail
 : "${CLAUDE_PLUGIN_DATA:?jot plugin env not set — not running under Claude Code plugin harness}"
 
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+
+# ── invoke_command helpers (hide_errors, hide_output, invoke_command) ─────
+# Sourced first — used by every subsequent library and inline call.
+# shellcheck source=scripts/lib/invoke_command.sh
+. "$SCRIPTS_DIR/lib/invoke_command.sh"
+
 # LOG_FILE is env-overridable so the test suite can point it at a throwaway
 # file instead of polluting the real log with synthetic test invocations.
 # Default lives in CLAUDE_PLUGIN_DATA so the log survives plugin upgrades.
 LOG_FILE="${JOT_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/jot-log.txt}"
-mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
 # ── Hook JSON helpers (emit_block, check_requirements) ───────────────────
 # shellcheck source=scripts/lib/hook-json.sh
@@ -65,6 +71,10 @@ mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 # shellcheck source=scripts/lib/permissions-seed.sh
 . "$SCRIPTS_DIR/lib/permissions-seed.sh"
 
+# ── Git query functions ──────────────────────────────────────────────────
+# shellcheck source=scripts/lib/git.sh
+. "$SCRIPTS_DIR/lib/git.sh"
+
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
 
@@ -77,7 +87,7 @@ esac
 # Dump raw hook input so we can inspect what Claude Code actually passes
 # us (session_id, transcript_path, cwd, etc). Only fires on /jot so we
 # don't leak non-jot prompts.
-printf '%s HOOK_INPUT %s\n' "$(date -Iseconds)" "$INPUT" >> "$LOG_FILE" 2>/dev/null || true
+hide_errors printf '%s HOOK_INPUT %s\n' "$(date -Iseconds)" "$INPUT" >> "$LOG_FILE"
 
 check_requirements "jot" jq python3 tmux claude
 tmux_require_version "2.9" || { emit_block "jot requires tmux 2.9+"; exit 0; }
@@ -103,22 +113,22 @@ if [ -z "$IDEA" ]; then
 fi
 
 # ── Real /jot confirmed. Safe to log (redacted). ───────────────────────
-SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // "?"' 2>/dev/null || echo "?")
-printf '%s jot session=%s idea_len=%s\n' "$(date -Iseconds)" "$SESSION_ID" "${#IDEA}" >> "$LOG_FILE" 2>/dev/null || true
+SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "?"') || SESSION_ID="?"
+hide_errors printf '%s jot session=%s idea_len=%s\n' "$(date -Iseconds)" "$SESSION_ID" "${#IDEA}" >> "$LOG_FILE"
 
 # ── ERR trap: surface any crash as a visible block reason ──────────────
-trap 'rc=$?; emit_block "jot crashed at line $LINENO (rc=$rc)"; printf "%s FAIL line=%s rc=%s\n" "$(date -Iseconds)" "$LINENO" "$rc" >> "$LOG_FILE" 2>/dev/null || true; exit 0' ERR
+trap 'rc=$?; emit_block "jot crashed at line $LINENO (rc=$rc)"; hide_errors printf "%s FAIL line=%s rc=%s\n" "$(date -Iseconds)" "$LINENO" "$rc" >> "$LOG_FILE"; exit 0' ERR
 
 # ── safe(): best-effort wrapper around helper scripts ──────────────────
 safe() {
   local out
-  out=$("$@" 2>/dev/null) || out="(unavailable)"
+  out=$(hide_errors "$@") || out="(unavailable)"
   printf '%s' "${out:-(unavailable)}"
 }
 
-TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || echo "")
+TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
 
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+CWD=$(printf '%s' "$INPUT" | hide_errors jq -r '.cwd // empty')
 [ -z "$CWD" ] && CWD="$PWD"
 TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
 
@@ -126,7 +136,7 @@ TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
 # All jot-authored files (TODO .md, input.txt, state dir) live under
 # $REPO_ROOT/Todos/, never under the session CWD. This guarantees that
 # /jot from any subdirectory of a repo always lands in the same Todos/.
-REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || true)
+REPO_ROOT=$(hide_errors git -C "$CWD" rev-parse --show-toplevel) || REPO_ROOT=""
 if [ -z "$REPO_ROOT" ]; then
   emit_block "jot requires a git repository. Run 'git init' in your project root."
   exit 0
@@ -149,9 +159,9 @@ INPUT_ABS="${REPO_ROOT}/Todos/${TIMESTAMP}_input.txt"
 } > "$INPUT_FILE"
 
 # ── Best-effort state gathering (each helper guarded by safe()) ──────
-BRANCH=$(safe "$SCRIPTS_DIR/git-branch.sh" "$CWD")
-COMMITS=$(safe "$SCRIPTS_DIR/git-commits.sh" "$CWD")
-UNCOMMITTED=$(safe "$SCRIPTS_DIR/git-uncommitted.sh" "$CWD")
+BRANCH=$(safe git_get_branch_name "$CWD")
+COMMITS=$(safe git_get_recent_commits "$CWD")
+UNCOMMITTED=$(safe git_get_uncommitted "$CWD")
 OPEN_TODOS=$(safe "$SCRIPTS_DIR/scan-open-todos.sh" "$REPO_ROOT")
 if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   CONVERSATION=$(safe python3 "$SCRIPTS_DIR/capture-conversation.py" "$TRANSCRIPT_PATH")
@@ -241,7 +251,9 @@ jot_build_claude_cmd() {
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-start.sh" "$TMPDIR_INV/jot-session-start.sh"
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-stop.sh"          "$TMPDIR_INV/jot-stop.sh"
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-end.sh"   "$TMPDIR_INV/jot-session-end.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-send.sh"     "$TMPDIR_INV/tmux-send.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux.sh"              "$TMPDIR_INV/tmux.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"     "$TMPDIR_INV/tmux-launcher.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"    "$TMPDIR_INV/invoke_command.sh"
   local hooks_scripts="$TMPDIR_INV"
 
   # Permissions: loaded from the persistent allowlist at
@@ -305,7 +317,7 @@ phase2_launch_window() {
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
   local tmux_lock="${CLAUDE_PLUGIN_DATA}/tmux-launch.lock"
   if ! jot_lock_acquire "$tmux_lock" 10; then
-    echo "[jot] failed to acquire global tmux-launch lock at $tmux_lock" >> "$LOG_FILE" 2>/dev/null || true
+    hide_errors echo "[jot] failed to acquire global tmux-launch lock at $tmux_lock" >> "$LOG_FILE"
     return 1
   fi
 
@@ -317,7 +329,7 @@ phase2_launch_window() {
   # the same. Verified by debate review (4-of-4 unanimous, 2026-04-10).
   local counter_file="${CLAUDE_PLUGIN_DATA}/pane-counter.txt"
   local n
-  n=$(cat "$counter_file" 2>/dev/null || echo 0)
+  n=$(hide_errors cat "$counter_file") || n=0
   n=$(( n % 20 + 1 ))
   printf '%s\n' "$n" > "$counter_file"
   local pane_label="jot${n}"
@@ -335,7 +347,7 @@ phase2_launch_window() {
   # ── Split a new pane for this worker; capture its stable pane id ────────
   local PANE_ID
   if ! PANE_ID=$(tmux_split_worker_pane jot:jots "$CWD" "$CLAUDE_CMD"); then
-    echo "[jot] tmux split-window returned empty pane id" >> "$LOG_FILE" 2>/dev/null || true
+    hide_errors echo "[jot] tmux split-window returned empty pane id" >> "$LOG_FILE"
     jot_lock_release "$tmux_lock"
     return 1
   fi

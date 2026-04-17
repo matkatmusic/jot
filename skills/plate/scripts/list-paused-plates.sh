@@ -5,9 +5,9 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
 
 shopt -s nullglob
 for f in "$PLATE_ROOT"/instances/*.json; do

@@ -50,6 +50,26 @@ tmux_split_worker_pane() {
   printf '%s\n' "$pane_id"
 }
 
+# usage: tmux_wait_for_claude_readiness <pane_id> [timeout_seconds]
+# returns: 0 when the Claude Code TUI is ready for input, 1 on timeout
+tmux_wait_for_claude_readiness() {
+  local pane_id="$1"
+  local timeout="${2:-10}"
+  local max_attempts=$(( timeout * 2 ))  # 0.5s per attempt
+  local attempt=0
+  while [ $attempt -lt $max_attempts ]; do
+    local pane_content
+    pane_content=$(tmux_capture_pane "$pane_id" 5 2>/dev/null) || true
+    if echo "$pane_content" | grep -qF '❯'; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+  echo "[tmux-launcher] tmux_wait_for_claude_readiness: timed out after ${timeout}s waiting for pane '$pane_id'" >&2
+  return 1
+}
+
 tmux_launcher_tests() {
   local test_session="tmux-sh-launcher-test-$$"
   local pass=0 fail=0

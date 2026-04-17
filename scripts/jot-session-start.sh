@@ -38,12 +38,17 @@ if [ -z "$TMUX_TARGET" ]; then
   exit 0
 fi
 
-# Brief delay so claude's prompt loop accepts input. Without this, send-keys
-# fires before claude's TUI is ready to read keys and the prompt is lost.
-sleep 2
+# shellcheck source=tmux.sh
+. "$(dirname "$0")/tmux.sh"
+# shellcheck source=tmux-launcher.sh
+. "$(dirname "$0")/tmux-launcher.sh"
 
-# shellcheck source=tmux-send.sh
-. "$(dirname "$0")/tmux-send.sh"
+# Wait for claude's TUI to show the input prompt before sending keys.
+if ! tmux_wait_for_claude_readiness "$TMUX_TARGET"; then
+  echo "[jot-session-start] claude TUI not ready, aborting send" >&2
+  exit 1
+fi
+
 tmux_send_and_submit "$TMUX_TARGET" \
   "Read $INPUT_FILE and follow the instructions at the top of that file"
 

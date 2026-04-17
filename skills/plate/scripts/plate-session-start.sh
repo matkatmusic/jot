@@ -7,9 +7,9 @@ set -uo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root 2>/dev/null || exit 0
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root 2>/dev/null || exit 0
 
 # Determine session ID from hook input
 INPUT=$(cat)

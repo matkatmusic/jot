@@ -61,8 +61,8 @@ export CLAUDE_PLUGIN_DATA="$TMPTEST/.plugin-data"
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 
 # Source libs + create instance
-. "$CLAUDE_PLUGIN_ROOT/scripts/lib/paths.sh"
-plate_discover_root
+. "$CLAUDE_PLUGIN_ROOT/scripts/paths.sh"
+plate_discover_repo_root
 plate_ensure_dirs
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance \

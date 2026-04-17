@@ -1,5 +1,5 @@
 #!/bin/bash
-# tmux-send-test.sh — verify tmux-send.sh library functions.
+# tmux-send-test.sh — verify tmux.sh library functions.
 #
 # Two scenarios:
 #   1. Plain shell: send "echo hello", verify "hello" in output.
@@ -9,7 +9,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-source "$REPO_ROOT/scripts/lib/tmux-send.sh"
+source "$REPO_ROOT/scripts/lib/tmux.sh"
 source "$REPO_ROOT/scripts/lib/tmux-launcher.sh"
 
 TEST_SESSION="tmux-send-test-$$"
@@ -44,19 +44,19 @@ else
 fi
 
 # Verify the text function alone doesn't submit
-tmux_send_text "$PANE" "echo pending"
+tmux_send_keys "$PANE" "echo pending"
 sleep 0.5
 CAPTURE=$(tmux_capture_pane "$PANE" 5)
 if echo "$CAPTURE" | grep -qF 'pending'; then
   # Text is in the input line — check it wasn't executed (no second "pending" from output)
   COUNT=$(echo "$CAPTURE" | grep -c 'pending' || true)
   if [ "$COUNT" -le 1 ]; then
-    pass "1b: tmux_send_text typed without submitting"
+    pass "1b: tmux_send_keys typed without submitting"
   else
-    fail "1b: tmux_send_text appears to have submitted (found $COUNT occurrences)"
+    fail "1b: tmux_send_keys appears to have submitted (found $COUNT occurrences)"
   fi
 else
-  fail "1b: tmux_send_text didn't type text"
+  fail "1b: tmux_send_keys didn't type text"
 fi
 
 # Now submit with tmux_send_enter
