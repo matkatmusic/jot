@@ -58,15 +58,15 @@ jot_queue_pop_first() {
 
 # jot_send_prompt <tmux_target> <input_file_path>
 #   Send the canonical "Read <path> and follow the instructions" prompt to the
-#   target tmux pane via send-keys. Caller is responsible for ensuring the
-#   target exists and the running claude is ready.
+#   target tmux pane via send-keys. Delegates to tmux_send_and_submit from
+#   lib/tmux-send.sh.
+# shellcheck source=lib/tmux-send.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/tmux-send.sh" 2>/dev/null || true
 jot_send_prompt() {
   local tmux_target="$1"
   local job_path="$2"
-  tmux send-keys -t "$tmux_target" \
+  tmux_send_and_submit "$tmux_target" \
     "Read $job_path and follow the instructions at the top of that file"
-  sleep 0.5
-  tmux send-keys -t "$tmux_target" Enter
 }
 
 # jot_audit_rotate <audit_log> [max_lines=1000]

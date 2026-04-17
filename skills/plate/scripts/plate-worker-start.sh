@@ -17,17 +17,17 @@ if [ -z "$INPUT_FILE" ] || [ -z "$TMUX_TARGET" ]; then
   exit 0
 fi
 
+# shellcheck source=../../../scripts/lib/tmux-send.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-send.sh"
+
 # Detach from the parent process group so the hook doesn't block claude's
 # startup. claude's SessionStart hook runs synchronously in some versions
 # and `sleep 2` + `send-keys` cannot complete until claude's own TUI has
 # the tmux pane attached and ready to accept keys.
 (
   sleep 2
-  tmux send-keys -t "$TMUX_TARGET" \
+  tmux_send_and_submit "$TMUX_TARGET" \
     "Read $INPUT_FILE and follow the instructions at the top of that file"
-  sleep 0.5
-  tmux send-keys -t "$TMUX_TARGET" Enter \
-    >> "$LOG" 2>&1
   printf '[%s] send-keys rc=%s\n' "$(date -Iseconds)" "$?" >> "$LOG" 2>/dev/null
 ) >/dev/null 2>&1 &
 disown 2>/dev/null || true

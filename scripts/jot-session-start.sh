@@ -42,9 +42,9 @@ fi
 # fires before claude's TUI is ready to read keys and the prompt is lost.
 sleep 2
 
-tmux send-keys -t "$TMUX_TARGET" \
+# shellcheck source=tmux-send.sh
+. "$(dirname "$0")/tmux-send.sh"
+tmux_send_and_submit "$TMUX_TARGET" \
   "Read $INPUT_FILE and follow the instructions at the top of that file"
-sleep 0.5
-tmux send-keys -t "$TMUX_TARGET" Enter
 
 exit 0

@@ -15,6 +15,7 @@
 # Module layout (see plans/jot-generalizing-refactor.md):
 #   lib/hook-json.sh         emit_block, check_requirements
 #   lib/platform.sh          spawn_terminal_if_needed
+#   lib/tmux-send.sh          reliable send-keys for Claude Code TUI
 #   lib/tmux-launcher.sh     tmux session/window/pane primitives
 #   lib/claude-launcher.sh   generalized build_claude_cmd
 #   lib/permissions-seed.sh  three-state permissions.local.json seeder
@@ -239,6 +240,7 @@ jot_build_claude_cmd() {
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-start.sh" "$TMPDIR_INV/jot-session-start.sh"
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-stop.sh"          "$TMPDIR_INV/jot-stop.sh"
   cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-end.sh"   "$TMPDIR_INV/jot-session-end.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-send.sh"     "$TMPDIR_INV/tmux-send.sh"
   local hooks_scripts="$TMPDIR_INV"
 
   # Permissions: loaded from the persistent allowlist at
