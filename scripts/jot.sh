@@ -80,6 +80,7 @@ esac
 printf '%s HOOK_INPUT %s\n' "$(date -Iseconds)" "$INPUT" >> "$LOG_FILE" 2>/dev/null || true
 
 check_requirements "jot" jq python3 tmux claude
+tmux_require_version "2.9" || { emit_block "jot requires tmux 2.9+"; exit 0; }
 
 # Source the shared state-lib helpers (used by phase2_enqueue_and_launch)
 # shellcheck source=scripts/jot-state-lib.sh

@@ -1,30 +1,43 @@
 # tmux-launcher.sh — reusable tmux session/window/pane primitives.
 #
 # This file is meant to be `source`d. All state is passed via explicit
-# arguments; nothing reads hidden globals. Functions log their failures
-# via `return nonzero` rather than `exit` so callers can recover.
+# arguments; nothing reads hidden globals. Functions return nonzero on
+# failure rather than `exit` so callers can recover.
+#
+# Requires tmux 2.9+ (pane-border-status, pane-border-format, select-pane -T).
+# The version is checked at source time; sourcing fails if tmux is too old.
 #
 # Exported functions:
+#   tmux_require_version <version>
+#   tmux_capture_pane <pane_id> [lines=10]
 #   tmux_ensure_session <session> <window> <cwd> <keepalive_cmd> <keepalive_title>
-#       Idempotent session+window+keepalive-pane bootstrap. On first
-#       creation also sets remain-on-exit off, mouse on, and a pane
-#       border format. Safe to call repeatedly.
-#
 #   tmux_ensure_keepalive_pane <target> <cwd> <keepalive_cmd> <title>
-#       Probe the given window (session:window) for a pane titled
-#       <title>. If absent, split a new pane, title it, and retile.
-#       Probes by title (not index) because worker panes outlive the
-#       keepalive pane and shift indices.
-#
 #   tmux_split_worker_pane <target> <cwd> <cmd>
-#       Split a new pane running <cmd>. Prints the new pane_id on
-#       stdout. Returns nonzero if tmux fails.
-#
 #   tmux_set_pane_title <pane_id> <title>
 #   tmux_retile <target>
-#       Cosmetic wrappers. Silently ignore tmux errors.
-#
-# Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md (commit 6).
+#   tmux_kill_session <session>
+
+# ── Version gate ─────────────────────────────────────────────────────────
+
+tmux_require_version() {
+  local required="$1"
+  local installed
+  installed=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
+  if [ -z "$installed" ]; then
+    echo "[tmux-launcher] tmux not found" >&2
+    return 1
+  fi
+  if printf '%s\n%s\n' "$required" "$installed" | sort -V | head -1 | grep -qx "$required"; then
+    return 0
+  fi
+  echo "[tmux-launcher] tmux $required+ required (found $installed)" >&2
+  return 1
+}
+
+# Callers should invoke `tmux_require_version "2.9"` after confirming
+# tmux is installed (e.g. after check_requirements in hook-json.sh).
+
+# ── Functions ────────────────────────────────────────────────────────────
 
 tmux_ensure_session() {
   local session="$1" window="$2" cwd="$3" keepalive_cmd="$4" keepalive_title="$5"
@@ -72,4 +85,8 @@ tmux_set_pane_title() {
 
 tmux_retile() {
   tmux select-layout -t "$1" tiled >/dev/null 2>&1 || true
+}
+
+tmux_kill_session() {
+  tmux kill-session -t "$1" 2>/dev/null || true
 }
