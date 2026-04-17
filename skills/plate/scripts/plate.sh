@@ -10,41 +10,17 @@ set -euo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
-mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
+hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
+# shellcheck source=../../../scripts/lib/invoke_command.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
 # shellcheck source=../../../scripts/lib/lock.sh
 . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
 
-# ── emit_block: suppress prompt from reaching the LLM ────────────────────
-emit_block() {
-  local reason="$1"
-  if command -v jq >/dev/null 2>&1; then
-    jq -n --arg r "$reason" '{decision:"block", reason:$r}'
-  else
-    local esc="${reason//\\/\\\\}"
-    esc="${esc//\"/\\\"}"
-    printf '{"decision":"block","reason":"%s"}\n' "$esc"
-  fi
-}
-
-# ── check_requirements ────────────────────────────────────────────────────
-check_requirements() {
-  local -a missing=()
-  command -v jq      >/dev/null 2>&1 || missing+=("jq")
-  command -v python3 >/dev/null 2>&1 || missing+=("python3")
-  command -v tmux    >/dev/null 2>&1 || missing+=("tmux")
-  command -v claude  >/dev/null 2>&1 || missing+=("claude")
-  if [ ${#missing[@]} -gt 0 ]; then
-    local list=""
-    for item in "${missing[@]}"; do
-      [ -z "$list" ] && list="$item" || list="$list, $item"
-    done
-    emit_block "plate needs: $list"
-    exit 0
-  fi
-}
+# shellcheck source=../../../scripts/lib/hook-json.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
 
 # ── Read hook input from stdin ────────────────────────────────────────────
 INPUT=$(cat)
@@ -55,13 +31,13 @@ case "$INPUT" in
   *) exit 0 ;;
 esac
 
-check_requirements
+check_requirements "plate" jq python3 tmux claude
 
 # ── Parse fields ──────────────────────────────────────────────────────────
 PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 -c 'import sys; print(sys.stdin.read().strip())')
-SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null || echo "unknown")
-TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | jq -r '.transcript_path // ""' 2>/dev/null || echo "")
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null || echo "")
+SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "unknown"') || SESSION_ID="unknown"
+TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
+CWD=$(printf '%s' "$INPUT" | hide_errors jq -r '.cwd // empty')
 [ -z "$CWD" ] && CWD="$PWD"
 
 # ── Regex gate: only /plate and its variants ──────────────────────────────
@@ -69,7 +45,7 @@ if ! printf '%s' "$PROMPT" | grep -qE '^/plate(\s+(--done|--drop|--next|--show))
   exit 0
 fi
 
-printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$PROMPT" >> "$LOG_FILE" 2>/dev/null || true
+hide_errors printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$PROMPT" >> "$LOG_FILE"
 
 # ── ERR trap ──────────────────────────────────────────────────────────────
 # Full stack trace lands in $LOG_FILE; user-visible emit_block stays short
@@ -90,16 +66,16 @@ plate_log_stack_trace() {
       printf '  #%d %s at %s:%s\n' "$i" "${FUNCNAME[$i]:-MAIN}" "${BASH_SOURCE[$i]:-?}" "${BASH_LINENO[$i]:-?}"
       i=$((i+1))
     done
-  } >> "$LOG_FILE" 2>/dev/null || true
+  } >> "$LOG_FILE" 2>/dev/null
 }
 trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
 
 # ── Drift alert injection (§11.3) ────────────────────────────────────────
-plate_discover_repo_root 2>/dev/null || true
+hide_errors plate_discover_repo_root || PLATE_ROOT=""
 if [ -n "${PLATE_ROOT:-}" ]; then
   DRIFT_INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
   if [ -f "$DRIFT_INSTANCE_FILE" ]; then
-    DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" python3 <<'PY' 2>/dev/null
+    DRIFT_MSG=$(DRIFT_INSTANCE_FILE="$DRIFT_INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" hide_errors python3 <<'PY'
 import json, os, sys
 sys.path.insert(0, os.environ.get('PYTHON_DIR', ''))
 try:
@@ -142,7 +118,7 @@ case "$VARIANT" in
       bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
       emit_block "[plate] pushed"
     elif [ -d "${PLATE_ROOT}/instances" ] && \
-         find "${PLATE_ROOT}/instances" -name "*.json" -maxdepth 1 2>/dev/null | read -r _; then
+         hide_errors find "${PLATE_ROOT}/instances" -name "*.json" -maxdepth 1 | read -r _; then
       # PATH 3: other instances exist → let prompt through for parent selection.
       # Create a fully-populated instance file NOW so register-parent.sh and
       # push.sh (which run later from the SKILL.md body) mutate a complete
@@ -151,7 +127,7 @@ case "$VARIANT" in
       # file returns {} and neither downstream script calls new_instance().
       python3 "$PYTHON_DIR/instance_rw.py" create-instance \
         "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
-        "$(git symbolic-ref --short HEAD 2>/dev/null || echo 'detached')"
+        "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
 
       # Drop a registration-context file so the SKILL.md body (running in
       # the foreground claude) can read session_id/transcript_path/cwd
@@ -174,7 +150,7 @@ REG
       # PATH 2: virgin repo → auto-register as top-level + suppress + push
       python3 "$PYTHON_DIR/instance_rw.py" create-instance \
         "$INSTANCE_FILE" "$SESSION_ID" "$CWD" \
-        "$(git symbolic-ref --short HEAD 2>/dev/null || echo 'detached')"
+        "$(hide_errors git symbolic-ref --short HEAD || echo 'detached')"
       bash "$SCRIPTS_DIR/push.sh" "$SESSION_ID" "$TRANSCRIPT_PATH" "$CWD"
       emit_block "[plate] registered + pushed"
     fi

@@ -34,6 +34,6 @@ fi
     "Read $INPUT_FILE and follow the instructions at the top of that file"
   printf '[%s] send-keys rc=%s\n' "$(date -Iseconds)" "$?" >> "$LOG" 2>/dev/null
 ) >/dev/null 2>&1 &
-disown 2>/dev/null || true
+hide_errors disown
 
 exit 0

@@ -7,20 +7,22 @@ set -uo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 
+# shellcheck source=../../../scripts/lib/invoke_command.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
-plate_discover_repo_root 2>/dev/null || exit 0
+hide_errors plate_discover_repo_root || exit 0
 
 # Determine session ID from hook input
 INPUT=$(cat)
-SESSION_ID=$(printf '%s' "$INPUT" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id",""))' 2>/dev/null || echo "")
+SESSION_ID=$(printf '%s' "$INPUT" | hide_errors python3 -c 'import json,sys; print(json.load(sys.stdin).get("session_id",""))') || SESSION_ID=""
 [ -z "$SESSION_ID" ] && exit 0
 
 INSTANCE_FILE="${PLATE_ROOT}/instances/${SESSION_ID}.json"
 [ -f "$INSTANCE_FILE" ] || exit 0
 
 # ── Verify stash refs are alive ───────────────────────────────────────────
-INSTANCE_FILE="$INSTANCE_FILE" SESSION_ID="$SESSION_ID" python3 <<'PY' 2>&1 || true
+INSTANCE_FILE="$INSTANCE_FILE" SESSION_ID="$SESSION_ID" hide_errors python3 <<'PY'
 import json, os, subprocess, sys
 d = json.load(open(os.environ['INSTANCE_FILE']))
 session_id = os.environ['SESSION_ID']
@@ -42,10 +44,10 @@ if warnings:
 PY
 
 # ── Update last_touched ──────────────────────────────────────────────────
-python3 "$PYTHON_DIR/instance_rw.py" touch "$INSTANCE_FILE" 2>/dev/null || true
+hide_errors python3 "$PYTHON_DIR/instance_rw.py" touch "$INSTANCE_FILE"
 
 # ── Clear stale drift alerts ─────────────────────────────────────────────
-INSTANCE_FILE="$INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" python3 <<'PY' 2>/dev/null || true
+hide_errors INSTANCE_FILE="$INSTANCE_FILE" PYTHON_DIR="$PYTHON_DIR" python3 <<'PY'
 import os, sys
 sys.path.insert(0, os.environ['PYTHON_DIR'])
 from instance_rw import mutate
@@ -56,6 +58,6 @@ mutate(Path(os.environ['INSTANCE_FILE']), _clear)
 PY
 
 # ── Re-render tree.md ─────────────────────────────────────────────────────
-bash "$SCRIPTS_DIR/render-tree.sh" 2>/dev/null || true
+hide_errors bash "$SCRIPTS_DIR/render-tree.sh"
 
 exit 0

@@ -61,10 +61,13 @@ while IFS= read -r plate_json; do
   fi
 
   # Apply the diff for this plate
-  DIFF=$(git diff --binary "$BASE" "$STASH_SHA" 2>/dev/null || true)
+  DIFF=$(hide_errors git diff --binary "$BASE" "$STASH_SHA") || DIFF=""
   if [ -n "$DIFF" ]; then
-    printf '%s' "$DIFF" | git apply --index --3way - 2>/dev/null || {
+    printf '%s' "$DIFF" | hide_errors git apply --index --3way - || {
       echo "Warning: conflict applying plate $PLATE_ID, attempting manual resolve" >&2
+      # || true is intentional: --3way may leave conflict markers for the user
+      # to resolve manually. Removing it would abort mid-done, leaving the repo
+      # in a partial-apply state with no commit and no cleanup.
       printf '%s' "$DIFF" | git apply --index --3way - || true
     }
   fi
@@ -80,14 +83,14 @@ while IFS= read -r plate_json; do
   python3 "$PYTHON_DIR/instance_rw.py" complete "$INSTANCE_FILE" "$PLATE_ID" "$COMMIT_SHA" "$COMPLETED_AT"
 
   # Delete the named ref
-  git update-ref -d "refs/plates/${CONVO_ID}/${PLATE_ID}" 2>/dev/null || true
+  hide_errors git update-ref -d "refs/plates/${CONVO_ID}/${PLATE_ID}"
 
   LAST_REF="$STASH_SHA"
 
 done < <(python3 "$PYTHON_DIR/instance_rw.py" stack-oldest "$INSTANCE_FILE")
 
 # ── Final commit: capture any work done after the last plate (§7.3 step 4)
-if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+if ! hide_errors git diff --quiet HEAD || ! hide_errors git diff --cached --quiet HEAD; then
   git add -A
   git commit -m "[plate] final: work after last plate push"
   COMMIT_SHAS+=("$(git rev-parse HEAD)")
@@ -132,11 +135,11 @@ while parent_ref and parent_ref.get('convo_id') and depth < max_depth:
 PY
 
 # ── Print result ──────────────────────────────────────────────────────────
-BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+BRANCH=$(hide_errors git symbolic-ref --short HEAD) || BRANCH="detached"
 echo "Committed ${#COMMIT_SHAS[@]} plates in ${CONVO_ID} -> ${BRANCH} (${COMMIT_SHAS[*]})"
 
 # Print resume pointer if parent exists
-INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 <<'PY' 2>/dev/null || true
+hide_errors INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 <<'PY'
 import json, os
 from pathlib import Path
 d = json.load(open(os.environ['INSTANCE_FILE']))

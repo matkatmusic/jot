@@ -39,7 +39,7 @@ INSTANCE_FILE="${PLATE_ROOT}/instances/${CONVO_ID}.json"
 TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
 PLATE_ID="${TIMESTAMP}_$(basename "$CWD" | tr ' ' '-')"
 HEAD_SHA=$(git rev-parse HEAD)
-BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+BRANCH=$(hide_errors git symbolic-ref --short HEAD) || BRANCH="detached"
 
 # ── Reentrancy lock ──────────────────────────────────────────────────────
 LOCK_DIR="${PLATE_ROOT}/.push.lock"
@@ -54,14 +54,14 @@ STASH_SHA=$(bash "$SCRIPTS_DIR/snapshot-stash.sh" "$CONVO_ID" "$PLATE_ID")
 
 # ── 2. Compute files changed since previous plate (§7.1) ─────────────────
 PREV_SHA="$HEAD_SHA"
-PREV_PLATE=$(python3 "$PYTHON_DIR/instance_rw.py" top "$INSTANCE_FILE" 2>/dev/null || echo "{}")
+PREV_PLATE=$(hide_errors python3 "$PYTHON_DIR/instance_rw.py" top "$INSTANCE_FILE") || PREV_PLATE="{}"
 if [ "$PREV_PLATE" != "{}" ]; then
   PREV_SHA=$(printf '%s' "$PREV_PLATE" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("push_time_head_sha",""))')
   [ -z "$PREV_SHA" ] && PREV_SHA="$HEAD_SHA"
 fi
-FILES_CHANGED=$(git diff --name-only "$PREV_SHA" HEAD 2>/dev/null || true)
-FILES_UNCOMMITTED=$(git diff --name-only HEAD 2>/dev/null || true)
-ALL_FILES=$(printf '%s\n%s' "$FILES_CHANGED" "$FILES_UNCOMMITTED" | sort -u | grep -v '^$' || true)
+FILES_CHANGED=$(hide_errors git diff --name-only "$PREV_SHA" HEAD) || FILES_CHANGED=""
+FILES_UNCOMMITTED=$(hide_errors git diff --name-only HEAD) || FILES_UNCOMMITTED=""
+ALL_FILES=$(printf '%s\n%s' "$FILES_CHANGED" "$FILES_UNCOMMITTED" | sort -u | grep -v '^$') || ALL_FILES=""
 
 # ── 3. Append plate to instance JSON stack[] ──────────────────────────────
 CONVO_ID="$CONVO_ID" CWD="$CWD" BRANCH="$BRANCH" PLATE_ID="$PLATE_ID" \
@@ -98,7 +98,7 @@ PY
 INPUT_FILE="${PLATE_ROOT}/inputs/${CONVO_ID}_${TIMESTAMP}.txt"
 
 # Check if rolling intent needs refresh (§11)
-NEEDS_REFRESH=$(INSTANCE_FILE="$INSTANCE_FILE" python3 <<'PY' 2>/dev/null || echo "yes"
+NEEDS_REFRESH=$(INSTANCE_FILE="$INSTANCE_FILE" hide_errors python3 <<'PY') || NEEDS_REFRESH="yes"
 import json, os
 from datetime import datetime, timezone, timedelta
 try:
@@ -236,9 +236,9 @@ if ! lock_acquire "$TMUX_LOCK" 10; then
   exit 1
 fi
 
-if ! tmux has-session -t '=plate' 2>/dev/null; then
+if ! tmux_has_session "plate"; then
   tmux new-session -d -s plate -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
-  tmux set-option -t '=plate' remain-on-exit off >/dev/null 2>&1 || true
+  hide_output hide_errors tmux set-option -t '=plate' remain-on-exit off
 else
   tmux new-window -t '=plate:' -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
 fi

@@ -5,13 +5,15 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../scripts/lib/invoke_command.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
 plate_discover_repo_root
 
 shopt -s nullglob
 for f in "$PLATE_ROOT"/instances/*.json; do
-  INSTANCE_FILE="$f" python3 <<'PY' 2>/dev/null || true
+  hide_errors INSTANCE_FILE="$f" python3 <<'PY'
 import json, os
 d = json.load(open(os.environ['INSTANCE_FILE']))
 convo = d.get('convo_id', '')

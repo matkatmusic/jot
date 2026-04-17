@@ -10,7 +10,11 @@ PLATE_ID="${2:?usage: snapshot-stash.sh <convo_id> <plate_id>}"
 
 # git stash create produces a dangling commit. It returns NOTHING on a
 # clean tracked tree. Fallback to HEAD in that case.
-STASH_SHA=$(git stash create 2>/dev/null || true)
+# shellcheck source=../../../scripts/lib/invoke_command.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
+
+# git stash create returns nothing on a clean tree — fallback to HEAD.
+STASH_SHA=$(hide_errors git stash create) || STASH_SHA=""
 [ -n "$STASH_SHA" ] || STASH_SHA=$(git rev-parse HEAD)
 
 # Named ref keeps the stash commit alive against git gc.

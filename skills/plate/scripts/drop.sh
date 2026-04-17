@@ -39,7 +39,7 @@ if ! git cat-file -t "$REF" >/dev/null 2>&1; then
 fi
 
 # ── Build full snapshot including untracked files ─────────────────────────
-TEMP_SNAPSHOT=$(git stash create -u 2>/dev/null || true)
+TEMP_SNAPSHOT=$(hide_errors git stash create -u) || TEMP_SNAPSHOT=""
 
 # ── Write patch file ──────────────────────────────────────────────────────
 TS=$(date +%s)

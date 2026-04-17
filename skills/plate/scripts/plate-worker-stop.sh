@@ -3,6 +3,9 @@
 # Args: $1=INPUT_FILE  $2=tmux target
 set -uo pipefail
 
+# shellcheck source=../../../scripts/lib/invoke_command.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
+
 INPUT_FILE="${1:-}"
 TMUX_TARGET="${2:-}"
 
@@ -13,7 +16,7 @@ fi
 # Check that the agent marked the input as processed
 ts=$(date -Iseconds)
 if [ -f "$INPUT_FILE" ]; then
-  first_line=$(head -1 "$INPUT_FILE" 2>/dev/null || true)
+  first_line=$(head -1 "$INPUT_FILE")
   if [[ "$first_line" == PROCESSED:* ]]; then
     echo "[$ts] plate-worker SUCCESS: $INPUT_FILE" >&2
   else
@@ -22,7 +25,9 @@ if [ -f "$INPUT_FILE" ]; then
 fi
 
 # Kill this window asynchronously (let hook return first)
-( sleep 0.5 && tmux kill-window -t "$TMUX_TARGET" 2>/dev/null ) >/dev/null 2>&1 &
-disown 2>/dev/null || true
+( sleep 0.5
+  hide_output hide_errors tmux kill-window -t "$TMUX_TARGET"
+) &
+hide_errors disown
 
 exit 0
