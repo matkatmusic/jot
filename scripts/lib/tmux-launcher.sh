@@ -39,6 +39,15 @@ tmux_require_version() {
 
 # ── Functions ────────────────────────────────────────────────────────────
 
+tmux_capture_pane() {
+  local pane_id="$1" lines="${2:-10}"
+  if ! tmux list-panes -F '#{pane_id}' 2>/dev/null | grep -qx "$pane_id"; then
+    echo "[tmux-launcher] tmux_capture_pane: pane '$pane_id' does not exist" >&2
+    return 1
+  fi
+  tmux capture-pane -t "$pane_id" -p -S "-$lines"
+}
+
 tmux_ensure_session() {
   local session="$1" window="$2" cwd="$3" keepalive_cmd="$4" keepalive_title="$5"
   if ! tmux has-session -t "$session" 2>/dev/null; then

@@ -10,6 +10,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 source "$REPO_ROOT/scripts/lib/tmux-send.sh"
+source "$REPO_ROOT/scripts/lib/tmux-launcher.sh"
 
 TEST_SESSION="tmux-send-test-$$"
 PASS=0
@@ -19,7 +20,7 @@ pass() { printf "PASS: %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "FAIL: %s\n" "$1"; FAIL=$((FAIL + 1)); }
 
 cleanup() {
-  tmux kill-session -t "$TEST_SESSION" 2>/dev/null || true
+  tmux_kill_session "$TEST_SESSION"
 }
 trap cleanup EXIT
 
@@ -34,7 +35,7 @@ sleep 1
 tmux_send_and_submit "$PANE" "echo hello"
 sleep 1
 
-CAPTURE=$(tmux capture-pane -t "$PANE" -p -S -10 2>/dev/null)
+CAPTURE=$(tmux_capture_pane "$PANE" 10)
 if echo "$CAPTURE" | grep -qF 'hello'; then
   pass "1a: 'hello' found in shell output"
 else
@@ -45,7 +46,7 @@ fi
 # Verify the text function alone doesn't submit
 tmux_send_text "$PANE" "echo pending"
 sleep 0.5
-CAPTURE=$(tmux capture-pane -t "$PANE" -p -S -5 2>/dev/null)
+CAPTURE=$(tmux_capture_pane "$PANE" 5)
 if echo "$CAPTURE" | grep -qF 'pending'; then
   # Text is in the input line — check it wasn't executed (no second "pending" from output)
   COUNT=$(echo "$CAPTURE" | grep -c 'pending' || true)
@@ -61,7 +62,7 @@ fi
 # Now submit with tmux_send_enter
 tmux_send_enter "$PANE"
 sleep 1
-CAPTURE=$(tmux capture-pane -t "$PANE" -p -S -5 2>/dev/null)
+CAPTURE=$(tmux_capture_pane "$PANE" 5)
 COUNT=$(echo "$CAPTURE" | grep -c 'pending' || true)
 if [ "$COUNT" -ge 2 ]; then
   pass "1c: tmux_send_enter submitted the command"
@@ -84,7 +85,7 @@ tmux_send_and_submit "$PANE" '!echo tmux-send-test-ok'
 echo "  Waiting 5s for claude to process..."
 sleep 5
 
-CAPTURE=$(tmux capture-pane -t "$PANE" -p -S -30 2>/dev/null)
+CAPTURE=$(tmux_capture_pane "$PANE" 30)
 if echo "$CAPTURE" | grep -qF 'tmux-send-test-ok'; then
   pass "2a: claude received and processed '!echo tmux-send-test-ok'"
 else

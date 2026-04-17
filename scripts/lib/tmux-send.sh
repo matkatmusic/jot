@@ -43,7 +43,9 @@ tmux_cancel_and_send() {
     tmux_send_text "$pane_id" C-c
     sleep 0.2
     local pane_tail
-    pane_tail=$(tmux capture-pane -t "$pane_id" -p -S -5 2>/dev/null || true)
+    # Pane may be transitioning during Ctrl-C; capture failure is non-fatal
+    # within this retry loop — we'll retry up to 5 times.
+    pane_tail=$(tmux_capture_pane "$pane_id" 5 2>/dev/null) || true
     if echo "$pane_tail" | grep -qF 'Ctrl-C'; then
       break
     fi
