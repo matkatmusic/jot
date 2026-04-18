@@ -11,7 +11,7 @@ SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPTS_DIR/paths.sh"
 plate_discover_repo_root
 
-PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../../python/plate" && pwd)"
 
 shopt -s nullglob
 for f in "$PLATE_ROOT"/instances/*.json; do

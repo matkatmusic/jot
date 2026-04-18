@@ -9,9 +9,9 @@ set -euo pipefail
 # CLAUDE_PLUGIN_ROOT — in multi-plugin sessions the foreground claude may
 # have that env var set to a different (jot, superpowers, etc.) plugin.
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
-PYTHON_DIR="$PLUGIN_ROOT/python"
-PROMPTS_DIR="$PLUGIN_ROOT/prompts"
+PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/../.." && pwd)"
+PYTHON_DIR="$PLUGIN_ROOT/python/plate"
+PROMPTS_DIR="$SCRIPTS_DIR/prompts"
 # Export CLAUDE_PLUGIN_ROOT so child calls that still read it (legacy, or
 # paths.sh logging) see the right value.
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
@@ -122,7 +122,7 @@ cp "$SCRIPTS_DIR/plate-worker-end.sh"   "$TMPDIR_INV/"
 
 # ── Seed installed permissions file (three-state) ────────────────────────
 PERM_INSTALLED="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
-PERM_DEFAULT="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json"
+PERM_DEFAULT="${CLAUDE_PLUGIN_ROOT}/scripts/plate/assets/permissions.default.json"
 PERM_DEFAULT_SHA="${PERM_DEFAULT}.sha256"
 PERM_PRIOR_SHA="${CLAUDE_PLUGIN_DATA}/permissions.default.sha256"
 permissions_seed "$PERM_INSTALLED" "$PERM_DEFAULT" "$PERM_DEFAULT_SHA" "$PERM_PRIOR_SHA" "${LOG_FILE:-/dev/null}" "plate"

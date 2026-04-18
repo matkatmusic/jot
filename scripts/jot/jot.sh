@@ -33,24 +33,24 @@ jot_build_claude_cmd() {
 
   # Lifecycle-safe: copy hook scripts into TMPDIR_INV so plugin updates
   # can't delete them mid-run.
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-start.sh" "$TMPDIR_INV/jot-session-start.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-stop.sh"          "$TMPDIR_INV/jot-stop.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot-session-end.sh"   "$TMPDIR_INV/jot-session-end.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux.sh"              "$TMPDIR_INV/tmux.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"     "$TMPDIR_INV/tmux-launcher.sh"
-  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"    "$TMPDIR_INV/invoke_command.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot/jot-session-start.sh" "$TMPDIR_INV/jot-session-start.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot/jot-stop.sh"          "$TMPDIR_INV/jot-stop.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/jot/jot-session-end.sh"   "$TMPDIR_INV/jot-session-end.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux.sh"               "$TMPDIR_INV/tmux.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"      "$TMPDIR_INV/tmux-launcher.sh"
+  cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"     "$TMPDIR_INV/invoke_command.sh"
   local hooks_scripts="$TMPDIR_INV"
 
   local permissions_file="${CLAUDE_PLUGIN_DATA}/permissions.local.json"
-  local default_file="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json"
-  local default_sha_file="${CLAUDE_PLUGIN_ROOT}/assets/permissions.default.json.sha256"
+  local default_file="${CLAUDE_PLUGIN_ROOT}/scripts/jot/assets/permissions.default.json"
+  local default_sha_file="${CLAUDE_PLUGIN_ROOT}/scripts/jot/assets/permissions.default.json.sha256"
   local prior_sha_file="${CLAUDE_PLUGIN_DATA}/permissions.default.sha256"
   mkdir -p "${CLAUDE_PLUGIN_DATA}"
   permissions_seed "$permissions_file" "$default_file" "$default_sha_file" "$prior_sha_file" "$LOG_FILE" "jot"
 
   local allow_json
   allow_json=$(CWD="$CWD" HOME="$HOME" REPO_ROOT="$REPO_ROOT" \
-    python3 "$SCRIPTS_DIR/lib/expand_permissions.py" "$permissions_file")
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lib/expand_permissions.py" "$permissions_file")
 
   local hooks_json_file="$TMPDIR_INV/hooks.json"
   cat > "$hooks_json_file" <<JSON
@@ -112,18 +112,18 @@ jot_main() {
   : "${CLAUDE_PLUGIN_ROOT:?jot plugin env not set — not running under Claude Code plugin harness}"
   : "${CLAUDE_PLUGIN_DATA:?jot plugin env not set — not running under Claude Code plugin harness}"
 
-  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/jot"
 
-  . "$SCRIPTS_DIR/lib/invoke_command.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
   LOG_FILE="${JOT_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/jot-log.txt}"
   hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
-  . "$SCRIPTS_DIR/lib/hook-json.sh"
-  . "$SCRIPTS_DIR/lib/platform.sh"
-  . "$SCRIPTS_DIR/lib/tmux-launcher.sh"
-  . "$SCRIPTS_DIR/lib/claude-launcher.sh"
-  . "$SCRIPTS_DIR/lib/permissions-seed.sh"
-  . "$SCRIPTS_DIR/lib/git.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/platform.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/claude-launcher.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/permissions-seed.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/git.sh"
 
   INPUT=$(cat)
   case "$INPUT" in
@@ -137,14 +137,14 @@ jot_main() {
 
   . "$SCRIPTS_DIR/jot-state-lib.sh"
 
-  PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 "$SCRIPTS_DIR/lib/strip_stdin.py")
+  PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""' | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lib/strip_stdin.py")
   if [[ "$PROMPT" != "/jot" && "$PROMPT" != "/jot "* ]]; then
     exit 0
   fi
 
   IDEA="${PROMPT#/jot}"
   IDEA="${IDEA# }"
-  IDEA=$(printf '%s' "$IDEA" | python3 "$SCRIPTS_DIR/lib/strip_stdin.py")
+  IDEA=$(printf '%s' "$IDEA" | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lib/strip_stdin.py")
   if [ -z "$IDEA" ]; then
     emit_block "jot: no idea provided"
     exit 0
@@ -194,8 +194,8 @@ jot_main() {
   } >> "$INPUT_FILE"
 
   INSTRUCTIONS=$(REPO_ROOT="$REPO_ROOT" TIMESTAMP="$TIMESTAMP" BRANCH="$BRANCH" INPUT_ABS="$INPUT_ABS" \
-    python3 "$SCRIPTS_DIR/lib/render_template.py" \
-      "$CLAUDE_PLUGIN_ROOT/scripts/assets/jot-instructions.md" \
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/lib/render_template.py" \
+      "${CLAUDE_PLUGIN_ROOT}/scripts/jot/assets/jot-instructions.md" \
       REPO_ROOT TIMESTAMP BRANCH INPUT_ABS)
 
   _BODY=$(cat "$INPUT_FILE")

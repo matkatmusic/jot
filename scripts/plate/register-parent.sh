@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Derive python dir from SCRIPTS_DIR so we don't depend on CLAUDE_PLUGIN_ROOT
 # being set correctly (it may point at a sibling plugin in multi-plugin sessions).
-PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../../python/plate" && pwd)"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
 plate_discover_repo_root

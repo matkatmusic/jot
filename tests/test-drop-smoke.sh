@@ -22,16 +22,16 @@ git add a.txt && git commit -q -m "init"
 
 export CLAUDE_PLUGIN_DATA="$TMPTEST/.plugin-data"
 mkdir -p "$CLAUDE_PLUGIN_DATA"
-. "$CLAUDE_PLUGIN_ROOT/scripts/paths.sh"
+. "$CLAUDE_PLUGIN_ROOT/scripts/plate/paths.sh"
 plate_discover_repo_root
 plate_ensure_dirs
 
 INSTANCE="$PLATE_ROOT/instances/drop-smoke.json"
-python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance "$INSTANCE" drop-smoke "$TMPTEST" main
+python3 "$CLAUDE_PLUGIN_ROOT/python/plate/instance_rw.py" create-instance "$INSTANCE" drop-smoke "$TMPTEST" main
 
 # ── Sub-test 1: drop with nothing to drop emits error ─────────────────────
 set +e
-OUT=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/drop.sh" drop-smoke "$INSTANCE" 2>&1)
+OUT=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/drop.sh" drop-smoke "$INSTANCE" 2>&1)
 RC=$?
 set -e
 if [ "$RC" -ne 0 ] && echo "$OUT" | grep -q "no plates on the stack"; then
@@ -42,11 +42,11 @@ fi
 
 # ── Sub-test 2: push plate, make extra changes, drop ─────────────────────
 echo "plate1 work" >> a.txt
-STASH1=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/snapshot-stash.sh" drop-smoke plate-1)
+STASH1=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/snapshot-stash.sh" drop-smoke plate-1)
 HEAD1=$(git rev-parse HEAD)
 
 INSTANCE_FILE=$INSTANCE PLATE_ID=plate-1 HEAD_SHA=$HEAD1 STASH_SHA=$STASH1 \
-PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python" BRANCH=main \
+PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python/plate" BRANCH=main \
 python3 <<'PY'
 import os, sys
 sys.path.insert(0, os.environ['PYTHON_DIR'])
@@ -64,7 +64,7 @@ PY
 echo "abandoned work" >> a.txt
 echo "trash" > junk.txt
 
-bash "$CLAUDE_PLUGIN_ROOT/scripts/drop.sh" drop-smoke "$INSTANCE" > "$TMPTEST/drop.out" 2>&1
+bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/drop.sh" drop-smoke "$INSTANCE" > "$TMPTEST/drop.out" 2>&1
 pass "drop.sh exited 0"
 
 # Patch file should exist

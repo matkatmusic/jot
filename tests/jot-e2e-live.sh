@@ -33,9 +33,9 @@ export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 TEST_PROJECT="${TEST_PROJECT:?set TEST_PROJECT to an absolute path for a Claude Code-trusted test project}"
 CROSS_PROJECT="${CROSS_PROJECT:-${CLAUDE_PLUGIN_DATA}/e2e/cross-project-test}"
 
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
+SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/jot"
 # shellcheck source=../scripts/lib/tmux-launcher.sh
-. "$SCRIPTS_DIR/lib/tmux-launcher.sh"
+. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"
 JOT_SH="$SCRIPTS_DIR/jot-orchestrator.sh"
 DIAG_SH="$THIS_DIR/jot-diag-collect.sh"
 JOB_TIMEOUT="${JOB_TIMEOUT:-300}"

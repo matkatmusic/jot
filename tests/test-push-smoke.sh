@@ -61,15 +61,15 @@ export CLAUDE_PLUGIN_DATA="$TMPTEST/.plugin-data"
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 
 # Source libs + create instance
-. "$CLAUDE_PLUGIN_ROOT/scripts/paths.sh"
+. "$CLAUDE_PLUGIN_ROOT/scripts/plate/paths.sh"
 plate_discover_repo_root
 plate_ensure_dirs
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance \
+python3 "$CLAUDE_PLUGIN_ROOT/python/plate/instance_rw.py" create-instance \
   "$PLATE_ROOT/instances/push-smoke.json" push-smoke "$TMPTEST" main
 
 # Run push.sh
-if bash "$CLAUDE_PLUGIN_ROOT/scripts/push.sh" push-smoke "" "$TMPTEST"; then
+if bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/push.sh" push-smoke "" "$TMPTEST"; then
   pass "push.sh exited 0"
 else
   fail "push.sh exited non-zero"

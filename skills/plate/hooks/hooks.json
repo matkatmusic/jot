@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plate-orchestrator.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plate/plate-orchestrator.sh"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plate-session-start.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/plate/plate-session-start.sh"
           }
         ]
       }

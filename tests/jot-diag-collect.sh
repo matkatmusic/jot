@@ -190,12 +190,12 @@ kv()      { printf '%-28s %s\n' "$1" "$2"; }
   _root="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/installed/jot}"
   section "7. Installed plugin script paths"
   for p in \
-    "$_root/scripts/jot.sh" \
-    "$_root/scripts" \
-    "$_root/scripts/jot-state-lib.sh" \
-    "$_root/scripts/jot-session-start.sh" \
-    "$_root/scripts/jot-stop.sh" \
-    "$_root/scripts/jot-session-end.sh"
+    "$_root/scripts/jot/jot.sh" \
+    "$_root/scripts/jot" \
+    "$_root/scripts/jot/jot-state-lib.sh" \
+    "$_root/scripts/jot/jot-session-start.sh" \
+    "$_root/scripts/jot/jot-stop.sh" \
+    "$_root/scripts/jot/jot-session-end.sh"
   do
     if [ -e "$p" ] || [ -L "$p" ]; then
       if [ -L "$p" ]; then

@@ -22,19 +22,19 @@ git add a.txt && git commit -q -m "init"
 
 export CLAUDE_PLUGIN_DATA="$TMPTEST/.plugin-data"
 mkdir -p "$CLAUDE_PLUGIN_DATA"
-. "$CLAUDE_PLUGIN_ROOT/scripts/paths.sh"
+. "$CLAUDE_PLUGIN_ROOT/scripts/plate/paths.sh"
 plate_discover_repo_root
 plate_ensure_dirs
 
 INSTANCE="$PLATE_ROOT/instances/done-smoke.json"
-python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance "$INSTANCE" done-smoke "$TMPTEST" main
+python3 "$CLAUDE_PLUGIN_ROOT/python/plate/instance_rw.py" create-instance "$INSTANCE" done-smoke "$TMPTEST" main
 
 # Seed plate 1
 echo "plate1 work" >> a.txt
-STASH1=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/snapshot-stash.sh" done-smoke plate-1)
+STASH1=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/snapshot-stash.sh" done-smoke plate-1)
 HEAD1=$(git rev-parse HEAD)
 INSTANCE_FILE=$INSTANCE PLATE_ID=plate-1 HEAD_SHA=$HEAD1 STASH_SHA=$STASH1 \
-PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python" BRANCH=main \
+PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python/plate" BRANCH=main \
 python3 <<'PY'
 import os, sys
 sys.path.insert(0, os.environ['PYTHON_DIR'])
@@ -55,9 +55,9 @@ PY
 # Restore working tree, seed plate 2
 git checkout -- a.txt
 echo "plate2 work" >> a.txt
-STASH2=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/snapshot-stash.sh" done-smoke plate-2)
+STASH2=$(bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/snapshot-stash.sh" done-smoke plate-2)
 INSTANCE_FILE=$INSTANCE PLATE_ID=plate-2 HEAD_SHA=$HEAD1 STASH_SHA=$STASH2 \
-PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python" BRANCH=main \
+PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/python/plate" BRANCH=main \
 python3 <<'PY'
 import os, sys
 sys.path.insert(0, os.environ['PYTHON_DIR'])
@@ -75,7 +75,7 @@ PY
 git checkout -- a.txt
 
 # Run done.sh
-bash "$CLAUDE_PLUGIN_ROOT/scripts/done.sh" done-smoke > "$TMPTEST/done.out" 2>&1
+bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/done.sh" done-smoke > "$TMPTEST/done.out" 2>&1
 pass "done.sh exited 0"
 
 # Assert 2 [plate] commits
@@ -111,8 +111,8 @@ echo "-- cascade: child done cleans parent delegated_to --"
 CHILD_INSTANCE="$PLATE_ROOT/instances/child-cascade.json"
 PARENT_INSTANCE="$PLATE_ROOT/instances/parent-cascade.json"
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance "$PARENT_INSTANCE" parent-cascade "$TMPTEST" main
-python3 "$CLAUDE_PLUGIN_ROOT/python/instance_rw.py" create-instance "$CHILD_INSTANCE" child-cascade "$TMPTEST" main
+python3 "$CLAUDE_PLUGIN_ROOT/python/plate/instance_rw.py" create-instance "$PARENT_INSTANCE" parent-cascade "$TMPTEST" main
+python3 "$CLAUDE_PLUGIN_ROOT/python/plate/instance_rw.py" create-instance "$CHILD_INSTANCE" child-cascade "$TMPTEST" main
 
 # Build parent with a delegated plate
 python3 <<PY
@@ -148,7 +148,7 @@ PY
 # Create a ref so done.sh's ref-delete doesn't fail (it tolerates missing)
 git update-ref refs/plates/child-cascade/child-p1 "$HEAD1"
 
-bash "$CLAUDE_PLUGIN_ROOT/scripts/done.sh" child-cascade > "$TMPTEST/child-done.out" 2>&1 || true
+bash "$CLAUDE_PLUGIN_ROOT/scripts/plate/done.sh" child-cascade > "$TMPTEST/child-done.out" 2>&1 || true
 
 # Parent's plate should now have empty delegated_to and state=paused
 PARENT_STATE=$(python3 -c "

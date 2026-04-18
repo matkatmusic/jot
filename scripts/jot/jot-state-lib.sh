@@ -6,9 +6,9 @@
 # and we want zero brew dependencies beyond what check_requirements covers.
 # `mkdir` is atomic on every POSIX filesystem, so this works portably.
 
-source "$(dirname "${BASH_SOURCE[0]}")/lib/invoke_command.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/lib/tmux.sh"
-source "$(dirname "${BASH_SOURCE[0]}")/lib/lock.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/invoke_command.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/tmux.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/lock.sh"
 
 # Aliases for backward compat — callers use jot_lock_acquire/release.
 jot_lock_acquire() { lock_acquire "$@"; }

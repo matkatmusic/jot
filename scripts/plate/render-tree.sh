@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../../python/plate" && pwd)"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
 plate_discover_repo_root

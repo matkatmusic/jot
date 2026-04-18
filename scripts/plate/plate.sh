@@ -85,14 +85,14 @@ plate_main() {
   : "${CLAUDE_PLUGIN_ROOT:?plate plugin env not set}"
   : "${CLAUDE_PLUGIN_DATA:?plate plugin env not set}"
 
-  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
-  PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
+  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/plate"
+  PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python/plate"
   LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
 
   . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
   hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
-  . "$SCRIPTS_DIR/paths.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/scripts/plate/paths.sh"
   . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
   . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
 

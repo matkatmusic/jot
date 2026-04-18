@@ -4,8 +4,8 @@
 set -uo pipefail
 
 : "${CLAUDE_PLUGIN_ROOT:?}"
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
+SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/plate"
+PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python/plate"
 
 # shellcheck source=../../../scripts/lib/invoke_command.sh
 . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"

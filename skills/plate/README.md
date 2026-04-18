@@ -18,6 +18,8 @@ The stack grows when you push multiple plates. `--done` replays them oldest-firs
 
 ## Commands
 
+Here are the current commands that are currently implemented (git stash create step 3 test)
+
 | Command | Behavior |
 |---|---|
 | `/plate` | Snapshot current git state (non-destructive — working tree untouched). Background agent extracts intent fields from transcript. |
@@ -25,6 +27,8 @@ The stack grows when you push multiple plates. `--done` replays them oldest-firs
 | `/plate --drop` | Abandon top plate. Work saved as recoverable patch file in `.plate/dropped/`. |
 | `/plate --next` | Walk parent delegation chain upward, print resume command for next paused ancestor. |
 | `/plate --show` | Regenerate `.plate/tree.md` and open in `$EDITOR`. |
+
+The list is small but will get bigger, potentially.
 
 ## What gets captured
 

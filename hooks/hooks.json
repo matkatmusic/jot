@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jot-orchestrator.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jot/jot-orchestrator.sh"
           }
         ]
       }
