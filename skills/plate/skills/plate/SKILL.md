@@ -1,9 +1,75 @@
 ---
 name: plate
-description: Stack-of-plates WIP tracker — path-3 parent selection for a new session entering a repo with existing plate state.
+description: Stack-of-plates WIP tracker — handles parent selection (/plate) and finalization (/plate --done).
+argument-hint: [<empty>] [--done] [--drop] [--next] [--show]
 ---
 
-# Plate — Parent Selection
+# Plate — Skill Body
+
+You are the foreground claude that received a `/plate` prompt. The hook passed this prompt through because it requires your interaction capabilities (AskUserQuestion, tool use).
+
+## Variant Detection
+
+Check the user's prompt:
+- If `/plate --done` → follow the **Done** section below
+- If `/plate` (no flag) → follow the **Parent Selection** section below
+
+---
+
+# Done
+
+The user wants to finalize their plate stack — replay all stacked plates as sequential commits.
+
+## Step 1 — Load command context
+
+Read the command context file the hook dropped:
+
+```
+.plate/pending-command.json
+```
+
+It contains:
+- `session_id` — your current session ID (`$SID`)
+- `plate_scripts_dir` — absolute path to the plate scripts directory (`$SCRIPTS`)
+- `python_dir` — absolute path to the plate python directory (`$PYDIR`)
+- `plate_plugin_root` — absolute path to the plugin root (`$PLUGIN_ROOT`)
+
+If the file is missing, reply: `plate: no command context — rerun /plate --done` and stop.
+
+## Step 2 — Check for open children
+
+Run:
+```
+INSTANCE_FILE=".plate/instances/<session_id>.json" python3 <python_dir>/check_live_children.py
+```
+
+If the output is `yes`, delegated children are still open. Call `AskUserQuestion`:
+- question: `Delegated children are still open. How do you want to proceed?`
+- options: `["Cancel — do not finalize", "Orphan children — finalize anyway", "Keep links — finalize and preserve child references"]`
+
+If the user picks Cancel, reply `plate --done cancelled` and stop. Otherwise proceed.
+
+## Step 3 — Run done.sh
+
+Export the plugin environment, then run the done script:
+
+```bash
+export CLAUDE_PLUGIN_ROOT=<plate_plugin_root>
+export CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/plate-jot-dev
+bash <plate_scripts_dir>/done.sh <session_id>
+```
+
+## Step 4 — Relay output
+
+The script prints a commit summary and resume pointer. Relay this output to the user verbatim.
+
+## Step 5 — Cleanup
+
+Delete `.plate/pending-command.json`.
+
+---
+
+# Parent Selection
 
 You are the foreground claude that received a `/plate` prompt. The hook has determined this is a new session in a repo where other plate instances already exist ("path 3" in the design). You must present a parent-selection dropdown before pushing.
 

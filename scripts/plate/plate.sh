@@ -62,6 +62,18 @@ REG
       fi
       ;;
     "--done")
+      plate_discover_repo_root
+      # Write context file for the skill body to read
+      cat > "${PLATE_ROOT}/pending-command.json" <<CMD
+{
+  "variant": "--done",
+  "session_id": "$SESSION_ID",
+  "cwd": "$CWD",
+  "plate_scripts_dir": "$SCRIPTS_DIR",
+  "plate_plugin_root": "$CLAUDE_PLUGIN_ROOT",
+  "python_dir": "$PYTHON_DIR"
+}
+CMD
       exit 0
       ;;
     "--drop")
@@ -71,10 +83,16 @@ REG
       emit_block "[plate] dropped"
       ;;
     "--next")
-      exit 0
+      plate_discover_repo_root
+      NEXT_OUTPUT=$(PLATE_ROOT="$PLATE_ROOT" CONVO_ID="$SESSION_ID" \
+        python3 "$PYTHON_DIR/next_resume_point.py")
+      emit_block "[plate] $NEXT_OUTPUT"
       ;;
     "--show")
-      exit 0
+      plate_discover_repo_root
+      bash "$SCRIPTS_DIR/render-tree.sh"
+      TREE_CONTENT=$(cat "$PLATE_ROOT/tree.md" 2>/dev/null)
+      emit_block "[plate] tree:\n$TREE_CONTENT"
       ;;
   esac
 }
