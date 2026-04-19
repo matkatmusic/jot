@@ -100,19 +100,24 @@ CMD
 # usage: plate_main
 # Entry point. Reads hook JSON from stdin, dispatches /plate variants.
 plate_main() {
-  : "${CLAUDE_PLUGIN_ROOT:?plate plugin env not set}"
   : "${CLAUDE_PLUGIN_DATA:?plate plugin env not set}"
 
-  SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/plate"
-  PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python/plate"
+  # Derive repo root from this script's own path (scripts/plate/plate.sh → repo root)
+  # rather than CLAUDE_PLUGIN_ROOT which may point at skills/plate/ in dev mode.
+  local REPO_ROOT
+  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+  export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+
+  SCRIPTS_DIR="$REPO_ROOT/scripts/plate"
+  PYTHON_DIR="$REPO_ROOT/python/plate"
   LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
 
-  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
+  . "$REPO_ROOT/scripts/lib/invoke_command.sh"
   hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
-  . "${CLAUDE_PLUGIN_ROOT}/scripts/plate/paths.sh"
-  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/lock.sh"
-  . "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hook-json.sh"
+  . "$SCRIPTS_DIR/paths.sh"
+  . "$REPO_ROOT/scripts/lib/lock.sh"
+  . "$REPO_ROOT/scripts/lib/hook-json.sh"
 
   INPUT=$(cat)
   case "$INPUT" in

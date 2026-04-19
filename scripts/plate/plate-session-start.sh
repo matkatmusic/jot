@@ -3,12 +3,13 @@
 # Runs on every `claude --resume <convoID>`. NOT the per-worker SessionStart.
 set -uo pipefail
 
-: "${CLAUDE_PLUGIN_ROOT:?}"
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts/plate"
-PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python/plate"
+# Derive repo root from this script's path (scripts/plate/ → repo root)
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+SCRIPTS_DIR="$REPO_ROOT/scripts/plate"
+PYTHON_DIR="$REPO_ROOT/python/plate"
 
-# shellcheck source=../../../scripts/lib/invoke_command.sh
-. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/invoke_command.sh"
+. "$REPO_ROOT/scripts/lib/invoke_command.sh"
 # shellcheck source=paths.sh
 . "$SCRIPTS_DIR/paths.sh"
 hide_errors plate_discover_repo_root || exit 0
