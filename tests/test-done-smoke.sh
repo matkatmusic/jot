@@ -163,6 +163,83 @@ else
   fail "parent state = '$PARENT_STATE' (expected 'paused 0')"
 fi
 
+# ── Binary-plate regression ──
+# Regression guard for the done.sh `$(git diff --binary)` bug: command
+# substitution strips trailing newlines and truncates on NUL bytes, both of
+# which corrupt binary patches. done.sh now pipes via a temp file; this
+# scenario fails loudly if anyone reintroduces the $() pattern.
+echo ""
+echo "-- binary-plate: /plate --done applies binary diffs correctly --"
+
+BIN_TMP=$(mktemp -d /tmp/plate-test-done-bin.XXXXXX)
+(
+  cd "$BIN_TMP"
+  git init -q
+  git config user.email test@test.com
+  git config user.name "plate test"
+  # v1: 4KB random binary
+  head -c 4096 /dev/urandom > bin.dat
+  git add bin.dat && git commit -q -m "bin v1"
+  BIN_V1_SHA=$(git hash-object bin.dat)
+
+  export CLAUDE_PLUGIN_DATA="$BIN_TMP/.plugin-data"
+  mkdir -p "$CLAUDE_PLUGIN_DATA"
+  . "$CLAUDE_PLUGIN_ROOT/skills/plate/scripts/paths.sh"
+  plate_discover_repo_root
+  plate_ensure_dirs
+  BIN_INSTANCE="$PLATE_ROOT/instances/bin-plate.json"
+  python3 "$CLAUDE_PLUGIN_ROOT/common/scripts/plate/instance_rw.py" create-instance "$BIN_INSTANCE" bin-plate "$BIN_TMP" main
+
+  # v2 in working tree, snapshot
+  head -c 4096 /dev/urandom > bin.dat
+  BIN_V2_SHA=$(git hash-object bin.dat)
+  BIN_STASH=$(bash "$CLAUDE_PLUGIN_ROOT/skills/plate/scripts/snapshot-stash.sh" bin-plate bin-p1)
+  BIN_HEAD=$(git rev-parse HEAD)
+
+  INSTANCE_FILE=$BIN_INSTANCE PLATE_ID=bin-p1 HEAD_SHA=$BIN_HEAD STASH_SHA=$BIN_STASH \
+  PYTHON_DIR="$CLAUDE_PLUGIN_ROOT/common/scripts/plate" BRANCH=main \
+  python3 <<'PY'
+import os, sys
+sys.path.insert(0, os.environ['PYTHON_DIR'])
+from instance_rw import load, atomic_write, new_plate
+from pathlib import Path
+path = Path(os.environ['INSTANCE_FILE'])
+data = load(path)
+p = new_plate(os.environ['PLATE_ID'], os.environ['HEAD_SHA'], os.environ['STASH_SHA'], os.environ['BRANCH'])
+p['summary_action']='bin v1 -> v2'
+p['files']=['bin.dat']
+data['stack'].append(p)
+atomic_write(path, data)
+PY
+
+  # Reset working tree to v1, then run done.sh — it must apply the binary diff
+  # cleanly and land a commit whose bin.dat equals $BIN_V2_SHA.
+  git checkout -- bin.dat
+
+  bash "$CLAUDE_PLUGIN_ROOT/skills/plate/scripts/done.sh" bin-plate > "$BIN_TMP/done.out" 2>&1
+  DONE_RC=$?
+  if [ "$DONE_RC" -ne 0 ]; then
+    echo "DONE_RC_FAIL:$DONE_RC"
+    cat "$BIN_TMP/done.out"
+    exit 97
+  fi
+
+  # Verify: HEAD commit's bin.dat hashes to v2's hash
+  GOT_SHA=$(git rev-parse HEAD:bin.dat)
+  if [ "$GOT_SHA" = "$BIN_V2_SHA" ]; then
+    echo "BIN_PASS"
+  else
+    echo "BIN_FAIL:expected=$BIN_V2_SHA got=$GOT_SHA"
+    exit 98
+  fi
+)
+BIN_RC=$?
+rm -rf "$BIN_TMP"
+case "$BIN_RC" in
+  0) pass "binary-plate applied and committed correctly" ;;
+  *) fail "binary-plate regression (rc=$BIN_RC); see output above" ;;
+esac
+
 if [ "$FAIL" -gt 0 ]; then
   echo "${RED}$FAIL test(s) failed${RESET}"
   exit 1

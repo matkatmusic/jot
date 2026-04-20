@@ -138,22 +138,45 @@ python3 "$PYTHON_DIR/build_settings_json.py"
 CLAUDE_CMD="claude --settings '$SETTINGS_FILE' --add-dir '$CWD'"
 
 # ── Global tmux-launch lock (prevents session-creation race) ──────────────
+# Boundary: everything ABOVE this line must stay fatal — it writes durable
+# state (stash ref, stack JSON, INPUT_FILE, settings.json, permissions seed).
+# Everything BELOW is cosmetic (tmux session + optional Terminal.app). In
+# headless envs (CI, tests with no terminal) the tmux step can fail with no
+# way to attach; we don't want that to silently corrupt the user-visible
+# "[plate] pushed" contract when the durable work succeeded.
+
 TMUX_LOCK="${CLAUDE_PLUGIN_DATA}/tmux-launch.lock"
 mkdir -p "${CLAUDE_PLUGIN_DATA}"
 if ! lock_acquire "$TMUX_LOCK" 10; then
   echo "[plate] failed to acquire tmux-launch lock" >&2
   exit 1
 fi
+# Guarantee both lock releases even if tmux calls abort mid-launch. Replaces
+# (and subsumes) the earlier LOCK_DIR-only trap at line ~50 — bash traps for
+# the same signal overwrite, not stack, so this single trap must cover both
+# the reentrancy lock ($LOCK_DIR) and the tmux-launch lock ($TMUX_LOCK).
+# Prevents the stale-lock class of bugs that plate-e2e-live.sh previously
+# scrubbed manually via rmdir at test-fixture setup.
+trap 'hide_errors lock_release "$TMUX_LOCK"; lock_release "$LOCK_DIR"' EXIT
 
+launch_rc=0
 if ! tmux_has_session "plate"; then
-  tmux new-session -d -s plate -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
-  hide_output hide_errors tmux set-option -t '=plate' remain-on-exit off
+  tmux new-session -d -s plate -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD" || launch_rc=$?
+  if [ "$launch_rc" -eq 0 ]; then
+    hide_output hide_errors tmux set-option -t '=plate' remain-on-exit off || launch_rc=$?
+  fi
 else
-  tmux new-window -t '=plate:' -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD"
+  tmux new-window -t '=plate:' -n "$WINDOW_NAME" -c "$CWD" "$CLAUDE_CMD" || launch_rc=$?
 fi
 
-lock_release "$TMUX_LOCK"
+if [ "$launch_rc" -ne 0 ]; then
+  echo "[plate] warning: durable state saved, tmux launch failed rc=$launch_rc" >&2
+  # Durable writes above completed; plate.sh's "[plate] pushed" emit is
+  # legitimate. Exit 0 so the orchestrator's ERR trap doesn't fire.
+  exit 0
+fi
 
-# If no terminal is currently attached to the plate tmux session, spawn
-# Terminal.app on macOS so the bg-agent window is actually visible.
-spawn_terminal_if_needed "plate" "${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}" "plate"
+# Terminal attach is pure cosmetic on macOS — never fatal.
+if ! spawn_terminal_if_needed "plate" "${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}" "plate"; then
+  echo "[plate] warning: terminal attach failed rc=$?" >&2
+fi

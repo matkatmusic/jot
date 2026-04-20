@@ -54,17 +54,29 @@ while IFS= read -r plate_json; do
     BASE="$LAST_REF"
   fi
 
-  # Apply the diff for this plate
-  DIFF=$(hide_errors git diff --binary "$BASE" "$STASH_SHA") || DIFF=""
-  if [ -n "$DIFF" ]; then
-    printf '%s' "$DIFF" | hide_errors git apply --index --3way - || {
+  # Apply the diff for this plate via a temp file. $(...) command substitution
+  # strips trailing newlines and can't carry NUL bytes, both of which corrupt
+  # `git diff --binary` output (empirical: 4KB random-binary diffs lose ~110
+  # bytes and `git apply` rejects with "corrupt binary patch at line N").
+  # File I/O preserves the exact byte stream for both ASCII and binary plates.
+  PATCH_FILE=$(mktemp "${TMPDIR:-/tmp}/plate-diff.XXXXXX")
+  # shellcheck disable=SC2064  # expand PATCH_FILE now, not at trap-fire time
+  trap "rm -f '$PATCH_FILE'" EXIT
+  hide_errors git diff --binary "$BASE" "$STASH_SHA" > "$PATCH_FILE" || : > "$PATCH_FILE"
+  if [ -s "$PATCH_FILE" ]; then
+    if ! hide_errors git apply --index --3way - < "$PATCH_FILE"; then
       echo "Warning: conflict applying plate $PLATE_ID, attempting manual resolve" >&2
-      # || true is intentional: --3way may leave conflict markers for the user
-      # to resolve manually. Removing it would abort mid-done, leaving the repo
-      # in a partial-apply state with no commit and no cleanup.
-      printf '%s' "$DIFF" | git apply --index --3way - || true
-    }
+      # --3way may leave conflict markers for the user to resolve manually.
+      # Emit a warning on unresolved conflicts rather than aborting — an abort
+      # mid-done would leave the repo in a partial-apply state with no commit
+      # and no cleanup.
+      if ! git apply --index --3way - < "$PATCH_FILE"; then
+        echo "Warning: unresolved conflicts remain for plate $PLATE_ID" >&2
+      fi
+    fi
   fi
+  rm -f "$PATCH_FILE"
+  trap - EXIT
 
   # Commit with structured message
   COMMIT_MSG=$(printf '%s' "$plate_json" | python3 "$PYTHON_DIR/commit_message.py")
@@ -100,5 +112,9 @@ python3 "$PYTHON_DIR/cascade_parent_chain.py"
 BRANCH=$(hide_errors git symbolic-ref --short HEAD) || BRANCH="detached"
 echo "Committed ${#COMMIT_SHAS[@]} plates in ${CONVO_ID} -> ${BRANCH} (${COMMIT_SHAS[*]})"
 
-# Print resume pointer if parent exists
-hide_errors INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 "$PYTHON_DIR/print_resume_pointer.py"
+# Print resume pointer if parent exists. Note: env-var prefixes only work on
+# simple commands, not through a function wrapper — `hide_errors FOO=bar cmd`
+# becomes `bash: FOO=bar: No such file or directory` (rc=127) because `"$@"`
+# expansion bypasses bash's assignment-prefix recognition. print_resume_pointer
+# is silent on missing parent_ref anyway, so drop hide_errors.
+INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 "$PYTHON_DIR/print_resume_pointer.py"
