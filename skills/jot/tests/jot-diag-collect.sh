@@ -17,8 +17,8 @@ set -uo pipefail
 
 # Source tmux helpers for tmux_capture_pane
 DIAG_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DIAG_REPO_ROOT="$(cd "$DIAG_SCRIPT_DIR/.." && pwd)"
-# shellcheck source=../common/scripts/tmux-launcher.sh
+DIAG_REPO_ROOT="$(cd "$DIAG_SCRIPT_DIR/../../.." && pwd)"
+# shellcheck source=../../../common/scripts/tmux-launcher.sh
 . "$DIAG_REPO_ROOT/common/scripts/tmux-launcher.sh" 2>/dev/null || true
 
 OUT="${1:-/tmp/jot-diag-$(date +%Y%m%d-%H%M%S).log}"

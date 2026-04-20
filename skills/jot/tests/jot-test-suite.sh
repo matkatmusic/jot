@@ -23,7 +23,7 @@ export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 
 JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts/jot-orchestrator.sh}"
 SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts}"
-# shellcheck source=../common/scripts/tmux-launcher.sh
+# shellcheck source=../../../common/scripts/tmux-launcher.sh
 . "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux-launcher.sh"
 CAPTURE="$SCRIPTS/capture-conversation.py"
 TRANSCRIPT="${JOT_TEST_TRANSCRIPT:-}"
