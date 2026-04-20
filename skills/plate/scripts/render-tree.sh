@@ -4,9 +4,9 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_DIR="$(cd "$SCRIPTS_DIR/../python" && pwd)"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../../../common/scripts/plate" && pwd)"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
 
 python3 "$PYTHON_DIR/render_tree.py" "$PLATE_ROOT"

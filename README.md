@@ -1,13 +1,44 @@
-# jot
+# jot + plate
 
-Capture a mid-development idea without losing focus. Typing `/jot <idea>` writes the idea plus surrounding context (git state, open TODOs, recent conversation) to `Todos/<timestamp>_input.txt`, then a background Claude instance — one per invocation, running in its own tmux window — converts it into a proper TODO file. Your current conversation keeps running uninterrupted.
+Two focus-preserving skills for Claude Code. Both work by intercepting the prompt via a `UserPromptSubmit` hook, doing the durable work synchronously, and handing off enrichment or follow-up to a background Claude in tmux — so your current conversation keeps running uninterrupted.
 
-## How it works
+## `/jot <idea>`
 
-- **Phase 1 (durable write)** — The `UserPromptSubmit` hook (`scripts/jot.sh`) intercepts `/jot` prompts, writes the idea and context to `Todos/<timestamp>_input.txt` **before** any enrichment can fail, then blocks the prompt so it never reaches the foreground Claude session.
-- **Phase 2 (background processing)** — Each `/jot` spawns a dedicated background `claude` instance in its own tmux window under a shared `jot` session. The worker reads `input.txt`, follows embedded instructions, writes `Todos/<slug>.md`, overwrites `input.txt` with a `PROCESSED:` success marker, and its `Stop` hook kills the window. One worker per invocation — no shared queue, no cross-invocation state contamination.
+Capture a mid-development idea without losing focus. Writes the idea plus surrounding context (git state, open TODOs, recent conversation) to `Todos/<timestamp>_input.txt`, then a background Claude — one per invocation, running in its own pane under a shared `jot:jots` tmux window — converts it into a proper TODO file.
+
+### How it works
+
+- **Phase 1 (durable write)** — `scripts/orchestrator.sh` dispatches `/jot` prompts to `skills/jot/scripts/jot-orchestrator.sh`, which writes the idea and context to `Todos/<timestamp>_input.txt` **before** any enrichment can fail, then blocks the prompt so it never reaches the foreground Claude.
+- **Phase 2 (background processing)** — Each `/jot` spawns a dedicated background `claude` instance in its own tmux pane inside the shared `jot:jots` window. The worker reads `input.txt`, follows embedded instructions, writes `Todos/<slug>.md`, overwrites `input.txt` with a `PROCESSED:` success marker, and its `Stop` hook kills the pane. One worker per invocation — no shared queue, no cross-invocation contamination. Multiple `/jot` calls can run concurrently.
+
+## `/plate`
+
+Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to a different task. Snapshot it on the stack, switch context freely, then replay the stack as sequential `[plate]` commits with `/plate --done`.
+
+### Commands
+
+- `/plate` — snapshot the current working tree onto the stack, tagged to your session
+- `/plate --show` — render the stack as a tree
+- `/plate --next` — walk the parent chain upward to find the next resume point
+- `/plate --drop` — save the top plate as a patch file and restore the working tree underneath it
+- `/plate --done` — replay the stack bottom-up as sequential commits on the current branch
+
+### How it works
+
+- `UserPromptSubmit` hook fires, `plate_dispatch` writes a named git ref (`refs/plates/<convo>/<plate-N>`) pointing at a throwaway stash commit — no branch mutation, no working-tree touch
+- Stack metadata (plate summaries, parent chain, file lists) persists in `.plate/instances/<session>.json`
+- `/plate --done` preserves each stash-vs-prev diff via a temp patch file and applies via `git apply --3way`, committing with `[plate] <summary>` messages. Binary plates work because the temp-file pipeline preserves exact bytes (`$(…)` command substitution strips trailing newlines and can't carry NULs — see `done.sh` comments for details).
+
+## Architecture
+
+- `scripts/orchestrator.sh` — single dispatcher wired into `hooks/hooks.json:UserPromptSubmit`; routes `/jot` → `skills/jot/…` and `/plate` → `skills/plate/…`
+- `skills/jot/scripts/`, `skills/plate/scripts/` — per-skill orchestrators, lifecycle hooks, assets, prompts
+- `common/scripts/` — shared helpers (`tmux.sh`, `invoke_command.sh`, `silencers.sh`, `git.sh`, `lock.sh`, `platform.sh`, `hook-json.sh`, `claude-launcher.sh`, `permissions-seed.sh`) + namespaced python helpers (`common/scripts/jot/`, `common/scripts/plate/`)
+- Lifecycle-safe hook scripts are copied into a per-invocation tmpdir at launch, so `claude plugin update` can't yank them mid-run
 
 ## Requirements
+
+Here are the required tools and versions needed to use the jot skill/hook (git stash create step 2 test)
 
 | Tool | Install |
 |---|---|

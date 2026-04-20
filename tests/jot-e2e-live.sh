@@ -33,8 +33,10 @@ export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 TEST_PROJECT="${TEST_PROJECT:?set TEST_PROJECT to an absolute path for a Claude Code-trusted test project}"
 CROSS_PROJECT="${CROSS_PROJECT:-${CLAUDE_PLUGIN_DATA}/e2e/cross-project-test}"
 
-SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
-JOT_SH="$SCRIPTS_DIR/jot.sh"
+SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts"
+# shellcheck source=../common/scripts/tmux-launcher.sh
+. "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux-launcher.sh"
+JOT_SH="$SCRIPTS_DIR/jot-orchestrator.sh"
 DIAG_SH="$THIS_DIR/jot-diag-collect.sh"
 JOB_TIMEOUT="${JOB_TIMEOUT:-300}"
 
@@ -213,7 +215,7 @@ run_scenario() {
 
 scenario_cold_start() {
   # Own setup: kill any existing jot session; authv3_vps starts with no Todos/.
-  tmux kill-session -t jot 2>/dev/null || true
+  tmux_kill_session jot
   rm -rf "$TEST_PROJECT/Todos"
   # Sanity: no session, no attached client.
   tmux list-clients -t jot 2>/dev/null | grep -q . && { echo "FAIL: jot session still has clients after kill"; return 1; }
@@ -368,7 +370,7 @@ scenario_diag_collector() {
 
 do_cleanup() {
   echo "Cleaning jot e2e state..."
-  tmux kill-session -t jot 2>/dev/null || true
+  tmux_kill_session jot
   rm -rf "$TEST_PROJECT/Todos"
   # Wipe cross-project Todos/ but keep the dir itself + .git so Claude Code's
   # workspace trust (stored per-path) stays accepted across runs.

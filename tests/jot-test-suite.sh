@@ -7,7 +7,7 @@
 # Usage: bash jot-test-suite.sh [phase1|phase2|all]
 #
 # Environment:
-#   JOT_SCRIPT         Path to jot.sh under test (default: $CLAUDE_PLUGIN_ROOT/scripts/jot.sh)
+#   JOT_SCRIPT         Path to jot.sh under test (default: $CLAUDE_PLUGIN_ROOT/skills/jot/scripts/jot-orchestrator.sh)
 #   JOT_SCRIPTS_DIR    Path to the scripts/ dir   (default: $CLAUDE_PLUGIN_ROOT/scripts)
 #   JOT_TEST_TRANSCRIPT  Absolute path to a .jsonl transcript for the capture tests
 #   CLAUDE_PLUGIN_ROOT / CLAUDE_PLUGIN_DATA — must be set for jot.sh to run (it asserts)
@@ -21,8 +21,10 @@ set -uo pipefail
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 
-JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/scripts/jot.sh}"
-SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/scripts}"
+JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts/jot-orchestrator.sh}"
+SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts}"
+# shellcheck source=../common/scripts/tmux-launcher.sh
+. "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux-launcher.sh"
 CAPTURE="$SCRIPTS/capture-conversation.py"
 TRANSCRIPT="${JOT_TEST_TRANSCRIPT:-}"
 STUB_SESSION="jot-test-stub"
@@ -37,7 +39,7 @@ pass() { printf "PASS: %s\n" "$1"; PASS=$((PASS+1)); }
 fail() { printf "FAIL: %s\n" "$1"; FAIL=$((FAIL+1)); }
 
 cleanup() {
-  tmux kill-session -t "$STUB_SESSION" 2>/dev/null || true
+  tmux_kill_session "$STUB_SESSION"
   for d in /tmp/jot.*; do [ -d "$d" ] && rm -rf "$d"; done 2>/dev/null
   rm -rf /tmp/jot-test-* /tmp/empty.jsonl 2>/dev/null
   rm -f "$JOT_LOG_FILE" "$JOT_LOG_FILE".* 2>/dev/null
@@ -292,7 +294,7 @@ phase2_tests() {
 
   # Set up stub tmux session that just runs a long-lived shell (no real
   # claude). The hook scripts will send-keys to this session.
-  tmux kill-session -t "$STUB_SESSION" 2>/dev/null || true
+  tmux_kill_session "$STUB_SESSION"
   tmux new-session -d -s "$STUB_SESSION" -n stub "bash -i"
   tmux set-option -t "$STUB_SESSION" remain-on-exit on >/dev/null
 
@@ -392,7 +394,7 @@ phase2_tests() {
   rm -rf "$P2_TEST_DIR"
 
   rm -rf "$STATE_DIR"
-  tmux kill-session -t "$STUB_SESSION" 2>/dev/null
+  tmux_kill_session "$STUB_SESSION"
 }
 
 case "${1:-all}" in

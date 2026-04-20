@@ -5,13 +5,13 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
-PYTHON_DIR="$PLUGIN_ROOT/python"
+PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/../../.." && pwd)"
+PYTHON_DIR="$PLUGIN_ROOT/common/scripts/plate"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
 
 CONVO_ID="${1:?usage: done.sh <convo_id>}"
 INSTANCE_FILE="${PLATE_ROOT}/instances/${CONVO_ID}.json"
@@ -29,13 +29,7 @@ if [ "$STACK_COUNT" -eq 0 ]; then
 fi
 
 # ── Check for open delegated children (§9.3) ─────────────────────────────
-HAS_LIVE_CHILDREN=$(INSTANCE_FILE="$INSTANCE_FILE" python3 <<'PY'
-import json, os
-d = json.load(open(os.environ['INSTANCE_FILE']))
-live = any(p.get('delegated_to') for p in d.get('stack', []) if p.get('state') == 'delegated')
-print('yes' if live else 'no')
-PY
-)
+HAS_LIVE_CHILDREN=$(INSTANCE_FILE="$INSTANCE_FILE" python3 "$PYTHON_DIR/check_live_children.py")
 if [ "$HAS_LIVE_CHILDREN" = "yes" ]; then
   # The skill body (foreground claude) handles AskUserQuestion for this.
   # done.sh only runs after the user has chosen to proceed.
@@ -60,14 +54,29 @@ while IFS= read -r plate_json; do
     BASE="$LAST_REF"
   fi
 
-  # Apply the diff for this plate
-  DIFF=$(git diff --binary "$BASE" "$STASH_SHA" 2>/dev/null || true)
-  if [ -n "$DIFF" ]; then
-    printf '%s' "$DIFF" | git apply --index --3way - 2>/dev/null || {
+  # Apply the diff for this plate via a temp file. $(...) command substitution
+  # strips trailing newlines and can't carry NUL bytes, both of which corrupt
+  # `git diff --binary` output (empirical: 4KB random-binary diffs lose ~110
+  # bytes and `git apply` rejects with "corrupt binary patch at line N").
+  # File I/O preserves the exact byte stream for both ASCII and binary plates.
+  PATCH_FILE=$(mktemp "${TMPDIR:-/tmp}/plate-diff.XXXXXX")
+  # shellcheck disable=SC2064  # expand PATCH_FILE now, not at trap-fire time
+  trap "rm -f '$PATCH_FILE'" EXIT
+  hide_errors git diff --binary "$BASE" "$STASH_SHA" > "$PATCH_FILE" || : > "$PATCH_FILE"
+  if [ -s "$PATCH_FILE" ]; then
+    if ! hide_errors git apply --index --3way - < "$PATCH_FILE"; then
       echo "Warning: conflict applying plate $PLATE_ID, attempting manual resolve" >&2
-      printf '%s' "$DIFF" | git apply --index --3way - || true
-    }
+      # --3way may leave conflict markers for the user to resolve manually.
+      # Emit a warning on unresolved conflicts rather than aborting — an abort
+      # mid-done would leave the repo in a partial-apply state with no commit
+      # and no cleanup.
+      if ! git apply --index --3way - < "$PATCH_FILE"; then
+        echo "Warning: unresolved conflicts remain for plate $PLATE_ID" >&2
+      fi
+    fi
   fi
+  rm -f "$PATCH_FILE"
+  trap - EXIT
 
   # Commit with structured message
   COMMIT_MSG=$(printf '%s' "$plate_json" | python3 "$PYTHON_DIR/commit_message.py")
@@ -80,14 +89,14 @@ while IFS= read -r plate_json; do
   python3 "$PYTHON_DIR/instance_rw.py" complete "$INSTANCE_FILE" "$PLATE_ID" "$COMMIT_SHA" "$COMPLETED_AT"
 
   # Delete the named ref
-  git update-ref -d "refs/plates/${CONVO_ID}/${PLATE_ID}" 2>/dev/null || true
+  hide_errors git update-ref -d "refs/plates/${CONVO_ID}/${PLATE_ID}"
 
   LAST_REF="$STASH_SHA"
 
 done < <(python3 "$PYTHON_DIR/instance_rw.py" stack-oldest "$INSTANCE_FILE")
 
 # ── Final commit: capture any work done after the last plate (§7.3 step 4)
-if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+if ! hide_errors git diff --quiet HEAD || ! hide_errors git diff --cached --quiet HEAD; then
   git add -A
   git commit -m "[plate] final: work after last plate push"
   COMMIT_SHAS+=("$(git rev-parse HEAD)")
@@ -97,54 +106,15 @@ fi
 MAX_DEPTH=20
 INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" \
 CONVO_ID="$CONVO_ID" PYTHON_DIR="$PYTHON_DIR" MAX_DEPTH="$MAX_DEPTH" \
-python3 <<'PY'
-import os, sys
-sys.path.insert(0, os.environ['PYTHON_DIR'])
-from instance_rw import load, atomic_write
-from pathlib import Path
-
-instance_file = Path(os.environ['INSTANCE_FILE'])
-data = load(instance_file)
-parent_ref = data.get('parent_ref', {})
-max_depth = int(os.environ['MAX_DEPTH'])
-convo_id = os.environ['CONVO_ID']
-plate_root = Path(os.environ['PLATE_ROOT'])
-depth = 0
-
-while parent_ref and parent_ref.get('convo_id') and depth < max_depth:
-    parent_convo = parent_ref['convo_id']
-    parent_plate_id = parent_ref.get('plate_id', '')
-    parent_path = plate_root / 'instances' / f'{parent_convo}.json'
-    if not parent_path.exists():
-        break
-    parent_data = load(parent_path)
-    for plate in parent_data.get('stack', []):
-        if plate['plate_id'] == parent_plate_id:
-            dt = plate.get('delegated_to', [])
-            if convo_id in dt:
-                dt.remove(convo_id)
-            if not dt:
-                plate['state'] = 'paused'
-            break
-    atomic_write(parent_path, parent_data)
-    # Stop at first ancestor (§9.2 step 3)
-    break
-PY
+python3 "$PYTHON_DIR/cascade_parent_chain.py"
 
 # ── Print result ──────────────────────────────────────────────────────────
-BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "detached")
+BRANCH=$(hide_errors git symbolic-ref --short HEAD) || BRANCH="detached"
 echo "Committed ${#COMMIT_SHAS[@]} plates in ${CONVO_ID} -> ${BRANCH} (${COMMIT_SHAS[*]})"
 
-# Print resume pointer if parent exists
-INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 <<'PY' 2>/dev/null || true
-import json, os
-from pathlib import Path
-d = json.load(open(os.environ['INSTANCE_FILE']))
-pr = d.get('parent_ref', {})
-if pr.get('convo_id'):
-    parent_path = Path(os.environ['PLATE_ROOT']) / 'instances' / f'{pr["convo_id"]}.json'
-    if parent_path.exists():
-        pd = json.load(open(parent_path))
-        cwd = pd.get('cwd', '.')
-        print(f'\nTo resume parent, run:\n  cd {cwd} && claude --resume {pr["convo_id"]}')
-PY
+# Print resume pointer if parent exists. Note: env-var prefixes only work on
+# simple commands, not through a function wrapper — `hide_errors FOO=bar cmd`
+# becomes `bash: FOO=bar: No such file or directory` (rc=127) because `"$@"`
+# expansion bypasses bash's assignment-prefix recognition. print_resume_pointer
+# is silent on missing parent_ref anyway, so drop hide_errors.
+INSTANCE_FILE="$INSTANCE_FILE" PLATE_ROOT="$PLATE_ROOT" python3 "$PYTHON_DIR/print_resume_pointer.py"

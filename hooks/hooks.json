@@ -5,10 +5,21 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/jot.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/skills/plate/scripts/plate-session-start.sh"
           }
         ]
       }
     ]
   }
 }
+

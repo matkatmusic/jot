@@ -5,22 +5,16 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+# shellcheck source=../../../common/scripts/silencers.sh
+. "${CLAUDE_PLUGIN_ROOT}/common/scripts/silencers.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
+
+PYTHON_DIR="$(cd "$SCRIPTS_DIR/../../../common/scripts/plate" && pwd)"
 
 shopt -s nullglob
 for f in "$PLATE_ROOT"/instances/*.json; do
-  INSTANCE_FILE="$f" python3 <<'PY' 2>/dev/null || true
-import json, os
-d = json.load(open(os.environ['INSTANCE_FILE']))
-convo = d.get('convo_id', '')
-label = d.get('label') or convo[:12]
-for p in d.get('stack', []):
-    if p.get('state') == 'paused':
-        pushed = p.get('pushed_at', '')
-        action = p.get('summary_action') or '(no synopsis)'
-        print(f"{convo}|{p['plate_id']}|{label}|{action}|{pushed}")
-PY
+  hide_errors INSTANCE_FILE="$f" python3 "$PYTHON_DIR/list_paused_plates.py"
 done
 shopt -u nullglob

@@ -4,13 +4,13 @@
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/.." && pwd)"
-PYTHON_DIR="$PLUGIN_ROOT/python"
+PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/../../.." && pwd)"
+PYTHON_DIR="$PLUGIN_ROOT/common/scripts/plate"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
-plate_discover_root
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
+plate_discover_repo_root
 
 CONVO_ID="${1:?usage: drop.sh <convo_id> <instance_file>}"
 INSTANCE_FILE="${2:?usage: drop.sh <convo_id> <instance_file>}"
@@ -39,7 +39,7 @@ if ! git cat-file -t "$REF" >/dev/null 2>&1; then
 fi
 
 # ── Build full snapshot including untracked files ─────────────────────────
-TEMP_SNAPSHOT=$(git stash create -u 2>/dev/null || true)
+TEMP_SNAPSHOT=$(hide_errors git stash create -u) || TEMP_SNAPSHOT=""
 
 # ── Write patch file ──────────────────────────────────────────────────────
 TS=$(date +%s)

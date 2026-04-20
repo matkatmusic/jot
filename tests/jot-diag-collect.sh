@@ -15,6 +15,12 @@
 
 set -uo pipefail
 
+# Source tmux helpers for tmux_capture_pane
+DIAG_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DIAG_REPO_ROOT="$(cd "$DIAG_SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../common/scripts/tmux-launcher.sh
+. "$DIAG_REPO_ROOT/common/scripts/tmux-launcher.sh" 2>/dev/null || true
+
 OUT="${1:-/tmp/jot-diag-$(date +%Y%m%d-%H%M%S).log}"
 CWD=$(pwd)
 REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || echo "$CWD")
@@ -141,7 +147,7 @@ kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
     echo
     echo "--- pane content (last 80 lines of scrollback) ---"
-    tmux capture-pane -t "$TMUX_TARGET" -p -S -80 2>&1 | indent
+    tmux_capture_pane "$TMUX_TARGET" 80 2>&1 | indent
   fi
 
   # ── 4. Per-invocation /tmp/jot.* dirs ─────────────────────────────────
@@ -184,12 +190,12 @@ kv()      { printf '%-28s %s\n' "$1" "$2"; }
   _root="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/installed/jot}"
   section "7. Installed plugin script paths"
   for p in \
-    "$_root/scripts/jot.sh" \
-    "$_root/scripts" \
-    "$_root/scripts/jot-state-lib.sh" \
-    "$_root/scripts/jot-session-start.sh" \
-    "$_root/scripts/jot-stop.sh" \
-    "$_root/scripts/jot-session-end.sh"
+    "$_root/skills/jot/scripts/jot.sh" \
+    "$_root/skills/jot/scripts" \
+    "$_root/skills/jot/scripts/jot-state-lib.sh" \
+    "$_root/skills/jot/scripts/jot-session-start.sh" \
+    "$_root/skills/jot/scripts/jot-stop.sh" \
+    "$_root/skills/jot/scripts/jot-session-end.sh"
   do
     if [ -e "$p" ] || [ -L "$p" ]; then
       if [ -L "$p" ]; then

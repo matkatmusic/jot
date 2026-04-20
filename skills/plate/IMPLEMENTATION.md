@@ -170,11 +170,11 @@ Plate entry shape (within `stack[]` or `completed[]`):
 
 | File | Purpose |
 |---|---|
-| `scripts/lib/paths.sh` | PLATE_ROOT discovery + .gitignore patch |
+| `scripts/paths.sh` | PLATE_ROOT discovery + .gitignore patch |
 | `scripts/lib/lock.sh` | mkdir-based lock helpers |
 | `python/instance_rw.py` | Atomic JSON read/write/mutate |
 
-#### `scripts/lib/paths.sh`
+#### `scripts/paths.sh`
 
 ```bash
 #!/bin/bash
@@ -352,7 +352,7 @@ if __name__ == "__main__":
 ```bash
 cd /tmp && git init plate-test && cd plate-test && git commit --allow-empty -m "init"
 PLATE_ROOT="$(pwd)/.plate"
-source "$CLAUDE_PLUGIN_ROOT/scripts/lib/paths.sh"
+source "$CLAUDE_PLUGIN_ROOT/scripts/paths.sh"
 plate_discover_root && plate_ensure_dirs
 test -d "$PLATE_ROOT/instances" && grep -q '.plate/' .gitignore && echo "PASS: Phase 0"
 ```
@@ -452,8 +452,8 @@ PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 # shellcheck source=lib/lock.sh
 . "$SCRIPTS_DIR/lib/lock.sh"
 
@@ -584,8 +584,8 @@ set -euo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 # shellcheck source=lib/lock.sh
 . "$SCRIPTS_DIR/lib/lock.sh"
 
@@ -1001,8 +1001,8 @@ print('PASS: Phase 2 — bg agent populated fields')
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 shopt -s nullglob
@@ -1034,8 +1034,8 @@ set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 CHILD_CONVO="${1:?}"
@@ -1175,8 +1175,8 @@ set -euo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 CONVO_ID="${1:?usage: done.sh <convo_id>}"
@@ -1345,8 +1345,8 @@ set -euo pipefail
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 CONVO_ID="${1:?usage: drop.sh <convo_id> <instance_file>}"
@@ -1440,8 +1440,8 @@ set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 python3 "$PYTHON_DIR/render_tree.py" "$PLATE_ROOT"
@@ -1454,8 +1454,8 @@ python3 "$PYTHON_DIR/render_tree.py" "$PLATE_ROOT"
 set -euo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 bash "$SCRIPTS_DIR/render-tree.sh"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 "${EDITOR:-less}" "$PLATE_ROOT/tree.md"
 ```
@@ -1470,8 +1470,8 @@ set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root
 
 CONVO_ID="${1:?usage: next.sh <convo_id>}"
@@ -1642,8 +1642,8 @@ set -uo pipefail
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/scripts"
 PYTHON_DIR="${CLAUDE_PLUGIN_ROOT}/python"
 
-# shellcheck source=lib/paths.sh
-. "$SCRIPTS_DIR/lib/paths.sh"
+# shellcheck source=paths.sh
+. "$SCRIPTS_DIR/paths.sh"
 plate_discover_root 2>/dev/null || exit 0
 
 # Determine session ID from hook input
