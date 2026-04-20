@@ -9,8 +9,8 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-source "$REPO_ROOT/scripts/lib/tmux.sh"
-source "$REPO_ROOT/scripts/lib/tmux-launcher.sh"
+source "$REPO_ROOT/common/scripts/tmux.sh"
+source "$REPO_ROOT/common/scripts/tmux-launcher.sh"
 
 TEST_SESSION="tmux-send-test-$$"
 PASS=0

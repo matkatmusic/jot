@@ -7,7 +7,7 @@
 # Usage: bash jot-test-suite.sh [phase1|phase2|all]
 #
 # Environment:
-#   JOT_SCRIPT         Path to jot.sh under test (default: $CLAUDE_PLUGIN_ROOT/scripts/jot.sh)
+#   JOT_SCRIPT         Path to jot.sh under test (default: $CLAUDE_PLUGIN_ROOT/skills/jot/scripts/jot-orchestrator.sh)
 #   JOT_SCRIPTS_DIR    Path to the scripts/ dir   (default: $CLAUDE_PLUGIN_ROOT/scripts)
 #   JOT_TEST_TRANSCRIPT  Absolute path to a .jsonl transcript for the capture tests
 #   CLAUDE_PLUGIN_ROOT / CLAUDE_PLUGIN_DATA — must be set for jot.sh to run (it asserts)
@@ -21,10 +21,10 @@ set -uo pipefail
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 
-JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/scripts/jot/jot-orchestrator.sh}"
-SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/scripts/jot}"
-# shellcheck source=../scripts/lib/tmux-launcher.sh
-. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/tmux-launcher.sh"
+JOT="${JOT_SCRIPT:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts/jot-orchestrator.sh}"
+SCRIPTS="${JOT_SCRIPTS_DIR:-${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts}"
+# shellcheck source=../common/scripts/tmux-launcher.sh
+. "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux-launcher.sh"
 CAPTURE="$SCRIPTS/capture-conversation.py"
 TRANSCRIPT="${JOT_TEST_TRANSCRIPT:-}"
 STUB_SESSION="jot-test-stub"

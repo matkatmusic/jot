@@ -13,10 +13,10 @@ set -uo pipefail
 THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 
-source "$REPO_ROOT/scripts/lib/invoke_command.sh"
-source "$REPO_ROOT/scripts/lib/tmux.sh"
-source "$REPO_ROOT/scripts/lib/tmux-launcher.sh"
-source "$REPO_ROOT/scripts/lib/git.sh"
+source "$REPO_ROOT/common/scripts/silencers.sh"
+source "$REPO_ROOT/common/scripts/tmux.sh"
+source "$REPO_ROOT/common/scripts/tmux-launcher.sh"
+source "$REPO_ROOT/common/scripts/git.sh"
 
 ATTACH_MODE=false
 [ "${1:-}" = "--attach" ] && ATTACH_MODE=true
@@ -49,7 +49,7 @@ trap cleanup EXIT
 build_test_settings() {
   TMPDIR_TEST=$(mktemp -d /tmp/plate-e2e-settings.XXXXXX)
   local settings="$TMPDIR_TEST/settings.json"
-  local plate_scripts="$REPO_ROOT/scripts/plate"
+  local plate_scripts="$REPO_ROOT/skills/plate/scripts"
   cat > "$settings" <<JSON
 {
   "permissions": {

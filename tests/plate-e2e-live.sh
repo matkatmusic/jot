@@ -17,14 +17,14 @@ REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
 export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA
 mkdir -p "$CLAUDE_PLUGIN_DATA"
 
-source "$REPO_ROOT/scripts/lib/invoke_command.sh"
-source "$REPO_ROOT/scripts/lib/tmux.sh"
-source "$REPO_ROOT/scripts/lib/tmux-launcher.sh"
-source "$REPO_ROOT/scripts/lib/git.sh"
+source "$REPO_ROOT/common/scripts/silencers.sh"
+source "$REPO_ROOT/common/scripts/tmux.sh"
+source "$REPO_ROOT/common/scripts/tmux-launcher.sh"
+source "$REPO_ROOT/common/scripts/git.sh"
 
-PLATE_SH="$REPO_ROOT/scripts/plate/plate-orchestrator.sh"
-DONE_SH="$REPO_ROOT/scripts/plate/done.sh"
-PYTHON_DIR="$REPO_ROOT/python/plate"
+PLATE_SH="$REPO_ROOT/skills/plate/scripts/plate-orchestrator.sh"
+DONE_SH="$REPO_ROOT/skills/plate/scripts/done.sh"
+PYTHON_DIR="$REPO_ROOT/common/scripts/plate"
 
 ATTACH_MODE=false
 if [ "${1:-}" = "--attach" ]; then

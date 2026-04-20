@@ -1,7 +1,7 @@
 {
   "name": "jot",
   "version": "1.0.0",
-  "description": "Capture mid-development ideas via /jot <idea> without losing focus. Writes to Todos/ and a background Claude in tmux converts input into a proper TODO.",
+  "description": "Capture mid-development ideas and context via '/jot <idea>' and '/plate' without losing focus. \n '/jot <idea>': Writes to Todos/ and a background Claude in tmux converts input into a proper TODO. \n '/plate': Stack-of-plates WIP tracker for Claude Code. Captures uncommitted work context when switching tasks.  use /plate to capture code changes without losing focus caused by stopping to figure out which code changes go with the current task, and which changes go with an earlier task that you forgot to commit.",
   "author": {
     "name": "Matkat Music LLC"
   },
