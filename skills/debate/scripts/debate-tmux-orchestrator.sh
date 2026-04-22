@@ -248,4 +248,28 @@ send_prompt  "$SYNTH_PANE" "synthesis" "$DEBATE_DIR/synthesis_instructions.txt" 
 
 wait_for_file "$DEBATE_DIR/synthesis.md" "$STAGE_TIMEOUT" || exit 1
 
+# === archive intermediate files ===
+# Keep only synthesis.md at the top level; stash inputs, round outputs,
+# and the daemon log under archive/ so the deliverable is unambiguous.
+echo "[orch] archiving intermediate files to $DEBATE_DIR/archive/"
+mkdir -p "$DEBATE_DIR/archive"
+for f in \
+    "$DEBATE_DIR/topic.md" \
+    "$DEBATE_DIR/context.md" \
+    "$DEBATE_DIR/agents.txt" \
+    "$DEBATE_DIR/synthesis_instructions.txt" \
+    "$DEBATE_DIR"/r1_instructions_*.txt \
+    "$DEBATE_DIR"/r1_*.md \
+    "$DEBATE_DIR"/r2_instructions_*.txt \
+    "$DEBATE_DIR"/r2_*.md \
+    ; do
+  [ -f "$f" ] && mv "$f" "$DEBATE_DIR/archive/"
+done
+
 echo "[orch] DEBATE COMPLETE — synthesis at $DEBATE_DIR/synthesis.md"
+
+# Move the log last so the completion line lands in the pre-move file.
+# Same-filesystem rename preserves the daemon's still-open stdout fd:
+# Unix ties the fd to the inode, not the path, so writes after this
+# rename continue to land in archive/orchestrator.log transparently.
+[ -f "$DEBATE_DIR/orchestrator.log" ] && mv "$DEBATE_DIR/orchestrator.log" "$DEBATE_DIR/archive/"
