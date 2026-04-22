@@ -82,9 +82,9 @@ The worker's per-invocation `settings.json` is generated from this template with
 ## Testing
 
 ```bash
-bash tests/test-push-smoke.sh   # hook → snapshot → JSON mutation → tmux launch stub
-bash tests/test-done-smoke.sh   # replay 2 plates → 2 commits + cascade
-bash tests/test-drop-smoke.sh   # abandon → patch file + working-tree restore
+bash skills/plate/tests/test-push-smoke.sh   # hook → snapshot → JSON mutation → tmux launch stub
+bash skills/plate/tests/test-done-smoke.sh   # replay 2 plates → 2 commits + cascade
+bash skills/plate/tests/test-drop-smoke.sh   # abandon → patch file + working-tree restore
 ```
 
 All three suites run headless (tmux/claude stubbed).

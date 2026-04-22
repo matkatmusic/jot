@@ -7,7 +7,7 @@ FAIL=0
 fail() { echo "${RED}FAIL:${RESET} $*"; FAIL=$((FAIL+1)); }
 pass() { echo "${GREEN}PASS:${RESET} $*"; }
 
-CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 export CLAUDE_PLUGIN_ROOT
 
 TMPTEST=$(mktemp -d /tmp/plate-test-done.XXXXXX)

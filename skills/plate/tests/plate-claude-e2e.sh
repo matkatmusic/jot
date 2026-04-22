@@ -6,12 +6,12 @@
 # and verifies plate state + git diffs.
 #
 # Usage:
-#   bash tests/plate-claude-e2e.sh           # run tests
-#   bash tests/plate-claude-e2e.sh --attach  # pause for tmux attach before tests
+#   bash skills/plate/tests/plate-claude-e2e.sh           # run tests
+#   bash skills/plate/tests/plate-claude-e2e.sh --attach  # pause for tmux attach before tests
 set -uo pipefail
 
 THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$THIS_DIR/../../.." && pwd)"
 
 source "$REPO_ROOT/common/scripts/silencers.sh"
 source "$REPO_ROOT/common/scripts/tmux.sh"

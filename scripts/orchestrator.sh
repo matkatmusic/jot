@@ -21,6 +21,9 @@ case "$PROMPT" in
   "/plate"|"/plate "*|$'/plate\n'*)
     printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/plate/scripts/plate-orchestrator.sh"
     ;;
+  "/debate"|"/debate "*|$'/debate\n'*)
+    printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/debate/scripts/debate-orchestrator.sh"
+    ;;
   *)
     exit 0
     ;;

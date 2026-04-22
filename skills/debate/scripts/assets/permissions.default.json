@@ -1,0 +1,10 @@
+{
+  "_doc": "Default permissions for debate headless claude agents.",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write(//${REPO_ROOT}/Debates/**)",
+      "Edit(//${REPO_ROOT}/Debates/**)"
+    ]
+  }
+}

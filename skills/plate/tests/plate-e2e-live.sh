@@ -5,13 +5,13 @@
 # stacks multiple plates, then tests --show, --next, --done.
 #
 # Usage:
-#   bash tests/plate-e2e-live.sh           # run tests immediately
-#   bash tests/plate-e2e-live.sh --attach  # pause before tests so you can
-#                                          # tmux attach -t plate-e2e
+#   bash skills/plate/tests/plate-e2e-live.sh           # run tests immediately
+#   bash skills/plate/tests/plate-e2e-live.sh --attach  # pause before tests so you can
+#                                                       # tmux attach -t plate-e2e
 set -uo pipefail
 
 THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$THIS_DIR/../../.." && pwd)"
 : "${CLAUDE_PLUGIN_ROOT:=$REPO_ROOT}"
 : "${CLAUDE_PLUGIN_DATA:=$REPO_ROOT/.plate-e2e-data}"
 export CLAUDE_PLUGIN_ROOT CLAUDE_PLUGIN_DATA

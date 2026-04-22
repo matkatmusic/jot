@@ -144,11 +144,11 @@ export CLAUDE_PLUGIN_ROOT=~/.claude/plugins/cache/matkatmusic-jot/jot/1.0.0
 export CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/jot
 
 # Unit tests — stubbed tmux + JOT_SKIP_LAUNCH=1, no real workers
-bash "$CLAUDE_PLUGIN_ROOT/tests/jot-test-suite.sh" all
+bash "$CLAUDE_PLUGIN_ROOT/skills/jot/tests/jot-test-suite.sh" all
 
 # End-to-end — fires real /jot invocations, spawns real background claude workers
 export TEST_PROJECT=~/some-claude-trusted-project
-bash "$CLAUDE_PLUGIN_ROOT/tests/jot-e2e-live.sh" all
+bash "$CLAUDE_PLUGIN_ROOT/skills/jot/tests/jot-e2e-live.sh" all
 ```
 
 Expected: unit suite reports `PASS=30 FAIL=0` (one skipped when `JOT_TEST_TRANSCRIPT` is unset); e2e suite reports all 6 scenarios green (cold_start, warm_idle, transcript_fallback, cross_project, crash_recovery, diag_collector).

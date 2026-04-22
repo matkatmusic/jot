@@ -20,7 +20,7 @@ set -uo pipefail
 # Plugin-env vars: required (jot.sh asserts). Default to derived-from-this-file
 # so the suite can run from a local checkout without a formal plugin install.
 THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$THIS_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$THIS_DIR/../../.." && pwd)"
 : "${CLAUDE_PLUGIN_ROOT:=$REPO_ROOT}"
 : "${CLAUDE_PLUGIN_DATA:=$REPO_ROOT/.e2e-data}"
 mkdir -p "$CLAUDE_PLUGIN_DATA"
@@ -34,7 +34,7 @@ TEST_PROJECT="${TEST_PROJECT:?set TEST_PROJECT to an absolute path for a Claude 
 CROSS_PROJECT="${CROSS_PROJECT:-${CLAUDE_PLUGIN_DATA}/e2e/cross-project-test}"
 
 SCRIPTS_DIR="${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts"
-# shellcheck source=../common/scripts/tmux-launcher.sh
+# shellcheck source=../../../common/scripts/tmux-launcher.sh
 . "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux-launcher.sh"
 JOT_SH="$SCRIPTS_DIR/jot-orchestrator.sh"
 DIAG_SH="$THIS_DIR/jot-diag-collect.sh"

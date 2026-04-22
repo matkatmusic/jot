@@ -244,6 +244,12 @@ tmux_new_pane() {
   invoke_command tmux split-window -t "$1" "${@:2}"
 }
 
+# usage: tmux_kill_pane <pane_target>
+# returns: 0 on success, nonzero if pane does not exist
+tmux_kill_pane() {
+  invoke_command tmux kill-pane -t "$1"
+}
+
 # usage: tmux_capture_pane <pane_target> [lines]
 # Prints the target pane's visible contents to stdout. If [lines] is given,
 # also includes that many lines of scrollback history before the visible area.
@@ -365,6 +371,34 @@ tmux_pane_tests() {
     fail=$((fail + 1))
   else
     echo "PASS: select_pane fails on nonexistent target"
+    pass=$((pass + 1))
+  fi
+
+  # kill_pane removes a live pane (use the pane we added earlier)
+  local second_id
+  second_id=$(tmux list-panes -t "$test_session" -F '#{pane_id}' 2>/dev/null | sed -n '2p')
+  if [ -n "$second_id" ] && tmux_kill_pane "$second_id"; then
+    echo "PASS: kill_pane succeeded on live pane"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: kill_pane failed on live pane"
+    fail=$((fail + 1))
+  fi
+  panes=$(tmux_list_panes "$test_session" | wc -l | tr -d ' ')
+  if [ "$panes" = "1" ]; then
+    echo "PASS: list_panes shows 1 pane after kill_pane"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: list_panes shows $panes panes, expected 1"
+    fail=$((fail + 1))
+  fi
+
+  # kill_pane fails on nonexistent target
+  if hide_errors tmux_kill_pane "nonexistent-$$"; then
+    echo "FAIL: kill_pane should fail on nonexistent target"
+    fail=$((fail + 1))
+  else
+    echo "PASS: kill_pane fails on nonexistent target"
     pass=$((pass + 1))
   fi
 
