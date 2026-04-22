@@ -14,6 +14,18 @@ PROMPT=$(printf '%s' "$INPUT" | hide_errors jq -r '.prompt // ""')
 # Strip leading whitespace so "  /jot foo" still dispatches.
 PROMPT="${PROMPT#"${PROMPT%%[![:space:]]*}"}"
 
+# Claude Code namespaces plugin skills as "/<plugin>:<skill>" when
+# disambiguation is needed. Normalise "/jot:todo-list" → "/todo-list" so the
+# case branches below don't have to enumerate both forms. We rewrite both the
+# local $PROMPT (for the case match) and the forwarded JSON's .prompt field
+# (so sub-orchestrators see the same normalised form).
+case "$PROMPT" in
+  /jot:*)
+    PROMPT="/${PROMPT#/jot:}"
+    INPUT=$(printf '%s' "$INPUT" | hide_errors jq --arg p "$PROMPT" '.prompt = $p')
+    ;;
+esac
+
 case "$PROMPT" in
   "/jot"|"/jot "*|$'/jot\n'*)
     printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/jot/scripts/jot-orchestrator.sh"

@@ -60,4 +60,14 @@ assert_dispatch "/todo-clean"      ""
 # Arbitrary text must not route anywhere.
 assert_dispatch "hello world"      ""
 
-echo "PASS: orchestrator routes all 6 prefixes correctly; /todo-clean falls through"
+# Namespaced forms (Claude Code "/jot:<skill>" disambiguation) must dispatch.
+assert_dispatch "/jot:jot foo"       "dispatched:jot"
+assert_dispatch "/jot:plate"         "dispatched:plate"
+assert_dispatch "/jot:debate topic"  "dispatched:debate"
+assert_dispatch "/jot:todo an idea"  "dispatched:todo"
+assert_dispatch "/jot:todo"          "dispatched:todo"
+assert_dispatch "/jot:todo-list"     "dispatched:todo-list"
+# /jot:todo-clean still falls through — same as bare /todo-clean.
+assert_dispatch "/jot:todo-clean"    ""
+
+echo "PASS: orchestrator routes all 6 bare prefixes AND their /jot: namespaced forms; /todo-clean falls through"
