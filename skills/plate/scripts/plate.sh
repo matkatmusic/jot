@@ -139,7 +139,14 @@ plate_main() {
 
   hide_errors printf '%s plate session=%s prompt="%s"\n' "$(date -Iseconds)" "$SESSION_ID" "$PROMPT" >> "$LOG_FILE"
 
-  trap 'rc=$?; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
+  # Guard against subshell execution: with `set -E`, this trap is inherited
+  # into every `$(...)` command substitution. If a command inside
+  # invoke_command's `$(...)` fails, the trap fires there first — emitting the
+  # block JSON into the captured output, then `exit 0` would make the parent
+  # think the command succeeded. Skip the emit-and-exit-0 path when
+  # BASH_SUBSHELL > 0; just propagate the original rc so the parent's trap
+  # can handle it cleanly.
+  trap 'rc=$?; [ "$BASH_SUBSHELL" -gt 0 ] && exit "$rc"; plate_log_stack_trace "$rc" "$LINENO" "$BASH_COMMAND"; emit_block "plate crashed (rc=$rc line=$LINENO cmd=$BASH_COMMAND) — see $LOG_FILE"; exit 0' ERR
 
   hide_errors plate_discover_repo_root || PLATE_ROOT=""
   if [ -n "${PLATE_ROOT:-}" ]; then

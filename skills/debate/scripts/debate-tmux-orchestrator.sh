@@ -62,7 +62,17 @@ agent_launch_cmd() {
     # read_file (topic/context/other agents' outputs) + write_file (r<N>_gemini.md).
     # Any other tool use (shell, edit, glob) will still prompt — and since no one
     # is watching the pane, that will hit the stage timeout and surface as a failure.
-    gemini) echo "gemini --allowed-tools 'read_file,write_file'" ;;
+    #
+    # gemini_model.txt is written by detect_available_agents in debate.sh when
+    # the primary model is quota-exhausted and a fallback (e.g.
+    # gemini-3-flash-preview) passed the smoke test. Empty file = use CLI default.
+    gemini)
+      local model_args=""
+      if [ -s "$DEBATE_DIR/gemini_model.txt" ]; then
+        model_args=" -m $(cat "$DEBATE_DIR/gemini_model.txt")"
+      fi
+      echo "gemini${model_args} --allowed-tools 'read_file,write_file'"
+      ;;
     # -a never: codex never prompts for approval (non-interactive-safe).
     # --add-dir: grants write access to $DEBATE_DIR (codex docs: prefer this
     # over --sandbox danger-full-access for targeted write permissions).

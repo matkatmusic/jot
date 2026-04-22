@@ -23,15 +23,40 @@ _run_with_timeout() {
   return $rc
 }
 
+# Probe which gemini model responds within 30s. The default model is the
+# first choice; on failure (typically quota exhaustion, HTTP 429) we retry
+# with `-m gemini-3-flash-preview`, a lighter model that sits on a separate
+# quota tier. Echoes the `-m` value on success (empty string = use default),
+# returns rc=1 if neither candidate answers.
+debate_gemini_working_model() {
+  if _run_with_timeout 30 gemini -p "Reply with exactly: ok" >/dev/null 2>&1; then
+    printf ''
+    return 0
+  fi
+  if _run_with_timeout 30 gemini -m gemini-3-flash-preview -p "Reply with exactly: ok" >/dev/null 2>&1; then
+    printf 'gemini-3-flash-preview'
+    return 0
+  fi
+  return 1
+}
+
 detect_available_agents() {
   AVAILABLE_AGENTS=(claude)
 
   if command -v gemini >/dev/null 2>&1; then
     if [[ -f "$HOME/.gemini/oauth_creds.json" ]] || [[ -n "${GEMINI_API_KEY:-}" ]] || [[ -n "${GOOGLE_API_KEY:-}" ]]; then
-      if _run_with_timeout 30 gemini -p "Reply with exactly: ok" >/dev/null 2>&1; then
+      local gemini_model
+      if gemini_model=$(debate_gemini_working_model); then
         AVAILABLE_AGENTS+=(gemini)
+        # Persist the chosen model for the tmux orchestrator. Empty content
+        # means "use CLI default"; the orchestrator branches on file non-emptiness.
+        printf '%s' "$gemini_model" > "$DEBATE_DIR/gemini_model.txt"
+        if [ -n "$gemini_model" ]; then
+          hide_errors printf '%s debate: gemini primary model unavailable, using fallback %s\n' \
+            "$(date -Iseconds)" "$gemini_model" >> "$LOG_FILE"
+        fi
       else
-        hide_errors printf '%s debate: gemini smoke test failed\n' "$(date -Iseconds)" >> "$LOG_FILE"
+        hide_errors printf '%s debate: gemini smoke test failed (primary + fallback)\n' "$(date -Iseconds)" >> "$LOG_FILE"
       fi
     else
       hide_errors printf '%s debate: gemini no auth credentials\n' "$(date -Iseconds)" >> "$LOG_FILE"
@@ -127,7 +152,14 @@ debate_main() {
     exit 0
   fi
 
-  trap 'rc=$?; emit_block "debate crashed at line $LINENO (rc=$rc)"; exit 0' ERR
+  # Guard against subshell execution: with `set -E`, this trap is inherited
+  # into every `$(...)` command substitution. If a command inside
+  # invoke_command's `$(...)` fails, the trap fires there first — emitting the
+  # block JSON into the captured output, then `exit 0` would make the parent
+  # think the command succeeded. Skip the emit-and-exit-0 path when
+  # BASH_SUBSHELL > 0; just propagate the original rc so the parent's trap
+  # can handle it cleanly.
+  trap 'rc=$?; [ "$BASH_SUBSHELL" -gt 0 ] && exit "$rc"; emit_block "debate crashed at line $LINENO (rc=$rc)"; exit 0' ERR
 
   # Detect which agents are installed, authenticated, and responsive.
   # Skipping this in favor of a hardcoded list means the hook reports

@@ -1,0 +1,17 @@
+# Debate — Round 2: Cross-Critique
+
+## Your Round 1 Response
+Read from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-21T21-59-18_-claude-plans-the-skills-defined-in-snaz/r1_codex.md
+
+## Other Agents' Round 1 Responses
+Read claude's response from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-21T21-59-18_-claude-plans-the-skills-defined-in-snaz/r1_claude.md
+
+## Instructions
+- Identify agreement and disagreement across responses
+- Validate or challenge claims with evidence
+- Concede where others made stronger arguments
+- Raise new considerations from reading their perspectives
+
+## Output
+Write your critique as markdown to: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-21T21-59-18_-claude-plans-the-skills-defined-in-snaz/r2_codex.md
+Do not write to any other file.

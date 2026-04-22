@@ -154,7 +154,14 @@ jot_main() {
   SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "?"') || SESSION_ID="?"
   hide_errors printf '%s jot session=%s idea_len=%s\n' "$(date -Iseconds)" "$SESSION_ID" "${#IDEA}" >> "$LOG_FILE"
 
-  trap 'rc=$?; emit_block "jot crashed at line $LINENO (rc=$rc)"; hide_errors printf "%s FAIL line=%s rc=%s\n" "$(date -Iseconds)" "$LINENO" "$rc" >> "$LOG_FILE"; exit 0' ERR
+  # Guard against subshell execution: with `set -E`, this trap is inherited
+  # into every `$(...)` command substitution. If a command inside
+  # invoke_command's `$(...)` fails, the trap fires there first — emitting the
+  # block JSON into the captured output, then `exit 0` would make the parent
+  # think the command succeeded. Skip the emit-and-exit-0 path when
+  # BASH_SUBSHELL > 0; just propagate the original rc so the parent's trap
+  # can handle it cleanly.
+  trap 'rc=$?; [ "$BASH_SUBSHELL" -gt 0 ] && exit "$rc"; emit_block "jot crashed at line $LINENO (rc=$rc)"; hide_errors printf "%s FAIL line=%s rc=%s\n" "$(date -Iseconds)" "$LINENO" "$rc" >> "$LOG_FILE"; exit 0' ERR
 
   TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
   CWD=$(printf '%s' "$INPUT" | hide_errors jq -r '.cwd // empty')

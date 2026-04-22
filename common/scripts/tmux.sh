@@ -409,11 +409,18 @@ tmux_pane_tests() {
 }
 #==================================================
 # usage: tmux_new_window <session_name> <window_name> [extra_tmux_args...]
-# Creates a new window. Extra args pass through to `tmux new-window -t <s> -n <w>`
+# Creates a new window. Extra args pass through to `tmux new-window -t <s>: -n <w>`
 # (e.g. `-c cwd`, trailing shell-command).
+#
+# The target is written `"$1:"` — the trailing colon forces tmux to parse the
+# argument as a session target, not as a (prefix-matched) window name. Without
+# it, `tmux new-window -t foo` picks the active window whose name begins with
+# "foo" and fails with "index N in use" when that window already occupies the
+# slot. This bit /debate: the session "debate" held an initial window named
+# "debate-<timestamp>_<slug>", so the next /debate invocation silently failed.
 # returns: 0 on success, nonzero on failure
 tmux_new_window() {
-  invoke_command tmux new-window -t "$1" -n "$2" "${@:3}"
+  invoke_command tmux new-window -t "$1:" -n "$2" "${@:3}"
 }
 
 # usage: tmux_kill_window <window_target>
@@ -543,6 +550,23 @@ tmux_window_tests() {
     echo "PASS: new_window fails on nonexistent session"
     pass=$((pass + 1))
   fi
+
+  # Regression: new_window must not fail when the session's initial window
+  # name is a prefix of the session name. This is the production path hit by
+  # /debate, where the session "debate" has an initial window named
+  # "debate-<timestamp>_<slug>". Bare `tmux new-window -t debate` would
+  # prefix-match the existing window and error with "index 0 in use"; a
+  # session-scoped target `-t debate:` avoids the ambiguity.
+  local prefix_session="tmux-sh-prefix-test-$$"
+  tmux_new_session "$prefix_session" -n "${prefix_session}-win-0" 2>/dev/null
+  if tmux_new_window "$prefix_session" "${prefix_session}-win-1" 2>/dev/null; then
+    echo "PASS: new_window handles prefix-colliding window name"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: new_window failed when window name prefix-matches session name"
+    fail=$((fail + 1))
+  fi
+  tmux_kill_session "$prefix_session" 2>/dev/null
 
   tmux_kill_session "$test_session" 2>/dev/null
 
