@@ -5,6 +5,21 @@ All notable changes to the jot plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-04-21
+
+### Added
+- `/todo` skill — capture a numbered TODO via `/todo <idea>`. Foreground claude asks clarifying questions when the idea is vague, then spawns a background Claude in a per-invocation tmux pane that scans git context and writes the final `Todos/<NNN>_<slug>.md`. IDs are claimed atomically via `skills/todo/scripts/scan-existing-todos.sh`.
+- `/todo-list` skill — in-hook python formatter reads YAML frontmatter from `Todos/*.md` and emits an ID / title / created / branch block synchronously. No tmux.
+- `/todo-clean` skill — interactive foreground scan of open TODOs against `git log --since=<created>`; asks per-candidate via `AskUserQuestion` before moving to `Todos/done/`. Ported from the retired `matkatmusic_claude_skills` submodule.
+- `skills/todo/scripts/assets/permissions.default.json` — new bundled allowlist with tightened `${REPO_ROOT}` anchoring and literal `~/` for home paths.
+
+### Changed
+- `scripts/orchestrator.sh` — added `/todo` and `/todo-list` dispatch branches alongside `/jot`, `/plate`, `/debate`. `/todo-clean` intentionally falls through and resolves via Claude's skill dispatcher.
+- `.claude-plugin/plugin.json` — version bumped to 1.1.0; description and keywords list updated to cover the three new skills.
+
+### Migrated from
+- `github.com/matkatmusic/matkatmusic_claude_skills` submodule (now removed from dotfiles). The three skills (`/todo`, `/todo-list`, `/todo-clean`) are exclusively accessible via this plugin.
+
 ## [1.0.0] — 2026-04-20
 
 First public release. Ships two focus-preserving skills (`/jot` and `/plate`) under one plugin, with a unified orchestrator dispatcher, per-invocation tmux workers, and lifecycle-safe permission seeding.

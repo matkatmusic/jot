@@ -1,0 +1,16 @@
+{
+  "_doc": "Default permissions for the background /todo worker. Expanded per-invocation by expand_permissions.py. See skills/todo/SKILL.md for the foreground flow. The installed copy lives at ${CLAUDE_PLUGIN_DATA}/todo-permissions.local.json — edit that file to customise; changes take effect on the next /todo. Do NOT edit this bundled default — it will be overwritten on plugin upgrade.",
+  "permissions": {
+    "allow": [
+      "Read(${REPO_ROOT}/Todos/**)",
+      "Write(${REPO_ROOT}/Todos/**)",
+      "Edit(${REPO_ROOT}/Todos/**)",
+      "Read(${REPO_ROOT}/.claude/plans/**)",
+      "Read(~/.claude/projects/**)",
+      "Bash(bash ${REPO_ROOT}/skills/todo/scripts/scan-existing-todos.sh:*)",
+      "Bash(rm -f ${REPO_ROOT}/Todos/.todo-state/id-*.claim)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

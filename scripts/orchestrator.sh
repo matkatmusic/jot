@@ -2,7 +2,7 @@
 # orchestrator.sh — UserPromptSubmit dispatcher. Reads hook JSON from stdin,
 # inspects .prompt, and delegates to the /jot or /plate sub-orchestrator.
 # Unknown prompts pass through silently (exit 0).
-set -euo pipefail
+set -eEuo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
@@ -23,6 +23,12 @@ case "$PROMPT" in
     ;;
   "/debate"|"/debate "*|$'/debate\n'*)
     printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/debate/scripts/debate-orchestrator.sh"
+    ;;
+  "/todo"|"/todo "*|$'/todo\n'*)
+    printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/todo/scripts/todo-orchestrator.sh"
+    ;;
+  "/todo-list"|"/todo-list "*|$'/todo-list\n'*)
+    printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/todo-list/scripts/todo-list-orchestrator.sh"
     ;;
   *)
     exit 0

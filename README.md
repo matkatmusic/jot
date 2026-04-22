@@ -1,6 +1,6 @@
-# jot + plate
+# jot + plate + todo
 
-Two focus-preserving skills for Claude Code. Both work by intercepting the prompt via a `UserPromptSubmit` hook, doing the durable work synchronously, and handing off enrichment or follow-up to a background Claude in tmux — so your current conversation keeps running uninterrupted.
+Focus-preserving skills for Claude Code. Both work by intercepting the prompt via a `UserPromptSubmit` hook, doing the durable work synchronously, and handing off enrichment or follow-up to a background Claude in tmux — so your current conversation keeps running uninterrupted.
 
 ## `/jot <idea>`
 
@@ -10,6 +10,21 @@ Capture a mid-development idea without losing focus. Writes the idea plus surrou
 
 - **Phase 1 (durable write)** — `scripts/orchestrator.sh` dispatches `/jot` prompts to `skills/jot/scripts/jot-orchestrator.sh`, which writes the idea and context to `Todos/<timestamp>_input.txt` **before** any enrichment can fail, then blocks the prompt so it never reaches the foreground Claude.
 - **Phase 2 (background processing)** — Each `/jot` spawns a dedicated background `claude` instance in its own tmux pane inside the shared `jot:jots` window. The worker reads `input.txt`, follows embedded instructions, writes `Todos/<slug>.md`, overwrites `input.txt` with a `PROCESSED:` success marker, and its `Stop` hook kills the pane. One worker per invocation — no shared queue, no cross-invocation contamination. Multiple `/jot` calls can run concurrently.
+
+## `/todo <idea>`
+
+Capture a numbered, structured TODO without losing focus. The foreground claude asks 1–3 clarifying questions if your idea is vague, then a background Claude worker in a dedicated tmux pane writes `Todos/<NNN>_<slug>.md` with frontmatter (id, title, status, created, branch) plus sections for Idea, Context, Recent commits, Uncommitted files, Active plan, and Dependencies.
+
+- IDs are claimed atomically via `set -C` (noclobber) on a sentinel file, so two concurrent `/todo` calls never collide on the same ID.
+- Worker permissions are tight: read anywhere under `Todos/` and `.claude/plans/`, write only under `Todos/`, and two narrow `Bash` forms for the ID-claim helper and sentinel cleanup.
+
+## `/todo-list`
+
+Read-only summary of all open TODOs in `Todos/`. Runs entirely inside the `UserPromptSubmit` hook — a python3 formatter parses YAML frontmatter from every `.md` (excluding `Todos/done/`) and emits ID / title / created / branch for each, plus a count. No tmux, no background worker.
+
+## `/todo-clean`
+
+Interactive foreground scan of open TODOs against `git log --since=<created>`. For each candidate whose commit history suggests resolution, asks via `AskUserQuestion` before moving it to `Todos/done/` and stamping `status: done` + `resolved: <iso>` in the frontmatter.
 
 ## `/plate`
 
@@ -31,8 +46,8 @@ Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to
 
 ## Architecture
 
-- `scripts/orchestrator.sh` — single dispatcher wired into `hooks/hooks.json:UserPromptSubmit`; routes `/jot` → `skills/jot/…` and `/plate` → `skills/plate/…`
-- `skills/jot/scripts/`, `skills/plate/scripts/` — per-skill orchestrators, lifecycle hooks, assets, prompts
+- `scripts/orchestrator.sh` — single dispatcher wired into `hooks/hooks.json:UserPromptSubmit`; routes `/jot`, `/plate`, `/debate`, `/todo`, `/todo-list` to their per-skill orchestrators. `/todo-clean` falls through and is resolved by Claude's skill dispatcher.
+- `skills/jot/scripts/`, `skills/plate/scripts/`, `skills/todo/scripts/`, `skills/todo-list/scripts/` — per-skill orchestrators, lifecycle hooks, assets, prompts. `skills/todo-clean/` is SKILL.md-only (no hook).
 - `common/scripts/` — shared helpers (`tmux.sh`, `invoke_command.sh`, `silencers.sh`, `git.sh`, `lock.sh`, `platform.sh`, `hook-json.sh`, `claude-launcher.sh`, `permissions-seed.sh`) + namespaced python helpers (`common/scripts/jot/`, `common/scripts/plate/`)
 - Lifecycle-safe hook scripts are copied into a per-invocation tmpdir at launch, so `claude plugin update` can't yank them mid-run
 
