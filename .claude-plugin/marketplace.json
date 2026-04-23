@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "matkatmusic/jot — capture ideas with /jot and stack WIP with /plate, without losing focus",
-    "version": "1.0.0"
+    "version": "1.1.1"
   },
   "plugins": [
     {
       "name": "jot",
       "source": "./",
       "description": "Two focus-preserving skills: /jot captures mid-development ideas into Todos/ via a background Claude in tmux; /plate is a stack-of-plates WIP tracker that snapshots uncommitted work when switching tasks and replays the stack as sequential commits with /plate --done.",
-      "version": "1.0.0",
+      "version": "1.1.1",
       "author": {
         "name": "Matkat Music LLC"
       },
