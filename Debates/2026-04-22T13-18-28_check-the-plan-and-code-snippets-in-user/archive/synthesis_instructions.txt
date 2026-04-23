@@ -1,0 +1,27 @@
+# Debate — Round 3: Synthesis
+
+3 agents (claude gemini codex) debated across two rounds. Produce a balanced assessment.
+
+## Round 1 Responses
+Read claude R1 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_claude.md
+Read gemini R1 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_gemini.md
+Read codex R1 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_codex.md
+
+## Round 2 Responses
+Read claude R2 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r2_claude.md
+Read gemini R2 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r2_gemini.md
+Read codex R2 from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r2_codex.md
+
+## Structure
+1. **Topic**: One-line restatement
+2. **Agreement**: Where agents align
+3. **Disagreement**: Where they diverge, strongest argument per side
+4. **Strongest Arguments**: Most compelling points, attributed
+5. **Weaknesses**: Arguments successfully challenged in R2
+6. **Path Forward**: Synthesized recommendation
+7. **Confidence**: High/Medium/Low with reasoning
+8. **Open Questions**: Unresolved issues
+
+## Output
+Write synthesis as markdown to: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/synthesis.md
+Do not write to any other file.
