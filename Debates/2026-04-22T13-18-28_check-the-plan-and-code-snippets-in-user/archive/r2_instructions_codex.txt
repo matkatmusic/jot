@@ -1,0 +1,18 @@
+# Debate — Round 2: Cross-Critique
+
+## Your Round 1 Response
+Read from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_codex.md
+
+## Other Agents' Round 1 Responses
+Read claude's response from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_claude.md
+Read gemini's response from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r1_gemini.md
+
+## Instructions
+- Identify agreement and disagreement across responses
+- Validate or challenge claims with evidence
+- Concede where others made stronger arguments
+- Raise new considerations from reading their perspectives
+
+## Output
+Write your critique as markdown to: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T13-18-28_check-the-plan-and-code-snippets-in-user/r2_codex.md
+Do not write to any other file.

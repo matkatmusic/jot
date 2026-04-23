@@ -1,0 +1,18 @@
+# Debate — Round 2: Cross-Critique
+
+## Your Round 1 Response
+Read from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T21-45-08_-claude-plans-debate-is-not-launching-ni/r1_claude.md
+
+## Other Agents' Round 1 Responses
+Read gemini's response from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T21-45-08_-claude-plans-debate-is-not-launching-ni/r1_gemini.md
+Read codex's response from: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T21-45-08_-claude-plans-debate-is-not-launching-ni/r1_codex.md
+
+## Instructions
+- Identify agreement and disagreement across responses
+- Validate or challenge claims with evidence
+- Concede where others made stronger arguments
+- Raise new considerations from reading their perspectives
+
+## Output
+Write your critique as markdown to: /Users/matkatmusicllc/Programming/jot/Debates/2026-04-22T21-45-08_-claude-plans-debate-is-not-launching-ni/r2_claude.md
+Do not write to any other file.
