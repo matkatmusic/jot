@@ -36,6 +36,12 @@ case "$PROMPT" in
   "/debate"|"/debate "*|$'/debate\n'*)
     printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/debate/scripts/debate-orchestrator.sh"
     ;;
+  "/debate-retry"|"/debate-retry "*|$'/debate-retry\n'*)
+    printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/debate-retry/scripts/debate-retry-orchestrator.sh"
+    ;;
+  "/debate-abort"|"/debate-abort "*|$'/debate-abort\n'*)
+    printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/debate-abort/scripts/debate-abort-orchestrator.sh"
+    ;;
   "/todo"|"/todo "*|$'/todo\n'*)
     printf '%s' "$INPUT" | bash "$PLUGIN_ROOT/skills/todo/scripts/todo-orchestrator.sh"
     ;;

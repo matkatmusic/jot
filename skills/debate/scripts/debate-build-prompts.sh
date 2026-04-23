@@ -3,6 +3,11 @@
 # Usage: DEBATE_AGENTS="claude gemini codex" debate-build-prompts.sh <stage> <debate_dir> <plugin_root>
 #   stage: r1 | r2 | synthesis
 # DEBATE_AGENTS env var: space-separated list of active agents for this debate.
+# AGENT_FILTER env var (optional): when set to an agent name, only emit that
+#   agent's instruction file. AGENTS list still drives composition context
+#   (for R2's "others" loop and synthesis's full-roster refs). Allows a
+#   just-in-time rebuild for a newly-added agent without touching existing
+#   per-agent instruction files.
 set -euo pipefail
 
 STAGE="$1"
@@ -20,9 +25,17 @@ else
   done < "$DEBATE_DIR/agents.txt"
 fi
 
+FILTER="${AGENT_FILTER:-}"
+_emit_for_agent() {
+  [ -z "$FILTER" ] && return 0
+  [ "$FILTER" = "$1" ] && return 0
+  return 1
+}
+
 case "$STAGE" in
   r1)
     for agent in "${AGENTS[@]}"; do
+      _emit_for_agent "$agent" || continue
       DEBATE_DIR="$DEBATE_DIR" \
       OUTPUT_FILE="$DEBATE_DIR/r1_${agent}.md" \
         python3 "$RENDER" \
@@ -35,6 +48,7 @@ case "$STAGE" in
   r2)
     # Dynamic: agent count varies (2 or 3). Generated inline, not from template.
     for agent in "${AGENTS[@]}"; do
+      _emit_for_agent "$agent" || continue
       others=()
       for other in "${AGENTS[@]}"; do
         [ "$other" = "$agent" ] && continue
