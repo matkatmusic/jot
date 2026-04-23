@@ -23,6 +23,29 @@ _run_with_timeout() {
   return $rc
 }
 
+# Atomically claim the lowest-unused `debate-N` session. `tmux new-session -d`
+# is the atomic primitive: it returns non-zero on name collision, so looping
+# over N until one call succeeds is race-free across concurrent /debate hooks.
+# Avoids the TOCTOU window of a has-session pre-check. First window named
+# `main`; $1 (keepalive_cmd) becomes that window's argv. Prints claimed
+# session name on stdout. Bound is a safety cap on pathological tmux state.
+debate_claim_session() {
+  local keepalive_cmd="$1"
+  local n=1 session
+  while [ "$n" -lt 1000 ]; do
+    session="debate-$n"
+    if hide_errors tmux new-session -d -s "$session" \
+         -x 200 -y 60 \
+         -n main \
+         "$keepalive_cmd"; then
+      printf '%s\n' "$session"
+      return 0
+    fi
+    n=$((n + 1))
+  done
+  return 1
+}
+
 detect_available_agents() {
   AVAILABLE_AGENTS=(claude)
   GEMINI_MODEL=""
@@ -200,13 +223,31 @@ any_live_lock() {
   return 1
 }
 
+# live_debate_session <debate_dir> → prints the session currently hosting the
+# debate's panes, empty on failure. Since debate-N is chosen at claim time and
+# not stored on disk, we recover it by asking tmux which session owns any
+# still-live lock-file pane id. Self-healing across session renames; no
+# separate session-name artifact to keep in sync.
+live_debate_session() {
+  local dir="$1" lock pane_id session
+  for lock in "$dir"/.*.lock; do
+    [ -f "$lock" ] || continue
+    pane_id=$(sed -n 's|^debate:\(%[0-9]*\)$|\1|p' "$lock")
+    [ -n "$pane_id" ] || continue
+    session=$(hide_errors tmux display-message -p -t "$pane_id" '#{session_name}') || continue
+    [ -n "$session" ] && { printf '%s\n' "$session"; return 0; }
+  done
+  return 1
+}
+
 # debate_start_or_resume
 # Shared body invoked by fresh-start and resume paths. Caller sets:
 # TOPIC, DEBATE_DIR, RESUMING (0|1), AVAILABLE_AGENTS, GEMINI_MODEL,
 # CODEX_MODEL, SCRIPTS_DIR, CWD, REPO_ROOT, LOG_FILE.
 debate_start_or_resume() {
-  local window_name
-  window_name="debate-$(basename "$DEBATE_DIR")"
+  # One tmux session per invocation; always a single window named `main`.
+  # Session name `debate-N` is chosen at claim time below.
+  local window_name="main"
 
   # Snapshot composition BEFORE any rebuild modifies r1_instructions_*.txt.
   # The daemon uses this to detect drift (appeared/disappeared agents) and
@@ -238,24 +279,39 @@ debate_start_or_resume() {
   debate_build_claude_cmd
 
   local keepalive_cmd='exec sh -c '\''trap "" INT HUP TERM; printf "[debate keepalive]\n"; exec tail -f /dev/null'\'''
-  tmux_ensure_session debate "$window_name" "$CWD" "$keepalive_cmd" 'debate: keepalive'
-  hide_errors tmux resize-window -t "debate:${window_name}" -x 200 -y 60
+  local session
+  session=$(debate_claim_session "$keepalive_cmd") || {
+    emit_block "/debate: could not claim debate-<N> session (1000 already in use)"; exit 0
+  }
+  # Session-scoped options that tmux_ensure_session used to set. Kept here
+  # so the pane-title border (which `select-pane -T` writes to) actually
+  # renders, and so mouse works for the attached Terminal.
+  hide_errors tmux set-option -t "$session" remain-on-exit off
+  hide_errors tmux set-option -t "$session" mouse on
+  hide_errors tmux set-option -t "$session" pane-border-status top
+  hide_errors tmux set-option -t "$session" pane-border-format ' #{pane_title} '
+  # Title the keepalive pane with the debate's directory basename so
+  # live_debate_session (and human observers attaching via `tmux attach`)
+  # can tell at a glance which debate the session hosts, even after
+  # debate-N numbers get reused once a session dies.
+  hide_errors tmux select-pane -t "${session}:main" -T "keepalive:$(basename "$DEBATE_DIR")"
 
   local orch_log="$DEBATE_DIR/orchestrator.log"
   GEMINI_MODEL="$GEMINI_MODEL" CODEX_MODEL="$CODEX_MODEL" \
   DEBATE_AGENTS="${AVAILABLE_AGENTS[*]}" COMPOSITION_DRIFTED="$composition_drifted" \
+  SESSION="$session" \
     bash "$SCRIPTS_DIR/debate-tmux-orchestrator.sh" \
-      "$DEBATE_DIR" "$window_name" "$SETTINGS_FILE" "$CWD" "$REPO_ROOT" "${CLAUDE_PLUGIN_ROOT}" \
+      "$DEBATE_DIR" "$session" "$window_name" "$SETTINGS_FILE" "$CWD" "$REPO_ROOT" "${CLAUDE_PLUGIN_ROOT}" \
       >> "$orch_log" 2>&1 </dev/null &
   disown
 
-  spawn_terminal_if_needed "debate" "$LOG_FILE" "debate"
+  spawn_terminal_if_needed "$session" "$LOG_FILE" "debate"
 
   local agents_str="${AVAILABLE_AGENTS[*]}"
   local rel="Debates/$(basename "$DEBATE_DIR")"
   local verb="spawned"
   [ "$RESUMING" = 1 ] && verb="resumed"
-  emit_block "/debate ${verb} (${agents_str// /, }) → ${rel}/synthesis.md (~10-30 min). View: tmux attach -t debate:${window_name}"
+  emit_block "/debate ${verb} (${agents_str// /, }) → ${rel}/synthesis.md (~10-30 min). View: tmux attach -t ${session}"
 }
 
 # ── Main entry point ──
@@ -288,7 +344,8 @@ debate_main() {
       emit_block "/debate: already complete, see $existing/synthesis.md — or 'rm -rf $existing' to re-run"; exit 0
     fi
     if any_live_lock "$existing"; then
-      emit_block "/debate: already running for this topic → tmux attach -t debate:debate-$(basename "$existing")"; exit 0
+      local live; live=$(live_debate_session "$existing") || live="<unknown>"
+      emit_block "/debate: already running for this topic → tmux attach -t ${live}"; exit 0
     fi
     DEBATE_DIR="$existing"
     RESUMING=1
@@ -346,7 +403,8 @@ debate_retry_main() {
     emit_block "/debate-retry: already complete, see $best/synthesis.md"; exit 0
   fi
   if any_live_lock "$best"; then
-    emit_block "/debate-retry: still running → tmux attach -t debate:debate-$(basename "$best")"; exit 0
+    local live; live=$(live_debate_session "$best") || live="<unknown>"
+    emit_block "/debate-retry: still running → tmux attach -t ${live}"; exit 0
   fi
 
   DEBATE_DIR="$best"
@@ -380,7 +438,8 @@ debate_abort_main() {
   [ -z "$best" ] && { emit_block "/debate-abort: no debate found in this conversation"; exit 0; }
 
   if any_live_lock "$best"; then
-    emit_block "/debate-abort: debate is running. to force-kill: tmux kill-window -t debate:debate-$(basename "$best")"
+    local live; live=$(live_debate_session "$best") || live="<unknown>"
+    emit_block "/debate-abort: debate is running. to force-kill: tmux kill-session -t ${live}"
     exit 0
   fi
   rm -rf "$best"

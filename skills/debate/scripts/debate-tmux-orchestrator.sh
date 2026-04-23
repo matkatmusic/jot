@@ -1,10 +1,11 @@
 #!/bin/bash
 # debate-tmux-orchestrator.sh — background daemon that drives the full
-# R1 → R2 → synthesis flow inside the 'debate' tmux session. Forked from
+# R1 → R2 → synthesis flow inside this debate's tmux session. Forked from
 # debate.sh via: bash <this> ... >> orchestrator.log 2>&1 </dev/null &
 #
 # Preconditions (set up by debate.sh before forking):
-#   - tmux session 'debate' exists with window $WINDOW_NAME and a keepalive pane
+#   - tmux session $SESSION (named 'debate-<N>', unique per invocation) exists
+#     with a single 'main' window and a titled keepalive pane
 #   - $DEBATE_DIR/{topic.md,context.md,invoking_transcript.txt,r1_instructions_<agent>.txt} all present
 #   - $DEBATE_AGENTS env var holds the space-separated agent list for this debate
 #   - $SETTINGS_FILE is a claude settings.json granting writes to $DEBATE_DIR/**
@@ -22,14 +23,19 @@ set -uo pipefail
 # env vars and sets DEBATE_DAEMON_SOURCED=1 to skip positional parsing.
 if [ "${DEBATE_DAEMON_SOURCED:-0}" != 1 ]; then
   DEBATE_DIR="$1"
-  WINDOW_NAME="$2"
-  SETTINGS_FILE="$3"
-  CWD="$4"
-  REPO_ROOT="$5"
-  PLUGIN_ROOT="$6"
+  SESSION="$2"
+  WINDOW_NAME="$3"
+  SETTINGS_FILE="$4"
+  CWD="$5"
+  REPO_ROOT="$6"
+  PLUGIN_ROOT="$7"
 fi
 
-SESSION="debate"
+# Fail-fast: silent drift to a default 'debate' session is how the shared-
+# session bug existed in the first place. The sourced-mode harness MUST
+# export SESSION explicitly.
+: "${SESSION:?SESSION required (exported by caller or set via positional \$2)}"
+
 WINDOW_TARGET="${SESSION}:${WINDOW_NAME}"
 STAGE_TIMEOUT=$((15 * 60))
 
@@ -42,15 +48,17 @@ STAGE_TIMEOUT=$((15 * 60))
 # 1. Remove the per-invocation settings tmpdir (/tmp/debate.XXXXXX) created by
 #    debate.sh:debate_build_claude_cmd. Case-match guards against rm-ing a
 #    misconfigured SETTINGS_FILE pointing anywhere else.
-# 2. Kill this debate's window (keepalive + any surviving agent panes). The
-#    window-scoped kill preserves concurrent debates running in the same session.
+# 2. Kill this debate's session (keepalive + any surviving agent panes). Each
+#    /debate owns its own session now, so the session-scoped kill is the
+#    right blast radius. Concurrent debates run in sibling sessions and are
+#    not affected.
 cleanup() {
   local settings_dir
   settings_dir=$(dirname "$SETTINGS_FILE")
   case "$settings_dir" in
     /tmp/debate.*) rm -rf "$settings_dir" ;;
   esac
-  hide_errors tmux_kill_window "$WINDOW_TARGET"
+  hide_errors tmux_kill_session "$SESSION"
 }
 # Harness installs its own (no-op) cleanup before calling daemon_main.
 if [ "${DEBATE_DAEMON_SOURCED:-0}" != 1 ]; then
@@ -269,6 +277,7 @@ daemon_main() {
 echo "========================================"
 echo "[orch] DEBATE DAEMON"
 echo "[orch] Dir:     $DEBATE_DIR"
+echo "[orch] Session: $SESSION"
 echo "[orch] Window:  $WINDOW_TARGET"
 echo "[orch] Agents:  ${AGENTS[*]} (${#AGENTS[@]})"
 echo "[orch] Timeout: ${STAGE_TIMEOUT}s per stage"

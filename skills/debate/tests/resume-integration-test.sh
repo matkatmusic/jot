@@ -219,8 +219,12 @@ run_daemon_main() {
   local drift="$1"; shift
   (
     export DEBATE_DAEMON_SOURCED=1
+    # SESSION is fail-fast-required by the orchestrator now. Use a unique
+    # per-run name; the harness stubs all tmux ops anyway so the session
+    # never actually exists.
+    export SESSION="debate-test-$$"
     DEBATE_DIR="$debate_dir"
-    WINDOW_NAME="debate-$(basename "$DEBATE_DIR")"
+    WINDOW_NAME="main"
     SETTINGS_FILE="/tmp/fake-settings.json"
     CWD="$DEBATE_DIR"
     REPO_ROOT="$DEBATE_DIR"
@@ -241,6 +245,7 @@ run_daemon_main() {
     tmux_retile() { :; }
     tmux_kill_pane() { :; }
     tmux_kill_window() { :; }
+    tmux_kill_session() { :; }
     tmux_ensure_session() { :; }
     # Silence sleep across the daemon so tests run fast.
     sleep() { :; }

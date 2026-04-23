@@ -11,7 +11,7 @@ Triggered by the user typing `/debate <topic>` in Claude Code. `scripts/orchestr
 3. **R2 (daemon)** — kills R1 panes; builds per-agent R2 instructions referencing the *other* agents' R1 outputs; spawns 3 fresh panes; same launch/send-prompt pattern; polls for `r2_<agent>.md`.
 4. **Synthesis (daemon)** — kills R2 panes; builds `synthesis_instructions.txt`; spawns one Claude pane; polls for `synthesis.md`.
 
-End state: tmux session `debate` with keepalive pane + synthesis pane. User reads `synthesis.md` or attaches with `tmux attach -t debate`.
+End state: a fresh tmux session `debate-<N>` (unique per invocation, `N` = lowest unused integer) with a titled keepalive pane and a synthesis pane. The completion `emit_block` prints the exact `tmux attach -t debate-<N>` command. The session is killed when the daemon finishes.
 
 ## Permission flags per agent
 
