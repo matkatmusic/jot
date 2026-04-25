@@ -44,7 +44,7 @@ branch: feature
 body
 EOF
 
-out=$(TODOS_DIR="$TMP/Todos" python3 "$SCRIPT")
+out=$(TODOS_DIR="$TMP/Todos" TZ=America/Los_Angeles python3 "$SCRIPT")
 
 if ! printf '%s' "$out" | grep -q "ID: 2026-04-21T10-00-00"; then
   echo "FAIL: missing ID 2026-04-21T10-00-00 in output" >&2; echo "$out" >&2; exit 1
@@ -57,6 +57,12 @@ if printf '%s' "$out" | grep -q "ID: 2026-04-21T10-05-00"; then
 fi
 if ! printf '%s' "$out" | grep -q "^2 open TODOs$"; then
   echo "FAIL: count line missing or wrong" >&2; echo "$out" >&2; exit 1
+fi
+if ! printf '%s' "$out" | grep -qF "Created: Apr 21, 2026 @ 10:00:00am local time"; then
+  echo "FAIL: human-readable Created line missing" >&2; echo "$out" >&2; exit 1
+fi
+if printf '%s' "$out" | grep -q "Created: 2026-04-21T10:00:00-07:00"; then
+  echo "FAIL: raw ISO timestamp leaked into output" >&2; echo "$out" >&2; exit 1
 fi
 
 echo "PASS: format_open_todos filters and counts correctly"
