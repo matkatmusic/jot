@@ -53,8 +53,8 @@ if ! printf '%s' "$out" | grep -q '"decision": "block"'; then
   echo "got: $out" >&2
   exit 1
 fi
-if ! printf '%s' "$out" | grep -q 'ID: 2026-04-22T10-00-00'; then
-  echo "FAIL: seeded ID 2026-04-22T10-00-00 not present in block" >&2
+if ! printf '%s' "$out" | grep -q 'Title: namespace round-trip canary'; then
+  echo "FAIL: seeded TODO title not present in block" >&2
   echo "got: $out" >&2
   exit 1
 fi

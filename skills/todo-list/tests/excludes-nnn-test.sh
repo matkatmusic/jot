@@ -33,12 +33,12 @@ EOF
 
 out=$(TODOS_DIR="$TMP/Todos" python3 "$SCRIPT")
 
-if ! printf '%s' "$out" | grep -q "ID: 2026-04-25T10-00-00"; then
-  echo "FAIL: timestamp id missing from output" >&2
+if ! printf '%s' "$out" | grep -q "Title: timestamp entry"; then
+  echo "FAIL: timestamp entry missing from output" >&2
   echo "$out" >&2
   exit 1
 fi
-if printf '%s' "$out" | grep -qE "ID: 007|legacy nnn entry"; then
+if printf '%s' "$out" | grep -q "legacy nnn entry"; then
   echo "FAIL: legacy NNN entry leaked into output" >&2
   echo "$out" >&2
   exit 1

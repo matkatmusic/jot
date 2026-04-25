@@ -46,14 +46,17 @@ EOF
 
 out=$(TODOS_DIR="$TMP/Todos" TZ=America/Los_Angeles python3 "$SCRIPT")
 
-if ! printf '%s' "$out" | grep -q "ID: 2026-04-21T10-00-00"; then
-  echo "FAIL: missing ID 2026-04-21T10-00-00 in output" >&2; echo "$out" >&2; exit 1
+if ! printf '%s' "$out" | grep -q "Title: first open"; then
+  echo "FAIL: missing 'first open' title in output" >&2; echo "$out" >&2; exit 1
 fi
-if ! printf '%s' "$out" | grep -q "ID: 2026-04-21T10-10-00"; then
-  echo "FAIL: missing ID 2026-04-21T10-10-00 in output" >&2; echo "$out" >&2; exit 1
+if ! printf '%s' "$out" | grep -q "Title: third open"; then
+  echo "FAIL: missing 'third open' title in output" >&2; echo "$out" >&2; exit 1
 fi
-if printf '%s' "$out" | grep -q "ID: 2026-04-21T10-05-00"; then
-  echo "FAIL: done TODO 2026-04-21T10-05-00 leaked into output" >&2; echo "$out" >&2; exit 1
+if printf '%s' "$out" | grep -q "Title: done two"; then
+  echo "FAIL: done TODO 'done two' leaked into output" >&2; echo "$out" >&2; exit 1
+fi
+if printf '%s' "$out" | grep -qE "^ID:|^ *ID:"; then
+  echo "FAIL: ID: line still present (should be removed)" >&2; echo "$out" >&2; exit 1
 fi
 if ! printf '%s' "$out" | grep -q "^2 open TODOs$"; then
   echo "FAIL: count line missing or wrong" >&2; echo "$out" >&2; exit 1

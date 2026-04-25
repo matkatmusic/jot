@@ -79,7 +79,6 @@ if not todos:
 
 lines = []
 for t in todos:
-    lines.append(f"ID: {t.get('id', '?')}")
     lines.append(f"Created: {format_created(t.get('created', ''))}")
     lines.append(f"Title: {t.get('title', '?')}")
     lines.append(f"Branch: {t.get('branch', '?')}")
