@@ -5,6 +5,14 @@ All notable changes to the jot plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] — 2026-04-25
+
+### Changed
+- `/todo-list` no longer prints the redundant `ID:` line — the `Created:` timestamp already conveys it. Output is now Created / Title / Branch per TODO.
+
+### Fixed
+- `/todo` worker pane now deletes `Todos/<TIMESTAMP>_input.txt` on successful capture (the `audit.log` SUCCESS entry remains the durable record). On failure the file is preserved for debugging.
+
 ## [1.1.3] — 2026-04-25
 
 ### Changed
