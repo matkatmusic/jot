@@ -9,17 +9,26 @@
 
 # ── Provider detection (3-stage: binary + credentials + smoke test) ──
 
-# Bash-native timeout (macOS lacks GNU timeout)
+# Bash-native timeout (macOS lacks GNU timeout).
+# Uses SIGTERM followed by SIGKILL because agent CLIs (notably gemini) trap
+# SIGTERM and keep running to completion — causing the bash-level `wait` to
+# block for the agent's natural runtime (200s+) rather than the requested
+# timeout. SIGKILL cannot be caught, so the process dies within ~1s.
 _run_with_timeout() {
   local secs=$1; shift
   "$@" &
   local pid=$!
-  ( sleep "$secs" && kill "$pid" 2>/dev/null ) &
+  (
+    sleep "$secs"
+    hide_errors kill -TERM "$pid"
+    sleep 1
+    hide_errors kill -KILL "$pid"
+  ) &
   local watchdog=$!
-  wait "$pid" 2>/dev/null
+  hide_errors wait "$pid"
   local rc=$?
-  kill "$watchdog" 2>/dev/null
-  wait "$watchdog" 2>/dev/null
+  hide_errors kill -KILL "$watchdog"
+  hide_errors wait "$watchdog"
   return $rc
 }
 
@@ -46,57 +55,62 @@ debate_claim_session() {
   return 1
 }
 
+# _first_fallback_model <agent>
+# Reads the first model name from model-fallbacks.json for <agent>. Empty
+# string if no models listed. Used by detect_available_agents to assign a
+# model without running a live smoke test — because at least one agent CLI
+# (gemini) can take 200-400s to respond to a trivial `-p "Reply…"` probe,
+# making live smoke tests unusable here. launch_agent's 120s readiness
+# timeout catches broken agents at R1 spawn time instead.
+_first_fallback_model() {
+  local fallbacks_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/model-fallbacks.json"
+  local agent="$1"
+  hide_errors jq -r --arg a "$agent" '.[$a][0] // ""' "$fallbacks_json"
+}
+
+# _probe_gemini / _probe_codex — run inside backgrounded subshells. Presence
+# check only (binary + credentials). Empty stdout → unavailable. Non-empty
+# stdout → the fallback model name (or "" if no models configured).
+_probe_gemini() {
+  hide_output hide_errors command -v gemini || return 0
+  [[ -f "$HOME/.gemini/oauth_creds.json" ]] \
+    || [[ -n "${GEMINI_API_KEY:-}" ]] \
+    || [[ -n "${GOOGLE_API_KEY:-}" ]] \
+    || return 0
+  # Non-empty model name OR literal "present" sentinel so the outer `-s` check
+  # treats gemini as available even when no fallback model is configured.
+  local m; m=$(_first_fallback_model gemini)
+  printf '%s\n' "${m:-present}"
+}
+_probe_codex() {
+  hide_output hide_errors command -v codex || return 0
+  [[ -f "$HOME/.codex/auth.json" ]] || [[ -n "${OPENAI_API_KEY:-}" ]] || return 0
+  local m; m=$(_first_fallback_model codex)
+  printf '%s\n' "${m:-present}"
+}
+
 detect_available_agents() {
   AVAILABLE_AGENTS=(claude)
   GEMINI_MODEL=""
   CODEX_MODEL=""
 
-  local fallbacks_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/model-fallbacks.json"
-
-  # _try_agent_models <agent> <smoke_argv...>
-  # Reads fallback models for <agent> from model-fallbacks.json. Empty list →
-  # run the smoke command once unmodified. Non-empty → append '--model <m>'
-  # for each model until one passes. Argv array preserved end-to-end; no
-  # string interpolation, no eval.
-  _try_agent_models() {
-    local agent="$1"; shift
-    local -a base_cmd=("$@")
-    local -a models=()
-    local m
-    while IFS= read -r m; do
-      [ -n "$m" ] && models+=("$m")
-    done < <(jq -r --arg a "$agent" '.[$a][]?' "$fallbacks_json")
-
-    if [ "${#models[@]}" -eq 0 ]; then
-      if _run_with_timeout 30 "${base_cmd[@]}" >/dev/null 2>&1; then
-        echo ""
-        return 0
-      fi
-      return 1
-    fi
-
-    for m in "${models[@]}"; do
-      if _run_with_timeout 30 "${base_cmd[@]}" --model "$m" >/dev/null 2>&1; then
-        echo "$m"
-        return 0
-      fi
-      hide_errors printf '%s debate: %s model %s failed smoke test\n' \
-        "$(date -Iseconds)" "$agent" "$m" >> "$LOG_FILE"
-    done
-    return 1
-  }
-
-  if command -v gemini >/dev/null 2>&1 && { [[ -f "$HOME/.gemini/oauth_creds.json" ]] || [[ -n "${GEMINI_API_KEY:-}" ]] || [[ -n "${GOOGLE_API_KEY:-}" ]]; }; then
-    if GEMINI_MODEL=$(_try_agent_models gemini gemini -p "Reply with exactly: ok"); then
-      AVAILABLE_AGENTS+=(gemini)
-    fi
+  local tmpdir
+  tmpdir=$(mktemp -d /tmp/debate-detect.XXXXXX)
+  ( _probe_gemini > "$tmpdir/gemini" ) &
+  ( _probe_codex  > "$tmpdir/codex"  ) &
+  wait
+  local m
+  if [ -s "$tmpdir/gemini" ]; then
+    AVAILABLE_AGENTS+=(gemini)
+    m=$(cat "$tmpdir/gemini")
+    [ "$m" = "present" ] || GEMINI_MODEL="$m"
   fi
-
-  if command -v codex >/dev/null 2>&1 && { [[ -f "$HOME/.codex/auth.json" ]] || [[ -n "${OPENAI_API_KEY:-}" ]]; }; then
-    if CODEX_MODEL=$(_try_agent_models codex codex exec "Reply with exactly: ok" --full-auto); then
-      AVAILABLE_AGENTS+=(codex)
-    fi
+  if [ -s "$tmpdir/codex" ]; then
+    AVAILABLE_AGENTS+=(codex)
+    m=$(cat "$tmpdir/codex")
+    [ "$m" = "present" ] || CODEX_MODEL="$m"
   fi
+  rm -rf "$tmpdir"
 }
 
 # ── Claude settings builder ──
@@ -267,14 +281,27 @@ debate_start_or_resume() {
     [ "$_orig_sorted" != "$_new_sorted" ] && composition_drifted=1
   fi
 
-  # Per-agent R1 instruction build: only missing files get built, full
-  # composition provides context. Preserves existing per-agent files.
+  # Per-stage instruction build. Only missing files get built; full composition
+  # provides context. R2 and synthesis templates reference r1_<agent>.md /
+  # r2_<agent>.md only as paths (debate-build-prompts.sh never reads their
+  # content), so they can be built at /debate-start time — surfacing any
+  # template error here via emit_block rather than 15 min later in the daemon.
+  # Composition drift (resume path) still rebuilds r2/synth inside daemon_main.
   local _a
   for _a in "${AVAILABLE_AGENTS[@]}"; do
     [ -f "$DEBATE_DIR/r1_instructions_${_a}.txt" ] && continue
     DEBATE_AGENTS="${AVAILABLE_AGENTS[*]}" AGENT_FILTER="$_a" \
       bash "$SCRIPTS_DIR/debate-build-prompts.sh" r1 "$DEBATE_DIR" "${CLAUDE_PLUGIN_ROOT}"
   done
+  for _a in "${AVAILABLE_AGENTS[@]}"; do
+    [ -f "$DEBATE_DIR/r2_instructions_${_a}.txt" ] && continue
+    DEBATE_AGENTS="${AVAILABLE_AGENTS[*]}" AGENT_FILTER="$_a" \
+      bash "$SCRIPTS_DIR/debate-build-prompts.sh" r2 "$DEBATE_DIR" "${CLAUDE_PLUGIN_ROOT}"
+  done
+  if [ ! -f "$DEBATE_DIR/synthesis_instructions.txt" ]; then
+    DEBATE_AGENTS="${AVAILABLE_AGENTS[*]}" \
+      bash "$SCRIPTS_DIR/debate-build-prompts.sh" synthesis "$DEBATE_DIR" "${CLAUDE_PLUGIN_ROOT}"
+  fi
 
   debate_build_claude_cmd
 
@@ -364,7 +391,10 @@ debate_main() {
 
     local capture_script="${CLAUDE_PLUGIN_ROOT}/skills/jot/scripts/capture-conversation.py"
     if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] && [ -f "$capture_script" ]; then
-      hide_errors python3 "$capture_script" "$TRANSCRIPT_PATH" > "$DEBATE_DIR/context.md"
+      if ! hide_errors python3 "$capture_script" "$TRANSCRIPT_PATH" > "$DEBATE_DIR/context.md" \
+           || [ ! -s "$DEBATE_DIR/context.md" ]; then
+        printf '(conversation capture failed)\n' > "$DEBATE_DIR/context.md"
+      fi
     else
       printf '(no conversation context available)\n' > "$DEBATE_DIR/context.md"
     fi

@@ -4,7 +4,8 @@
     "allow": [
       "Read(**)",
       "Write(//${REPO_ROOT}/Debates/**)",
-      "Edit(//${REPO_ROOT}/Debates/**)"
+      "Edit(//${REPO_ROOT}/Debates/**)",
+      "Bash(ls:*)"
     ]
   }
 }
