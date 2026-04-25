@@ -9,6 +9,7 @@ Writes formatted list to stdout. Empty output means no open TODOs.
 import os
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 TODOS_DIR = os.environ.get("TODOS_DIR", "")
@@ -16,6 +17,7 @@ if not TODOS_DIR or not Path(TODOS_DIR).is_dir():
     sys.exit(0)
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+NNN_NAME_RE = re.compile(r"^\d{3}_.*\.md$")
 
 
 def parse_frontmatter(text):
@@ -31,8 +33,25 @@ def parse_frontmatter(text):
     return out
 
 
+def format_created(s):
+    if not s:
+        return "?"
+    try:
+        dt = datetime.fromisoformat(s).astimezone()
+    except (ValueError, TypeError):
+        return s
+    hour12 = (dt.hour % 12) or 12
+    suffix = "am" if dt.hour < 12 else "pm"
+    return (
+        f"{dt.strftime('%b')} {dt.day}, {dt.year} @ "
+        f"{hour12}:{dt.strftime('%M:%S')}{suffix} local time"
+    )
+
+
 todos = []
 for path in sorted(Path(TODOS_DIR).glob("*.md")):
+    if NNN_NAME_RE.match(path.name):
+        continue
     try:
         text = path.read_text(encoding="utf-8")
     except Exception:
@@ -60,8 +79,7 @@ if not todos:
 
 lines = []
 for t in todos:
-    lines.append(f"ID: {t.get('id', '?')}")
-    lines.append(f"Created: {t.get('created', '?')}")
+    lines.append(f"Created: {format_created(t.get('created', ''))}")
     lines.append(f"Title: {t.get('title', '?')}")
     lines.append(f"Branch: {t.get('branch', '?')}")
     lines.append("")

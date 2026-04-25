@@ -21,9 +21,9 @@ git config user.name t
 git commit --allow-empty -qm init
 
 mkdir -p Todos
-cat > Todos/042_namespaced.md <<'EOF'
+cat > Todos/2026-04-22T10-00-00_namespaced.md <<'EOF'
 ---
-id: 042
+id: 2026-04-22T10-00-00
 title: namespace round-trip canary
 status: open
 created: 2026-04-22T10:00:00-07:00
@@ -53,8 +53,8 @@ if ! printf '%s' "$out" | grep -q '"decision": "block"'; then
   echo "got: $out" >&2
   exit 1
 fi
-if ! printf '%s' "$out" | grep -q 'ID: 042'; then
-  echo "FAIL: seeded ID 042 not present in block" >&2
+if ! printf '%s' "$out" | grep -q 'Title: namespace round-trip canary'; then
+  echo "FAIL: seeded TODO title not present in block" >&2
   echo "got: $out" >&2
   exit 1
 fi

@@ -1,7 +1,8 @@
 #!/bin/bash
 # todo-stop.sh — Stop hook for per-invocation claude panes.
 # Verifies the PROCESSED: marker, appends SUCCESS/FAIL to audit.log, then
-# kills the pane asynchronously.
+# kills the pane asynchronously. On SUCCESS, deletes input.txt (the audit.log
+# entry is the durable record); on FAIL, leaves input.txt for debugging.
 #
 # IMPORTANT: sidecar read MUST be synchronous before the backgrounded
 # kill-pane subshell is forked. SessionEnd fires after Stop returns and
@@ -48,6 +49,7 @@ if [ -f "$INPUT_FILE" ]; then
   first_line=$(head -1 "$INPUT_FILE")
   if [[ "$first_line" == PROCESSED:* ]]; then
     printf '%s SUCCESS %s\n' "$ts" "$INPUT_FILE" >> "$AUDIT"
+    rm -f "$INPUT_FILE"
   else
     printf '%s FAIL %s (no PROCESSED marker)\n' "$ts" "$INPUT_FILE" >> "$AUDIT"
   fi

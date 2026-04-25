@@ -69,10 +69,10 @@ else
 fi
 
 INSTRUCTIONS=$(REPO_ROOT="$REPO_ROOT" TIMESTAMP="$TIMESTAMP" BRANCH="$BRANCH" \
-  INPUT_ABS="$INPUT_ABS" SCRIPTS_DIR="$SCRIPTS_DIR" \
+  INPUT_ABS="$INPUT_ABS" \
   python3 "$PLUGIN_ROOT/common/scripts/jot/render_template.py" \
     "$SCRIPTS_DIR/assets/todo-instructions.md" \
-    REPO_ROOT TIMESTAMP BRANCH INPUT_ABS SCRIPTS_DIR)
+    REPO_ROOT TIMESTAMP BRANCH INPUT_ABS)
 
 {
   printf '# Todo Task\n\n## Instructions\n%s\n\n' "$INSTRUCTIONS"
