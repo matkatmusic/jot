@@ -52,11 +52,18 @@ todo_main() {
   mkdir -p "$STATE_DIR"
   TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
 
-  # Atomic, per-invocation-unique pending filename. mktemp avoids collisions
-  # between same-session reruns within the same second. The SKILL.md body
-  # globs `pending-*.json` and consumes the oldest by mtime; session_id
-  # lives inside the file, not in the name.
-  PENDING_FILE=$(mktemp "$STATE_DIR/pending-XXXXXX.json")
+  # Atomic, per-invocation-unique pending filename. BSD mktemp requires the
+  # X's to be trailing, so we generate a unique base via `mktemp -u`, append
+  # `.json`, and atomically claim the path with `set -C` (noclobber). Same
+  # convention as scan-existing-todos.sh.
+  local PENDING_BASE PENDING_FILE
+  while :; do
+    PENDING_BASE=$(mktemp -u "$STATE_DIR/pending-XXXXXX")
+    PENDING_FILE="${PENDING_BASE}.json"
+    if ( set -C; : > "$PENDING_FILE" ) 2>/dev/null; then
+      break
+    fi
+  done
 
   IDEA_JSON=$(printf '%s' "$IDEA" | \
               python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
