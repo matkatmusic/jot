@@ -54,8 +54,7 @@ todo_main() {
 
   # Atomic, per-invocation-unique pending filename. BSD mktemp requires the
   # X's to be trailing, so we generate a unique base via `mktemp -u`, append
-  # `.json`, and atomically claim the path with `set -C` (noclobber). Same
-  # convention as scan-existing-todos.sh.
+  # `.json`, and atomically claim the path with `set -C` (noclobber).
   local PENDING_BASE PENDING_FILE
   while :; do
     PENDING_BASE=$(mktemp -u "$STATE_DIR/pending-XXXXXX")

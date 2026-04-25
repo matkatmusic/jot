@@ -6,9 +6,7 @@
       "Write(//${REPO_ROOT}/Todos/**)",
       "Edit(//${REPO_ROOT}/Todos/**)",
       "Read(//${REPO_ROOT}/.claude/plans/**)",
-      "Read(~/.claude/projects/**)",
-      "Bash(bash /${REPO_ROOT}/skills/todo/scripts/scan-existing-todos.sh:*)",
-      "Bash(rm -f /${REPO_ROOT}/Todos/.todo-state/id-*.claim)"
+      "Read(~/.claude/projects/**)"
     ],
     "deny": [],
     "ask": []

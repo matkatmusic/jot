@@ -16,11 +16,10 @@ out=$(REPO_ROOT=/tmp/fakerepo \
       TIMESTAMP=2026-04-22T00-00-00 \
       BRANCH=main \
       INPUT_ABS=/tmp/fakerepo/Todos/2026-04-22T00-00-00_input.txt \
-      SCRIPTS_DIR=/tmp/fake/scripts \
-      python3 "$RENDER" "$TEMPLATE" REPO_ROOT TIMESTAMP BRANCH INPUT_ABS SCRIPTS_DIR)
+      python3 "$RENDER" "$TEMPLATE" REPO_ROOT TIMESTAMP BRANCH INPUT_ABS)
 
 # Sanity: output must contain the substituted values.
-for needle in "/tmp/fakerepo" "2026-04-22T00-00-00" "main" "/tmp/fake/scripts"; do
+for needle in "/tmp/fakerepo" "2026-04-22T00-00-00" "main"; do
   if ! printf '%s' "$out" | grep -qF "$needle"; then
     echo "FAIL: rendered output missing '$needle'" >&2
     exit 1
@@ -37,4 +36,4 @@ if [ -n "$leftover" ]; then
   exit 1
 fi
 
-echo "PASS: todo-instructions.md renders clean (all 5 render-time vars substituted, no leftover \${IDENT})"
+echo "PASS: todo-instructions.md renders clean (all 4 render-time vars substituted, no leftover \${IDENT})"

@@ -13,10 +13,9 @@ Capture a mid-development idea without losing focus. Writes the idea plus surrou
 
 ## `/todo <idea>`
 
-Capture a numbered, structured TODO without losing focus. The foreground claude asks 1–3 clarifying questions if your idea is vague, then a background Claude worker in a dedicated tmux pane writes `Todos/<NNN>_<slug>.md` with frontmatter (id, title, status, created, branch) plus sections for Idea, Context, Recent commits, Uncommitted files, Active plan, and Dependencies.
+Capture a structured TODO without losing focus. The foreground claude asks 1–3 clarifying questions if your idea is vague, then a background Claude worker in a dedicated tmux pane writes `Todos/<TIMESTAMP>_<slug>.md` with frontmatter (id, title, status, created, branch) plus sections for Idea, Context, Recent commits, Uncommitted files, Active plan, and Dependencies.
 
-- IDs are claimed atomically via `set -C` (noclobber) on a sentinel file, so two concurrent `/todo` calls never collide on the same ID.
-- Worker permissions are tight: read anywhere under `Todos/` and `.claude/plans/`, write only under `Todos/`, and two narrow `Bash` forms for the ID-claim helper and sentinel cleanup.
+- Filenames embed the capture timestamp, mirroring `/jot`. Worker permissions are tight: read anywhere under `Todos/` and `.claude/plans/`, write only under `Todos/` — no Bash forms required.
 
 ## `/todo-list`
 

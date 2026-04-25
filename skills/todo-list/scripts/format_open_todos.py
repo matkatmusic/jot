@@ -16,6 +16,7 @@ if not TODOS_DIR or not Path(TODOS_DIR).is_dir():
     sys.exit(0)
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+NNN_NAME_RE = re.compile(r"^\d{3}_.*\.md$")
 
 
 def parse_frontmatter(text):
@@ -33,6 +34,8 @@ def parse_frontmatter(text):
 
 todos = []
 for path in sorted(Path(TODOS_DIR).glob("*.md")):
+    if NNN_NAME_RE.match(path.name):
+        continue
     try:
         text = path.read_text(encoding="utf-8")
     except Exception:

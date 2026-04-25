@@ -11,9 +11,9 @@ TMP=$(mktemp -d /tmp/todo-list-test.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/Todos"
-cat > "$TMP/Todos/001_open-one.md" <<'EOF'
+cat > "$TMP/Todos/2026-04-21T10-00-00_open-one.md" <<'EOF'
 ---
-id: 001
+id: 2026-04-21T10-00-00
 title: first open
 status: open
 created: 2026-04-21T10:00:00-07:00
@@ -22,9 +22,9 @@ branch: main
 body
 EOF
 
-cat > "$TMP/Todos/002_done-two.md" <<'EOF'
+cat > "$TMP/Todos/2026-04-21T10-05-00_done-two.md" <<'EOF'
 ---
-id: 002
+id: 2026-04-21T10-05-00
 title: done two
 status: done
 created: 2026-04-21T10:05:00-07:00
@@ -33,9 +33,9 @@ branch: main
 body
 EOF
 
-cat > "$TMP/Todos/003_open-three.md" <<'EOF'
+cat > "$TMP/Todos/2026-04-21T10-10-00_open-three.md" <<'EOF'
 ---
-id: 003
+id: 2026-04-21T10-10-00
 title: third open
 status: open
 created: 2026-04-21T10:10:00-07:00
@@ -46,14 +46,14 @@ EOF
 
 out=$(TODOS_DIR="$TMP/Todos" python3 "$SCRIPT")
 
-if ! printf '%s' "$out" | grep -q "ID: 001"; then
-  echo "FAIL: missing ID 001 in output" >&2; echo "$out" >&2; exit 1
+if ! printf '%s' "$out" | grep -q "ID: 2026-04-21T10-00-00"; then
+  echo "FAIL: missing ID 2026-04-21T10-00-00 in output" >&2; echo "$out" >&2; exit 1
 fi
-if ! printf '%s' "$out" | grep -q "ID: 003"; then
-  echo "FAIL: missing ID 003 in output" >&2; echo "$out" >&2; exit 1
+if ! printf '%s' "$out" | grep -q "ID: 2026-04-21T10-10-00"; then
+  echo "FAIL: missing ID 2026-04-21T10-10-00 in output" >&2; echo "$out" >&2; exit 1
 fi
-if printf '%s' "$out" | grep -q "ID: 002"; then
-  echo "FAIL: done TODO 002 leaked into output" >&2; echo "$out" >&2; exit 1
+if printf '%s' "$out" | grep -q "ID: 2026-04-21T10-05-00"; then
+  echo "FAIL: done TODO 2026-04-21T10-05-00 leaked into output" >&2; echo "$out" >&2; exit 1
 fi
 if ! printf '%s' "$out" | grep -q "^2 open TODOs$"; then
   echo "FAIL: count line missing or wrong" >&2; echo "$out" >&2; exit 1
