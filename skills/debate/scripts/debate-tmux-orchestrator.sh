@@ -48,17 +48,18 @@ STAGE_TIMEOUT=$((15 * 60))
 # 1. Remove the per-invocation settings tmpdir (/tmp/debate.XXXXXX) created by
 #    debate.sh:debate_build_claude_cmd. Case-match guards against rm-ing a
 #    misconfigured SETTINGS_FILE pointing anywhere else.
-# 2. Kill this debate's session (keepalive + any surviving agent panes). Each
-#    /debate owns its own session now, so the session-scoped kill is the
-#    right blast radius. Concurrent debates run in sibling sessions and are
-#    not affected.
+# 2. Intentionally do NOT kill the tmux session on exit. Matches test.sh's
+#    behavior: the session survives so the user can `tmux attach -t $SESSION`
+#    and inspect what each agent pane actually did when outputs are missing.
+#    `/debate-abort` + session-picking debate_claim_session handle stale
+#    sessions cleanly; concurrent invocations get fresh `debate-<N>` names.
 cleanup() {
   local settings_dir
   settings_dir=$(dirname "$SETTINGS_FILE")
   case "$settings_dir" in
     /tmp/debate.*) rm -rf "$settings_dir" ;;
   esac
-  hide_errors tmux_kill_session "$SESSION"
+  # hide_errors tmux_kill_session "$SESSION"
 }
 # Harness installs its own (no-op) cleanup before calling daemon_main.
 if [ "${DEBATE_DAEMON_SOURCED:-0}" != 1 ]; then
@@ -69,19 +70,60 @@ fi
 IFS=' ' read -r -a AGENTS <<< "$DEBATE_AGENTS"
 
 # === agent lookup ===
+# macOS ships bash 3.2 which lacks `declare -gA` + `local -n`. Per-agent state
+# is therefore stored in plain scalars named CURRENT_MODEL_<agent> and
+# TRIED_MODELS_<agent>, read via indirect expansion (${!var}) and written via
+# eval. Pane arrays R1_PANES/R2_PANES are referenced by name string and
+# accessed via eval rather than nameref.
+
+_stash()  { eval "${1}_${2}=\"\$3\""; }
+# Default to empty when the variable was never _stash-ed — agent_launch_cmd
+# may run before init_agent_models in tests or when called from harnesses.
+_lookup() { local _v="${1}_${2}"; eval "printf '%s' \"\${$_v:-}\""; }
+
+init_agent_models() {
+  local _a
+  for _a in gemini codex claude; do
+    _stash CURRENT_MODEL "$_a" ""
+    _stash TRIED_MODELS  "$_a" ""
+  done
+  _stash CURRENT_MODEL gemini "${GEMINI_MODEL:-}"
+  _stash CURRENT_MODEL codex  "${CODEX_MODEL:-}"
+  _stash TRIED_MODELS  gemini "${GEMINI_MODEL:-}"
+  _stash TRIED_MODELS  codex  "${CODEX_MODEL:-}"
+}
+
 agent_launch_cmd() {
-  case "$1" in
-    # --allowed-tools bypasses approval for exactly the tools the debate flow needs:
-    # read_file (topic/context/other agents' outputs) + write_file (r<N>_gemini.md).
-    # Any other tool use (shell, edit, glob) will still prompt — and since no one
-    # is watching the pane, that will hit the stage timeout and surface as a failure.
-    gemini) echo "gemini --allowed-tools 'read_file,write_file'" ;;
+  local a="$1"
+  local m; m=$(_lookup CURRENT_MODEL "$a")
+  case "$a" in
+    # --allowed-tools bypasses approval for the tools the debate flow needs:
+    # read_file (topic/context/other agents' outputs), write_file (r<N>_gemini.md),
+    # and run_shell_command(ls) so gemini can probe directory contents without
+    # blocking on an approval prompt no human is watching for.
+    gemini)
+      if [ -n "$m" ]; then
+        echo "gemini --allowed-tools 'read_file,write_file,run_shell_command(ls)' --model '$m'"
+      else
+        echo "gemini --allowed-tools 'read_file,write_file,run_shell_command(ls)'"
+      fi
+      ;;
     # -a never: codex never prompts for approval (non-interactive-safe).
     # --add-dir: grants write access to $DEBATE_DIR (codex docs: prefer this
     # over --sandbox danger-full-access for targeted write permissions).
-    codex)  echo "codex -a never --add-dir '$DEBATE_DIR'" ;;
+    codex)
+      if [ -n "$m" ]; then
+        echo "codex -a never --add-dir '$DEBATE_DIR' --model '$m'"
+      else
+        echo "codex -a never --add-dir '$DEBATE_DIR'"
+      fi
+      ;;
     # --settings grants Claude write perms to Debates/** (see assets/permissions.default.json).
-    claude) echo "claude --settings '$SETTINGS_FILE' --add-dir '$CWD' --add-dir '$REPO_ROOT'" ;;
+    # --add-dir '$HOME/.claude/plans' is required because debate topics commonly
+    # reference plan files at that path; without it, Claude blocks on a
+    # workspace-boundary Read prompt that no human is there to approve
+    # (Read(**) in permissions does NOT short-circuit the workspace gate).
+    claude) echo "claude --settings '$SETTINGS_FILE' --add-dir '$CWD' --add-dir '$REPO_ROOT' --add-dir '$HOME/.claude/plans'" ;;
   esac
 }
 agent_ready_marker() {
@@ -90,6 +132,72 @@ agent_ready_marker() {
     codex)  echo "/model to change" ;;
     claude) echo "Claude Code v" ;;
   esac
+}
+# Agent-CLI capacity/quota error strings. Matched against pane content during
+# wait_for_outputs so we can rotate to the next fallback model automatically.
+# ONE marker per line; grep -qF (literal) matches any.
+agent_error_markers() {
+  case "$1" in
+    codex)  printf '%s\n' 'Selected model is at capacity' 'model is overloaded' ;;
+    gemini) printf '%s\n' 'RESOURCE_EXHAUSTED' 'Quota exceeded' 'You exceeded your current quota' ;;
+    claude) printf '%s\n' 'API Error: 529' 'overloaded_error' ;;
+  esac
+}
+pane_has_capacity_error() {
+  local pane_id="$1" agent="$2"
+  local cap marker
+  cap=$(hide_errors tmux capture-pane -t "$pane_id" -p -S -200 | tr -d '\033')
+  while IFS= read -r marker; do
+    [ -z "$marker" ] && continue
+    if echo "$cap" | grep -qF "$marker"; then
+      echo "$marker"
+      return 0
+    fi
+  done < <(agent_error_markers "$agent")
+  return 1
+}
+# Return the next fallback model for <agent> not already in TRIED_MODELS_<agent>.
+# Empty string + rc=1 when the list is exhausted.
+_next_fallback_model() {
+  local agent="$1"
+  local tried; tried=$(_lookup TRIED_MODELS "$agent")
+  local fallbacks_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/model-fallbacks.json"
+  local m
+  while IFS= read -r m; do
+    [ -z "$m" ] && continue
+    case ",$tried," in *,"$m",*) continue ;; esac
+    echo "$m"
+    return 0
+  done < <(hide_errors jq -r --arg a "$agent" '.[$a][]?' "$fallbacks_json")
+  return 1
+}
+# retry_pane_with_next_model <panes_array_name> <index> <agent> <stage>
+# Tears down the current pane, picks the next fallback, spawns a fresh pane,
+# and re-launches + re-prompts. <panes_array_name> is the *name* of a global
+# array (e.g. "R1_PANES"); we access/mutate via eval for bash-3.2 compatibility.
+retry_pane_with_next_model() {
+  local panes_var="$1" i="$2" agent="$3" stage="$4"
+  local next
+  if ! next=$(_next_fallback_model "$agent"); then
+    echo "[orch] $stage/$agent: no remaining fallback models; giving up" >&2
+    return 1
+  fi
+  echo "[orch] $stage/$agent: capacity hit — rotating to model '$next'"
+  _stash CURRENT_MODEL "$agent" "$next"
+  local tried; tried=$(_lookup TRIED_MODELS "$agent")
+  _stash TRIED_MODELS "$agent" "${tried},${next}"
+  local current_pane
+  eval "current_pane=\${${panes_var}[$i]}"
+  hide_errors tmux_kill_pane "$current_pane"
+  local new_pane; new_pane=$(new_empty_pane)
+  eval "${panes_var}[$i]=\"\$new_pane\""
+  hide_output tmux_retile "$WINDOW_TARGET"
+  sleep 1
+  launch_agent "$new_pane" "$stage" "$agent" \
+    "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" || return 1
+  send_prompt  "$new_pane" "$stage" "$agent" \
+    "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || return 1
+  return 0
 }
 
 # === tmux helpers ===
@@ -170,14 +278,20 @@ write_failed() {
 }
 
 # launch_agent <pane_id> <stage> <agent> <launch_cmd> <ready_marker> [timeout]
+# 120s default covers Claude Code /remote-control async registration + shell rc
+# (pyenv, nvm, zsh) cold-start cost. Tight under 900s STAGE_TIMEOUT when 3 agents
+# boot serially (3×120=360s), but acceptable; bump STAGE_TIMEOUT if this grows.
+# capture-pane uses -S -2000 so a marker scrolled off the visible area is still
+# found, and tr -d '\033' strips ANSI escapes that can split the marker string.
 launch_agent() {
   local pane_id="$1" stage="$2" agent="$3" launch_cmd="$4" ready_marker="$5"
-  local timeout="${6:-30}"
+  local timeout="${6:-120}"
   printf 'debate:%s\n' "$pane_id" > "$DEBATE_DIR/.${stage}_${agent}.lock"
   tmux_send_and_submit "$pane_id" "$launch_cmd"
   local elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
-    if hide_errors tmux capture-pane -t "$pane_id" -p | grep -qF "$ready_marker"; then
+    if hide_errors tmux capture-pane -t "$pane_id" -p -S -2000 \
+         | tr -d '\033' | grep -qF "$ready_marker"; then
       echo "[orch] ${stage}/${agent} ready after ${elapsed}s (pane $pane_id)"
       return 0
     fi
@@ -190,6 +304,7 @@ launch_agent() {
 }
 
 # send_prompt <pane_id> <stage> <agent> <instructions_file>
+# Same capture-pane hardening as launch_agent: -S -2000 scrollback + ANSI strip.
 send_prompt() {
   local pane_id="$1" stage="$2" agent="$3" instructions="$4"
   tmux_send_and_submit "$pane_id" "read $instructions and perform them"
@@ -199,7 +314,8 @@ send_prompt() {
   # attended 10s before declaring the echo-verification a silent failure.
   local elapsed=0
   while [ "$elapsed" -lt 30 ]; do
-    if hide_errors tmux capture-pane -t "$pane_id" -p | grep -qF "$marker"; then
+    if hide_errors tmux capture-pane -t "$pane_id" -p -S -2000 \
+         | tr -d '\033' | grep -qF "$marker"; then
       echo "[orch] ${stage}/${agent} prompt received after ${elapsed}s"
       return 0
     fi
@@ -211,20 +327,25 @@ send_prompt() {
   return 1
 }
 
-# wait_for_outputs <prefix> <timeout>
+# wait_for_outputs <prefix> <timeout> <panes_arrayname>
 # Assumes agents write outputs atomically (e.g. Claude's Write tool does
 # temp-then-rename). If an agent streams or uses shell redirection, the
 # `[ -s "$out" ]` check could fire on the first byte and racing kills
 # the pane mid-stream. Keep this invariant in mind before swapping the
 # launch command to any mode that doesn't write atomically.
+#
+# <panes_arrayname> is a bash nameref to the per-stage pane-id array (e.g.
+# R1_PANES). Entries are mutated in place when retry_pane_with_next_model
+# rotates to a fallback model, so subsequent iterations poll the new pane.
 wait_for_outputs() {
-  local prefix="$1" timeout="$2"
+  local prefix="$1" timeout="$2" panes_var="$3"
   local reported=""
   local elapsed=0
   while [ "$elapsed" -lt "$timeout" ]; do
     local done_count=0
-    local agent
-    for agent in "${AGENTS[@]}"; do
+    local i agent pane_id
+    for i in "${!AGENTS[@]}"; do
+      agent="${AGENTS[$i]}"
       local out="$DEBATE_DIR/${prefix}_${agent}.md"
       if [ -s "$out" ]; then
         rm -f "$DEBATE_DIR/.${prefix}_${agent}.lock"
@@ -234,7 +355,16 @@ wait_for_outputs() {
           *) printf '\n[orch] %s: %s wrote %s (%ds)\n' "$prefix" "$agent" "$(basename "$out")" "$elapsed"
              reported="$reported $agent" ;;
         esac
+        continue
       fi
+      # Capacity / quota detection: if this agent's pane shows a known error
+      # marker, rotate to the next fallback model (kill + respawn + re-prompt).
+      # Skip if no still-untried fallback exists (retry function logs + returns 1).
+      eval "pane_id=\${${panes_var}[$i]}"
+      if pane_has_capacity_error "$pane_id" "$agent" >/dev/null; then
+        retry_pane_with_next_model "$panes_var" "$i" "$agent" "$prefix" || true
+      fi
+      continue
     done
     if [ "$done_count" -eq "${#AGENTS[@]}" ]; then
       printf '[orch] %s: all %d outputs present after %ds\n' "$prefix" "${#AGENTS[@]}" "$elapsed"
@@ -283,6 +413,7 @@ echo "[orch] Agents:  ${AGENTS[*]} (${#AGENTS[@]})"
 echo "[orch] Timeout: ${STAGE_TIMEOUT}s per stage"
 echo "[orch] Drift:   ${COMPOSITION_DRIFTED:-0}"
 echo "========================================"
+init_agent_models
 
 # Composition drifted: an agent appeared or a disappeared agent had
 # complete outputs. Existing r2_*.md were built against a different
@@ -320,7 +451,7 @@ for i in "${!AGENTS[@]}"; do
   send_prompt  "${R1_PANES[$i]}" r1 "$agent" "$DEBATE_DIR/r1_instructions_${agent}.txt" || exit 1
 done
 
-wait_for_outputs r1 "$STAGE_TIMEOUT" || exit 1
+wait_for_outputs r1 "$STAGE_TIMEOUT" R1_PANES || exit 1
 
 # Kill R1 panes
 for i in "${!AGENTS[@]}"; do
@@ -363,7 +494,7 @@ for i in "${!AGENTS[@]}"; do
   send_prompt  "${R2_PANES[$i]}" r2 "$agent" "$DEBATE_DIR/r2_instructions_${agent}.txt" || exit 1
 done
 
-wait_for_outputs r2 "$STAGE_TIMEOUT" || exit 1
+wait_for_outputs r2 "$STAGE_TIMEOUT" R2_PANES || exit 1
 
 # Kill R2 panes
 for i in "${!AGENTS[@]}"; do

@@ -32,10 +32,13 @@ spawn_terminal_if_needed() {
         return 0
       fi
       hide_output hide_errors osascript <<OSA &
-tell application "Terminal"
-  do script "tmux attach -t ${session}"
-  set frontmost of window 1 to false
-end tell
+if application "Terminal" is running then
+  tell application "Terminal" to do script "tmux attach -t ${session}"
+else
+  tell application "Terminal"
+    do script "tmux attach -t ${session}" in window 1
+  end tell
+end if
 OSA
       ;;
     *)
