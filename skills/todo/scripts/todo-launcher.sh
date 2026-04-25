@@ -148,4 +148,10 @@ tmux_retile todo:todos
 
 spawn_terminal_if_needed "todo" "$LOG_FILE" "todo"
 
+# Delete the pending-context sidecar now that the worker has been handed off.
+# Failure here is cosmetic (sidecar accumulates harmlessly), so log and continue.
+hide_errors rm -f "$PENDING_FILE" || \
+  hide_errors printf '%s todo-launcher: failed to rm pending_file=%s\n' \
+    "$(date -Iseconds)" "$PENDING_FILE" >> "$LOG_FILE"
+
 printf '%s\n' "$INPUT_ABS"

@@ -5,6 +5,15 @@ All notable changes to the jot plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] — 2026-04-25
+
+### Fixed
+- `/todo` hook: BSD `mktemp` template literal-X bug (`pending-XXXXXX.json` was created literally on macOS, causing the second concurrent `/todo` to abort under `set -e`). Replaced with `mktemp -u` + noclobber-claim loop matching `scan-existing-todos.sh`.
+- `/todo` worker permissions: `${REPO_ROOT}` is `lstrip("/")`-ed by `expand_permissions.py`, so bare `${REPO_ROOT}` produced unanchored matchers. Filesystem entries (Read/Write/Edit) now use `//${REPO_ROOT}` (canonical absolute form); Bash entries use single-slash `/${REPO_ROOT}` for literal command-string matching.
+
+### Added
+- `skills/todo/tests/hook-mktemp-pending-test.sh` — regression guard that runs the orchestrator twice and asserts two distinct, non-literal-X pending files exist.
+
 ## [1.1.0] — 2026-04-21
 
 ### Added

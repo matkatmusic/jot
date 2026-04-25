@@ -1,6 +1,6 @@
 {
   "name": "jot",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Capture mid-development ideas and context via '/jot', '/plate', '/todo', '/todo-list', and '/todo-clean' without losing focus. '/jot' + '/todo' write TODO files via a background Claude in tmux. '/plate' tracks WIP. '/todo-list' shows open TODOs. '/todo-clean' prunes TODOs that git history says are resolved.",
   "author": {
     "name": "Matkat Music LLC"

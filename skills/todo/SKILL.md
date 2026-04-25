@@ -10,14 +10,14 @@ You are the foreground claude that received a `/todo` prompt. The UserPromptSubm
 
 ## Step 1 — Load pending context
 
-List files matching `Todos/.todo-state/pending-*.json` and pick the **oldest by mtime** (use `ls -t` reversed or `stat`). Read that one file. It contains:
+Use the `Glob` tool (NOT `Bash ls`) to find files matching `Todos/.todo-state/pending-*.json`. `Glob` sorts by modification time (newest first), so to pick the **oldest** you want the last entry in the Glob result. If only one file matches, use it.
+
+Read that one file with the `Read` tool. It contains:
 - `session_id`, `transcript_path`, `cwd`, `repo_root`, `idea`, `timestamp`, `todo_plugin_root`, `todo_scripts_dir`, `pending_file`
 
 Why oldest-first: the hook uses `mktemp` for a per-invocation unique name so same-session reruns never collide. Oldest-first matches FIFO order of user invocations.
 
 If no pending file exists, reply `todo: no pending context — rerun /todo <idea>` and stop.
-
-**Remember the exact pending file path** (the `pending_file` field in the JSON) — you'll delete that specific file in Step 4 (not a glob).
 
 ## Step 2 — Clarify if vague
 
@@ -34,21 +34,20 @@ Merge the clarification answers (if any) into a single refined idea string.
 
 ## Step 3 — Launch the background worker
 
-Invoke the launcher via Bash:
+Invoke the launcher via Bash — this is the **only** Bash call this skill needs:
 
 ```
 bash <todo_scripts_dir>/todo-launcher.sh <session_id> <refined_idea> <pending_file>
 ```
 
-Substitute the actual `todo_scripts_dir`, `session_id`, and `pending_file` values from the pending JSON; pass the refined idea as the second argument (quote it). The launcher writes `Todos/<timestamp>_input.txt` and spawns a tmux pane with a background Claude worker. Capture the launcher's stdout — it prints the absolute path of the input.txt it wrote.
+Substitute the actual `todo_scripts_dir`, `session_id`, and `pending_file` values from the pending JSON; pass the refined idea as the second argument (quote it). The launcher:
+1. writes `Todos/<timestamp>_input.txt` with the full context block,
+2. spawns a per-invocation tmux pane with the background Claude worker,
+3. **deletes the pending file** after a successful spawn — you do NOT need to clean up.
 
-## Step 4 — Cleanup + reply
+Capture the launcher's stdout — it prints the absolute path of the input.txt it wrote.
 
-Delete the exact pending file you read in Step 1 (not a glob — other /todo invocations may have added pending files between Step 1 and now):
-
-```
-rm <the exact pending_file path from Step 1>
-```
+## Step 4 — Reply
 
 Reply in exactly one line (no preamble, no headers):
 
@@ -60,5 +59,6 @@ Reply in exactly one line (no preamble, no headers):
 
 - NEVER write the final TODO file yourself — the background worker does that.
 - NEVER call `emit_block` or any hook-output JSON.
-- If the user cancels clarification (answers with "cancel" or "nevermind"), delete the pending file and reply `[todo] cancelled`.
+- Do NOT use `Bash ls` or `Bash rm` in this skill — use `Glob` for Step 1 and let the launcher handle cleanup.
+- If the user cancels clarification (answers with "cancel" or "nevermind"), still call the launcher with the original idea so the pending file is cleaned up, then reply `[todo] cancelled`.
 - Do NOT source or call `$CLAUDE_PLUGIN_ROOT` — always resolve scripts via `todo_scripts_dir` from the pending JSON (other plugins may have set a different value in the shell env).
