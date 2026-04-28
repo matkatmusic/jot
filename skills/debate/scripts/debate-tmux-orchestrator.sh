@@ -213,6 +213,61 @@ new_empty_pane() {
   tmux_new_pane "$WINDOW_TARGET" -c "$CWD" -P -F '#{pane_id}'
 }
 
+# launch_agents_parallel <stage> <panes_arrayname>
+# Backgrounds (launch_agent && send_prompt) for every agent in $AGENTS
+# whose ${stage}_<agent>.md is missing and lock is free. Skipped agents'
+# panes are killed up-front (matching the serial loop's behavior). Waits
+# for all workers; returns 0 iff every worker exited 0.
+#
+# Bash 3.2 compat: no `wait -n`. PID array + positional `wait $pid` per worker.
+# Subshell isolation is fine: launch_agent/send_prompt only mutate filesystem
+# state (lock files, stage outputs). The `_stash`/`eval` model state used by
+# capacity rotation is mutated only inside wait_for_outputs (main shell,
+# post-launch), so subshell launch does not break the rotation path.
+launch_agents_parallel() {
+  local stage="$1" panes_var="$2"
+  local pids=() agents_run=() i agent pane_id fail=0
+  local t0=$SECONDS
+
+  for i in "${!AGENTS[@]}"; do
+    agent="${AGENTS[$i]}"
+    eval "pane_id=\${${panes_var}[$i]}"
+
+    if [ -s "$DEBATE_DIR/${stage}_${agent}.md" ]; then
+      echo "[orch] ${stage}/${agent} already complete, skipping launch"
+      hide_errors tmux_kill_pane "$pane_id"
+      continue
+    fi
+    if [ -f "$DEBATE_DIR/.${stage}_${agent}.lock" ]; then
+      echo "[orch] ${stage}/${agent} lock held by live pane, skipping launch (wait_for_outputs will observe)"
+      hide_errors tmux_kill_pane "$pane_id"
+      continue
+    fi
+
+    (
+      launch_agent "$pane_id" "$stage" "$agent" \
+        "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" \
+        || exit 1
+      send_prompt "$pane_id" "$stage" "$agent" \
+        "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || exit 1
+    ) &
+    pids+=("$!")
+    agents_run+=("$agent")
+  done
+
+  for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+      echo "[orch] ${stage}/${agents_run[$i]} worker exited non-zero" >&2
+      fail=1
+    fi
+  done
+
+  # Permanent timing observability: parallel run ≈ one per-agent boot interval;
+  # serial regression ≈ N × interval. Lives in orchestrator.log.
+  echo "[orch] launch_agents_parallel ${stage}: ${#pids[@]} workers, $((SECONDS - t0))s wall"
+  return "$fail"
+}
+
 # archive_debate
 # Moves intermediate artifacts to $DEBATE_DIR/archive/. Keeps topic.md,
 # synthesis.md, invoking_transcript.txt at top level. Called at the end
@@ -263,6 +318,12 @@ clean_stale_locks() {
 # may invoke this; last writer wins — any of them is enough signal.
 write_failed() {
   local stage="$1" reason="$2"
+  # Concurrent-safe: per-caller mktemp tempfile + atomic rename. Bash 3.2 has
+  # no $BASHPID, and $$ inside a backgrounded subshell expands to the parent
+  # daemon's PID — so multiple concurrent workers would collide on the same
+  # tempfile. mktemp ...XXXXXX gives O_EXCL per-caller uniqueness.
+  local tmpfile
+  tmpfile=$(mktemp "$DEBATE_DIR/.FAILED.txt.XXXXXX") || return 1
   {
     printf '# debate FAILED\n\nstage: %s\nreason: %s\ntimestamp: %s\n\n' \
       "$stage" "$reason" "$(date -Iseconds)"
@@ -281,7 +342,8 @@ write_failed() {
         printf '(no pane captured — lock file missing or malformed)\n'
       fi
     done
-  } > "$DEBATE_DIR/FAILED.txt"
+  } > "$tmpfile"
+  mv -f "$tmpfile" "$DEBATE_DIR/FAILED.txt"
 }
 
 # launch_agent <pane_id> <stage> <agent> <launch_cmd> <ready_marker> [timeout]
@@ -442,21 +504,7 @@ done
 hide_output tmux_retile "$WINDOW_TARGET"
 echo "[orch] R1 panes: agents=[${AGENTS[*]}]=[${R1_PANES[*]}]"
 sleep 1
-for i in "${!AGENTS[@]}"; do
-  agent="${AGENTS[$i]}"
-  if [ -s "$DEBATE_DIR/r1_${agent}.md" ]; then
-    echo "[orch] r1/${agent} already complete, skipping launch"
-    hide_errors tmux_kill_pane "${R1_PANES[$i]}"
-    continue
-  fi
-  if [ -f "$DEBATE_DIR/.r1_${agent}.lock" ]; then
-    echo "[orch] r1/${agent} lock held by live pane, skipping launch (wait_for_outputs will observe)"
-    hide_errors tmux_kill_pane "${R1_PANES[$i]}"
-    continue
-  fi
-  launch_agent "${R1_PANES[$i]}" r1 "$agent" "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" || exit 1
-  send_prompt  "${R1_PANES[$i]}" r1 "$agent" "$DEBATE_DIR/r1_instructions_${agent}.txt" || exit 1
-done
+launch_agents_parallel r1 R1_PANES || exit 1
 
 wait_for_outputs r1 "$STAGE_TIMEOUT" R1_PANES || exit 1
 
@@ -485,21 +533,7 @@ done
 hide_output tmux_retile "$WINDOW_TARGET"
 echo "[orch] R2 panes: agents=[${AGENTS[*]}]=[${R2_PANES[*]}]"
 sleep 1
-for i in "${!AGENTS[@]}"; do
-  agent="${AGENTS[$i]}"
-  if [ -s "$DEBATE_DIR/r2_${agent}.md" ]; then
-    echo "[orch] r2/${agent} already complete, skipping launch"
-    hide_errors tmux_kill_pane "${R2_PANES[$i]}"
-    continue
-  fi
-  if [ -f "$DEBATE_DIR/.r2_${agent}.lock" ]; then
-    echo "[orch] r2/${agent} lock held by live pane, skipping launch (wait_for_outputs will observe)"
-    hide_errors tmux_kill_pane "${R2_PANES[$i]}"
-    continue
-  fi
-  launch_agent "${R2_PANES[$i]}" r2 "$agent" "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" || exit 1
-  send_prompt  "${R2_PANES[$i]}" r2 "$agent" "$DEBATE_DIR/r2_instructions_${agent}.txt" || exit 1
-done
+launch_agents_parallel r2 R2_PANES || exit 1
 
 wait_for_outputs r2 "$STAGE_TIMEOUT" R2_PANES || exit 1
 
