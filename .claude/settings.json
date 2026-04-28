@@ -1,4 +1,17 @@
-{
+{                                                                         
+  "hooks": {                                                            
+    "PreToolUse": [           
+      {                                                                 
+        "matcher": "Bash",
+        "hooks": [
+          {                                                             
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE '(&&|\\|\\||;)' && echo 'No compound commands — issue separately' >&2 && exit 2 || exit 0"
+          }                                                             
+        ]                     
+      }                 
+    ]
+  },
   "permissions": {
     "allow": [
       "Bash(tmux capture-pane *)",

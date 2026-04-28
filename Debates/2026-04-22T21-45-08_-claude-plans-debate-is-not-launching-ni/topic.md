@@ -1,1 +1,0 @@
-~/.claude/plans/debate-is-not-launching-nifty-reddy.md defines how to launch debate sessions in separate tmux sessions using the naming convention 'debate-#'.  review the plan for accuracy and correctness.

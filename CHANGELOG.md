@@ -5,6 +5,11 @@ All notable changes to the jot plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Renamed `skills/debate/scripts/assets/model-fallbacks.json` → `models.json`. Index 0 is the launch-time default for each agent; subsequent entries are used for capacity-rotation when the in-flight model hits a 429 / "at capacity" error. The old name implied a contingency-only list, which was misleading. Helper functions and locals updated accordingly (`_first_fallback_model` → `_default_model`, `_next_fallback_model` → `_next_model`, `fallbacks_json` → `models_json`). Runtime behavior unchanged.
+
 ## [1.1.4] — 2026-04-25
 
 ### Changed
