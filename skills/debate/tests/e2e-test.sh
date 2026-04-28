@@ -30,7 +30,6 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 pass=0; fail=0
 ok()   { printf '  \033[32mPASS\033[0m %s\n' "$1"; pass=$((pass+1)); }
 nope() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fail=$((fail+1)); }
-warn() { printf '  \033[33mWARN\033[0m %s\n' "$1"; }
 
 # ──────────── agent detection (mirrors debate.sh:_probe_*) ────────────
 _default_model() {
@@ -85,10 +84,15 @@ fi
 echo "[e2e-test] available agents: ${AVAILABLE_AGENTS[*]}"
 
 # ──────────── sandbox setup ────────────
-SANDBOX=$(mktemp -d /tmp/debate-e2e.XXXXXX)
-REPO_ROOT="$SANDBOX"
-CWD="$SANDBOX"
-mkdir -p "$REPO_ROOT/Debates"
+# Use the jot repo itself as REPO_ROOT so the permissions template's
+# Write(//${REPO_ROOT}/Debates/**) rule resolves to a path Claude trusts.
+# A /tmp sandbox would be untrusted — agents stall waiting for a permission
+# prompt no human is around to approve. The test's debate dir lives
+# alongside production debates but is uniquely suffixed _e2e-test and
+# removed on success (see cleanup_session).
+REPO_ROOT="$PLUGIN_ROOT"
+CWD="$REPO_ROOT"
+[ -d "$REPO_ROOT/Debates" ] || mkdir -p "$REPO_ROOT/Debates"
 
 TIMESTAMP=$(date +%Y-%m-%dT%H-%M-%S)
 DEBATE_DIR="$REPO_ROOT/Debates/${TIMESTAMP}_e2e-test"
@@ -108,9 +112,15 @@ CONTEXT
 : > "$DEBATE_DIR/invoking_transcript.txt"
 
 # Build settings.json by interpolating REPO_ROOT into the production template.
+# CRITICAL: strip the leading "/" from REPO_ROOT before substituting. The
+# template uses "Write(//${REPO_ROOT}/Debates/**)" — Claude's permission
+# grammar requires exactly two leading slashes for absolute paths. With
+# REPO_ROOT="/abs/path", a naive substitution yields "Write(///abs/path/...)"
+# which never matches and forces a permission prompt. Production does the
+# same strip via expand_permissions.py:28 (`os.environ["REPO_ROOT"].lstrip("/")`).
 TMPDIR_INV=$(mktemp -d /tmp/debate.XXXXXX)
 SETTINGS_FILE="$TMPDIR_INV/settings.json"
-sed "s|\${REPO_ROOT}|$REPO_ROOT|g" \
+sed "s|\${REPO_ROOT}|${REPO_ROOT#/}|g" \
   "$PLUGIN_ROOT/skills/debate/scripts/assets/permissions.default.json" \
   > "$SETTINGS_FILE"
 
@@ -119,7 +129,7 @@ for a in "${AVAILABLE_AGENTS[@]}"; do
   if ! DEBATE_AGENTS="${AVAILABLE_AGENTS[*]}" AGENT_FILTER="$a" \
        bash "$SCRIPTS_DIR/debate-build-prompts.sh" r1 "$DEBATE_DIR" "$PLUGIN_ROOT"; then
     nope "build R1 instructions for $a"
-    rm -rf "$SANDBOX" "$TMPDIR_INV"
+    rm -rf "$DEBATE_DIR" "$TMPDIR_INV"
     exit 1
   fi
 done
@@ -139,7 +149,7 @@ while [ "$n" -lt 1000 ]; do
 done
 if [ -z "$SESSION" ]; then
   printf '\033[31m[e2e-test] FAIL — could not claim debate-<N> session (1000 already in use)\033[0m\n'
-  rm -rf "$SANDBOX" "$TMPDIR_INV"
+  rm -rf "$DEBATE_DIR" "$TMPDIR_INV"
   exit 1
 fi
 echo "[e2e-test] tmux session: $SESSION"
@@ -149,7 +159,17 @@ hide_errors tmux set-option -t "$SESSION" pane-border-status top
 hide_errors tmux set-option -t "$SESSION" pane-border-format ' #{pane_title} '
 hide_errors tmux select-pane -t "${SESSION}:main" -T "keepalive:e2e-test"
 
-# Cleanup: kill session + sandbox on success; preserve both on failure for inspection.
+ORCH_LOG="$DEBATE_DIR/orchestrator.log"
+
+# Spawn Terminal.app + attach so the user can watch agents launch and
+# answer permission prompts. Same helper production debate.sh uses
+# (debate.sh:335). On non-Darwin it logs an advisory and continues.
+. "$PLUGIN_ROOT/common/scripts/platform.sh"
+spawn_terminal_if_needed "$SESSION" "$ORCH_LOG" "e2e-test" "yes"
+
+# Cleanup: kill session + remove this test's artifacts on success;
+# preserve both on failure for inspection. NEVER touches sibling entries
+# in $REPO_ROOT/Debates/ — they're real debate history.
 cleanup_session() {
   if [ "$fail" -gt 0 ]; then
     printf '\033[33m[e2e-test] preserving artifacts for inspection:\033[0m\n'
@@ -159,12 +179,11 @@ cleanup_session() {
     return
   fi
   hide_errors tmux kill-session -t "$SESSION"
-  rm -rf "$SANDBOX" "$TMPDIR_INV"
+  rm -rf "$DEBATE_DIR" "$TMPDIR_INV"
 }
 trap cleanup_session EXIT INT TERM
 
 # ──────────── run the orchestrator daemon foreground ────────────
-ORCH_LOG="$DEBATE_DIR/orchestrator.log"
 echo "[e2e-test] running orchestrator (real agents — expect 5–10 min)"
 echo "[e2e-test] orchestrator log: $ORCH_LOG"
 echo "[e2e-test] live progress: tmux attach -t $SESSION"
