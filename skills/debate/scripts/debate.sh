@@ -332,7 +332,7 @@ debate_start_or_resume() {
       >> "$orch_log" 2>&1 </dev/null &
   disown
 
-  spawn_terminal_if_needed "$session" "$LOG_FILE" "debate"
+  spawn_terminal_if_needed "$session" "$LOG_FILE" "debate" "yes"
 
   local agents_str="${AVAILABLE_AGENTS[*]}"
   local rel="Debates/$(basename "$DEBATE_DIR")"
