@@ -25,6 +25,10 @@ Read-only summary of all open TODOs in `Todos/`. Runs entirely inside the `UserP
 
 Interactive foreground scan of open TODOs against `git log --since=<created>`. For each candidate whose commit history suggests resolution, asks via `AskUserQuestion` before moving it to `Todos/done/` and stamping `status: done` + `resolved: <iso>` in the frontmatter.
 
+## `/debate <topic>`
+
+Multi-agent debate (Claude + Gemini + Codex) in a four-pane tmux window. Agents independently analyze the topic, cross-critique each other, then synthesize. The launcher maximizes the Terminal.app window on first launch so the layout fits; reattach paths are unaffected. Model selection per agent lives in `skills/debate/scripts/assets/models.json` — index 0 is the launch-time default, subsequent entries are capacity-rotation targets used when an agent's model returns 429 / "at capacity".
+
 ## `/plate`
 
 Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to a different task. Snapshot it on the stack, switch context freely, then replay the stack as sequential `[plate]` commits with `/plate --done`.
@@ -52,7 +56,7 @@ Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to
 
 ## Requirements
 
-Here are the required tools and versions needed to use the jot skill/hook (git stash create step 2 test)
+Here are the required tools and versions needed to use the jot skill/hook.
 
 | Tool | Install |
 |---|---|
@@ -154,7 +158,7 @@ tmux attach -t jot
 Both test suites ship with the plugin and run against the installed copy. Set `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` first so `jot.sh` doesn't trip its plugin-env assertions:
 
 ```bash
-export CLAUDE_PLUGIN_ROOT=~/.claude/plugins/cache/matkatmusic-jot/jot/1.0.0
+export CLAUDE_PLUGIN_ROOT=~/.claude/plugins/cache/matkatmusic-jot/jot/1.1.5
 export CLAUDE_PLUGIN_DATA=~/.claude/plugins/data/jot
 
 # Unit tests — stubbed tmux + JOT_SKIP_LAUNCH=1, no real workers

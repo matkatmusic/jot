@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.5] — 2026-04-28
+
+### Added
+- `/debate` (a.k.a. `/jot:debate`) — first launch now maximizes the spawned Terminal.app window so the four-pane layout has room to breathe. Reattach paths are unaffected. Implemented as an opt-in 4th arg to `spawn_terminal_if_needed` in `common/scripts/platform.sh`; `/jot`, `/plate`, `/todo` callers continue to pass three args and behave unchanged.
+
 ### Changed
 - Renamed `skills/debate/scripts/assets/model-fallbacks.json` → `models.json`. Index 0 is the launch-time default for each agent; subsequent entries are used for capacity-rotation when the in-flight model hits a 429 / "at capacity" error. The old name implied a contingency-only list, which was misleading. Helper functions and locals updated accordingly (`_first_fallback_model` → `_default_model`, `_next_fallback_model` → `_next_model`, `fallbacks_json` → `models_json`). Runtime behavior unchanged.
+- `skills/debate/scripts/assets/models.json` — model list corrected.
 
 ## [1.1.4] — 2026-04-25
 
