@@ -123,7 +123,14 @@ agent_launch_cmd() {
     # reference plan files at that path; without it, Claude blocks on a
     # workspace-boundary Read prompt that no human is there to approve
     # (Read(**) in permissions does NOT short-circuit the workspace gate).
-    claude) echo "claude --settings '$SETTINGS_FILE' --add-dir '$CWD' --add-dir '$REPO_ROOT' --add-dir '$HOME/.claude/plans'" ;;
+    # Dedup --add-dir paths: when /debate is invoked from the repo root,
+    # CWD == REPO_ROOT, and Claude rejects/duplicates the same path twice.
+    claude)
+      local dirs="--add-dir '$CWD'"
+      [ -n "$REPO_ROOT" ] && [ "$REPO_ROOT" != "$CWD" ] && dirs="$dirs --add-dir '$REPO_ROOT'"
+      [ "$HOME/.claude/plans" != "$CWD" ] && [ "$HOME/.claude/plans" != "$REPO_ROOT" ] && dirs="$dirs --add-dir '$HOME/.claude/plans'"
+      echo "claude --settings '$SETTINGS_FILE' $dirs"
+      ;;
   esac
 }
 agent_ready_marker() {
@@ -134,7 +141,7 @@ agent_ready_marker() {
   esac
 }
 # Agent-CLI capacity/quota error strings. Matched against pane content during
-# wait_for_outputs so we can rotate to the next fallback model automatically.
+# wait_for_outputs so we can rotate to the next configured model automatically.
 # ONE marker per line; grep -qF (literal) matches any.
 agent_error_markers() {
   case "$1" in
@@ -156,30 +163,30 @@ pane_has_capacity_error() {
   done < <(agent_error_markers "$agent")
   return 1
 }
-# Return the next fallback model for <agent> not already in TRIED_MODELS_<agent>.
-# Empty string + rc=1 when the list is exhausted.
-_next_fallback_model() {
+# Return the next model for <agent> from models.json not already in
+# TRIED_MODELS_<agent>. Empty string + rc=1 when the list is exhausted.
+_next_model() {
   local agent="$1"
   local tried; tried=$(_lookup TRIED_MODELS "$agent")
-  local fallbacks_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/model-fallbacks.json"
+  local models_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/models.json"
   local m
   while IFS= read -r m; do
     [ -z "$m" ] && continue
     case ",$tried," in *,"$m",*) continue ;; esac
     echo "$m"
     return 0
-  done < <(hide_errors jq -r --arg a "$agent" '.[$a][]?' "$fallbacks_json")
+  done < <(hide_errors jq -r --arg a "$agent" '.[$a][]?' "$models_json")
   return 1
 }
 # retry_pane_with_next_model <panes_array_name> <index> <agent> <stage>
-# Tears down the current pane, picks the next fallback, spawns a fresh pane,
+# Tears down the current pane, picks the next model, spawns a fresh pane,
 # and re-launches + re-prompts. <panes_array_name> is the *name* of a global
 # array (e.g. "R1_PANES"); we access/mutate via eval for bash-3.2 compatibility.
 retry_pane_with_next_model() {
   local panes_var="$1" i="$2" agent="$3" stage="$4"
   local next
-  if ! next=$(_next_fallback_model "$agent"); then
-    echo "[orch] $stage/$agent: no remaining fallback models; giving up" >&2
+  if ! next=$(_next_model "$agent"); then
+    echo "[orch] $stage/$agent: no remaining models; giving up" >&2
     return 1
   fi
   echo "[orch] $stage/$agent: capacity hit — rotating to model '$next'"
@@ -336,7 +343,7 @@ send_prompt() {
 #
 # <panes_arrayname> is a bash nameref to the per-stage pane-id array (e.g.
 # R1_PANES). Entries are mutated in place when retry_pane_with_next_model
-# rotates to a fallback model, so subsequent iterations poll the new pane.
+# rotates to the next model, so subsequent iterations poll the new pane.
 wait_for_outputs() {
   local prefix="$1" timeout="$2" panes_var="$3"
   local reported=""
@@ -358,8 +365,8 @@ wait_for_outputs() {
         continue
       fi
       # Capacity / quota detection: if this agent's pane shows a known error
-      # marker, rotate to the next fallback model (kill + respawn + re-prompt).
-      # Skip if no still-untried fallback exists (retry function logs + returns 1).
+      # marker, rotate to the next model (kill + respawn + re-prompt).
+      # Skip if no still-untried model exists (retry function logs + returns 1).
       eval "pane_id=\${${panes_var}[$i]}"
       if pane_has_capacity_error "$pane_id" "$agent" >/dev/null; then
         retry_pane_with_next_model "$panes_var" "$i" "$agent" "$prefix" || true
@@ -525,6 +532,13 @@ launch_agent "$SYNTH_PANE" synthesis claude "$(agent_launch_cmd claude)" "$(agen
 send_prompt  "$SYNTH_PANE" synthesis claude "$DEBATE_DIR/synthesis_instructions.txt" || exit 1
 
 wait_for_file "$DEBATE_DIR/synthesis.md" "$STAGE_TIMEOUT" || exit 1
+
+# Kill synthesis pane (matches R1/R2 lifecycle: agent panes are killed once
+# their stage output lands on disk; without this the idle Claude TUI lingers
+# in the surviving session indefinitely).
+hide_errors tmux_kill_pane "$SYNTH_PANE"
+hide_output tmux_retile "$WINDOW_TARGET"
+echo "[orch] synthesis pane closed"
 
 archive_debate
 echo "[orch] DEBATE COMPLETE — synthesis at $DEBATE_DIR/synthesis.md"

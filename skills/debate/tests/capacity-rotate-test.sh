@@ -3,7 +3,7 @@
 # rotation added to the daemon. Covers:
 #   A. pane_has_capacity_error matches known error markers per-agent and
 #      returns NON-zero for panes with no error.
-#   B. _next_fallback_model rotates through model-fallbacks.json entries,
+#   B. _next_model rotates through models.json entries,
 #      skipping already-TRIED models, returning rc=1 when exhausted.
 #   C. init_agent_models seeds CURRENT_MODEL_* and TRIED_MODELS_* correctly
 #      from GEMINI_MODEL / CODEX_MODEL env vars.
@@ -98,24 +98,24 @@ tmux kill-session -t "$SESSION"
 rm -f "$MSG_FILE"
 teardown_env
 
-# ────────── B. _next_fallback_model rotation ──────────
-echo "T5: _next_fallback_model rotates through list, skipping tried"
+# ────────── B. _next_model rotation ──────────
+echo "T5: _next_model rotates through list, skipping tried"
 mk_env
-# Override fallbacks json in a sandboxed plugin root.
+# Override models json in a sandboxed plugin root.
 sandbox_plugin="$SANDBOX/plugin"
 mkdir -p "$sandbox_plugin/skills/debate/scripts/assets"
 printf '{"codex":["m1","m2","m3"],"gemini":[],"claude":[]}' \
-  > "$sandbox_plugin/skills/debate/scripts/assets/model-fallbacks.json"
+  > "$sandbox_plugin/skills/debate/scripts/assets/models.json"
 export CLAUDE_PLUGIN_ROOT_SAVED="$CLAUDE_PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$sandbox_plugin"
 init_agent_models  # seeds TRIED_MODELS_codex="" (CODEX_MODEL not set)
-first=$(_next_fallback_model codex)
+first=$(_next_model codex)
 [ "$first" = "m1" ] && ok "first rotation picks m1" || nope "first=[$first] expected m1"
 _stash TRIED_MODELS codex "m1"
-second=$(_next_fallback_model codex)
+second=$(_next_model codex)
 [ "$second" = "m2" ] && ok "after tried=m1, next picks m2" || nope "second=[$second] expected m2"
 _stash TRIED_MODELS codex "m1,m2,m3"
-if _next_fallback_model codex >/dev/null; then
+if _next_model codex >/dev/null; then
   nope "exhausted list should fail — got a model"
 else
   ok "exhausted list returns rc=1"

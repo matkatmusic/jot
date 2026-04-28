@@ -55,22 +55,22 @@ debate_claim_session() {
   return 1
 }
 
-# _first_fallback_model <agent>
-# Reads the first model name from model-fallbacks.json for <agent>. Empty
-# string if no models listed. Used by detect_available_agents to assign a
-# model without running a live smoke test — because at least one agent CLI
-# (gemini) can take 200-400s to respond to a trivial `-p "Reply…"` probe,
-# making live smoke tests unusable here. launch_agent's 120s readiness
+# _default_model <agent>
+# Reads the launch-time model (index 0) from models.json for <agent>. Empty
+# string if no models listed for that agent. Used by detect_available_agents
+# to assign a model without running a live smoke test — because at least one
+# agent CLI (gemini) can take 200-400s to respond to a trivial `-p "Reply…"`
+# probe, making live smoke tests unusable here. launch_agent's 120s readiness
 # timeout catches broken agents at R1 spawn time instead.
-_first_fallback_model() {
-  local fallbacks_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/model-fallbacks.json"
+_default_model() {
+  local models_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/models.json"
   local agent="$1"
-  hide_errors jq -r --arg a "$agent" '.[$a][0] // ""' "$fallbacks_json"
+  hide_errors jq -r --arg a "$agent" '.[$a][0] // ""' "$models_json"
 }
 
 # _probe_gemini / _probe_codex — run inside backgrounded subshells. Presence
 # check only (binary + credentials). Empty stdout → unavailable. Non-empty
-# stdout → the fallback model name (or "" if no models configured).
+# stdout → the configured model name (or "" if no models configured).
 _probe_gemini() {
   hide_output hide_errors command -v gemini || return 0
   [[ -f "$HOME/.gemini/oauth_creds.json" ]] \
@@ -78,14 +78,14 @@ _probe_gemini() {
     || [[ -n "${GOOGLE_API_KEY:-}" ]] \
     || return 0
   # Non-empty model name OR literal "present" sentinel so the outer `-s` check
-  # treats gemini as available even when no fallback model is configured.
-  local m; m=$(_first_fallback_model gemini)
+  # treats gemini as available even when no model is configured.
+  local m; m=$(_default_model gemini)
   printf '%s\n' "${m:-present}"
 }
 _probe_codex() {
   hide_output hide_errors command -v codex || return 0
   [[ -f "$HOME/.codex/auth.json" ]] || [[ -n "${OPENAI_API_KEY:-}" ]] || return 0
-  local m; m=$(_first_fallback_model codex)
+  local m; m=$(_default_model codex)
   printf '%s\n' "${m:-present}"
 }
 
@@ -378,7 +378,7 @@ debate_main() {
     RESUMING=1
   else
     if [ "${#AVAILABLE_AGENTS[@]}" -lt 2 ]; then
-      emit_block "/debate: needs ≥2 agents, got: ${AVAILABLE_AGENTS[*]}. All fallback models for missing agents failed smoke tests. Fix credentials/quota and re-run '/debate <topic>'."
+      emit_block "/debate: needs ≥2 agents, got: ${AVAILABLE_AGENTS[*]}. All configured models for missing agents failed smoke tests. Fix credentials/quota and re-run '/debate <topic>'."
       exit 0
     fi
     local TIMESTAMP slug

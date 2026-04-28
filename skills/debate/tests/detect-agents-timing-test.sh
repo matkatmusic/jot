@@ -2,13 +2,13 @@
 # detect-agents-timing-test.sh — verifies detect_available_agents() after
 # smoke tests were removed. The design now is: binary-on-PATH + auth-file
 # present ⇒ agent available; no network call; model pulled from
-# model-fallbacks.json[<agent>][0]; launch_agent's 120s readiness timeout
+# models.json[<agent>][0]; launch_agent's 120s readiness timeout
 # catches agents that are actually broken at R1 spawn time.
 #
 # Pre-fix would have run a live smoke test and blocked for up to 200-400s
 # per gemini model. These assertions prove: (a) detection is fast even when
 # the agent binaries would otherwise hang, (b) the probe correctly gates on
-# binary + credential presence, (c) fallback models are read from JSON.
+# binary + credential presence, (c) models are read from JSON.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +23,7 @@ fail() { printf '  \033[31mFAIL\033[0m %s\n' "$1"; read -r p f < "$COUNTER_FILE"
 # mk_env builds a sandboxed plugin root + bin dir. Each stub hangs for 600s
 # if invoked, so a passing test proves the probe never ran the binary.
 mk_env() {
-  local fallbacks_json="$1"
+  local models_json="$1"
   local include_gemini_stub="${2:-1}"
   local include_codex_stub="${3:-1}"
   local include_gemini_creds="${4:-1}"
@@ -52,7 +52,7 @@ EOF
   [ "$include_codex_creds"  = 1 ] && : > "$SANDBOX/home/.codex/auth.json"
 
   cp "$PLUGIN_ROOT/common/scripts/silencers.sh" "$SANDBOX/plugin/common/scripts/silencers.sh"
-  printf '%s' "$fallbacks_json" > "$SANDBOX/plugin/skills/debate/scripts/assets/model-fallbacks.json"
+  printf '%s' "$models_json" > "$SANDBOX/plugin/skills/debate/scripts/assets/models.json"
 }
 teardown_env() { rm -rf "$SANDBOX"; }
 
@@ -95,19 +95,19 @@ if echo "$OUT" | grep -q 'AGENTS=claude gemini codex'; then
 else
   fail "agents wrong: $(echo "$OUT" | grep AGENTS=)"
 fi
-if echo "$OUT" | grep -q 'GEMINI_MODEL=gem-1$'; then pass "gemini model = gem-1 (first fallback)"
+if echo "$OUT" | grep -q 'GEMINI_MODEL=gem-1$'; then pass "gemini model = gem-1 (default model)"
 else fail "gemini model wrong: $(echo "$OUT" | grep GEMINI_MODEL=)"; fi
-if echo "$OUT" | grep -q 'CODEX_MODEL=cdx-1$'; then pass "codex model = cdx-1 (first fallback)"
+if echo "$OUT" | grep -q 'CODEX_MODEL=cdx-1$'; then pass "codex model = cdx-1 (default model)"
 else fail "codex model wrong: $(echo "$OUT" | grep CODEX_MODEL=)"; fi
 teardown_env
 
-# ══════════════════════ TEST B: empty fallback list ══════════════════════
-echo "T2: empty fallback list → agent present but model string is empty"
+# ══════════════════════ TEST B: empty model list ══════════════════════
+echo "T2: empty model list → agent present but model string is empty"
 mk_env '{"gemini": [], "codex": []}'
 OUT=$(run_detect)
-if echo "$OUT" | grep -q 'AGENTS=claude gemini codex'; then pass "agents detected despite empty fallback lists"
+if echo "$OUT" | grep -q 'AGENTS=claude gemini codex'; then pass "agents detected despite empty model lists"
 else fail "agents wrong: $(echo "$OUT" | grep AGENTS=)"; fi
-if echo "$OUT" | grep -q 'GEMINI_MODEL=$'; then pass "GEMINI_MODEL empty (correct for no-fallback-list)"
+if echo "$OUT" | grep -q 'GEMINI_MODEL=$'; then pass "GEMINI_MODEL empty (correct for no-model-list)"
 else fail "GEMINI_MODEL should be empty: $(echo "$OUT" | grep GEMINI_MODEL=)"; fi
 teardown_env
 
