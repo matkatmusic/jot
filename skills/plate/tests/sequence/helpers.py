@@ -423,7 +423,57 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
 
     return createUntrackedFile(repo, rng)
 
-def test_performRandomEdit_seeded_is_deterministic(tmp_path: Path):  
+def test_performRandomEdit_modify_tracked(tmp_path: Path,
+monkeypatch):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    # Force rng.choice(seq) → seq[0]:
+    #   actions[0] = "modify_tracked"  → takes that branch
+    #   tracked[0] = first tracked file → modifies it
+    monkeypatch.setattr(random.Random, "choice", lambda self, seq: seq[0])
+
+    # seed=0 forces rng = random.Random(0), whose .choice honors the patch
+    # (the module-level `random.choice` is a pre-bound method and would not).
+    result = performRandomEdit(repo, seed=0)
+
+    assert result["action"] == "modify_tracked"
+    assert result["file"] in getGitTrackedFilesList(repo)
+    # Behavior: file shows as modified in WT
+    assert result["file"] in getGitUnstagedFilesList(repo)
+
+
+def test_performRandomEdit_create_untracked_when_tracked_exists(tmp_path: Path, monkeypatch):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    # Force rng.choice(seq) → seq[-1]:
+    #   actions[-1] = "create_untracked" → takes that branch
+    monkeypatch.setattr(random.Random, "choice", lambda self, seq: seq[-1])
+
+    # seed=0 forces rng = random.Random(0); see test_..._modify_tracked for why.
+    result = performRandomEdit(repo, seed=0)
+
+    assert result["action"] == "create_untracked"
+    assert result["file"] in getGitUntrackedFilesList(repo)
+    # Behavior: tracked files unchanged
+    assert getGitUnstagedFilesList(repo) == []
+
+
+def test_performRandomEdit_no_tracked_forces_create_untracked(tmp_path: Path):
+    # No commits → empty `git ls-files` → "modify_tracked" removed from actions.
+    # Only one branch reachable; no monkeypatch needed.
+    repo = makeTestRepo(base=tmp_path)
+
+    result = performRandomEdit(repo)
+
+    assert result["action"] == "create_untracked"
+    assert result["file"] in getGitUntrackedFilesList(repo)
+
+def test_performRandomEdit_seeded_is_deterministic(tmp_path:
+Path):
+    repo_a = makeTestRepoWithSingleCommit(tmp_path / "a")
+    repo_b = makeTestRepoWithSingleCommit(tmp_path / "b")
+
+    assert performRandomEdit(repo_a, seed=42) == performRandomEdit(repo_b, seed=42)
+
+def test_performRandomEdit_seeded_is_deterministic_simple(tmp_path: Path):  
     repo = makeTestRepoWithSingleCommit(tmp_path)          
     a = performRandomEdit(repo, seed=42)                 
     # reset and replay                                     
