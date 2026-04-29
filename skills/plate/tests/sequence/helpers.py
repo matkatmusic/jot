@@ -343,6 +343,11 @@ def test_createUntrackedFile(tmp_path: Path):
     # assert it is untracked
     assert getGitUntrackedFilesList(repo) == [file["file"]]
 
+B_FILENAME = "b.txt"
+B_FILE_CONTENTS = "B\n"
+F1_FILENAME = "fix.txt"
+F1_FILE_CONTENTS = "F1\n"
+
 def setup_repo(base: Path) -> Path:
     """Create a fresh git repo at base/repo and return its path.
 
@@ -360,30 +365,37 @@ def setup_repo(base: Path) -> Path:
         b.txt   on <random branch>, content "B"
         fix.txt on <random branch>, content "F1"
     """
-    repo = base / "repo"
-    repo.mkdir(parents=True)
-
-    run(["git", "init", QUIET_OUTPUT, BRANCH_NAME, "main"], cwd=repo)
+    repo = makeEmptyRepo(path=base)
     createUserConfig(repo)
 
     # main: commit A
-    (repo / TEST_FILENAME).write_text("A\n")
-    run(["git", "add", TEST_FILENAME], cwd=repo)
-    run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE, "A"], cwd=repo)
+    (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
+    addFileToGit(repo, TEST_FILENAME)
+    createCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
     branch_name = createRandomBranchName()
     checkOutBranch(repo=repo, branch_name=branch_name)
-
-    (repo / "b.txt").write_text("B\n")
-    run(["git", "add", "b.txt"], cwd=repo)
+    
+    (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
+    addFileToGit(repo, B_FILENAME)
     createCommit(repo=repo, message="B")
 
-    (repo / "fix.txt").write_text("F1\n")
-    run(["git", "add", "fix.txt"], cwd=repo)
+    (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
+    addFileToGit(repo, F1_FILENAME)
     createCommit(repo=repo, message="F1")
 
     return repo
+
+def test_setup_repo(tmp_path: Path):                     
+    repo = setup_repo(tmp_path)                            
+    assert checkForCleanWorkTree(repo)
+    assert getCurrentBranchName(repo) != "main"            
+    assert countCommitsReachableFromRef(repo, "main") == 1 
+    assert countCommitsReachableFromRef(repo, "HEAD") == 3
+    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS           
+    assert (repo / B_FILENAME).read_text() == B_FILE_CONTENTS          
+    assert (repo / F1_FILENAME).read_text() == F1_FILE_CONTENTS
 
 def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     """Make a random edit to the repo to simulate user activity.
@@ -398,7 +410,7 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     """
     rng = random.Random(seed) if seed is not None else random
 
-    tracked = getGitFilesList(repo=repo)
+    tracked = getGitTrackedFilesList(repo=repo)
     actions = ["modify_tracked", "create_untracked"]
     # if there are no tracked files, remove modify_tracked from actions
     if not tracked:
@@ -407,10 +419,19 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     action = rng.choice(actions)
 
     if action == "modify_tracked":
-        return modifyTrackedFile(repo, tracked, rng)
+        return modifyRandomlyChosenTrackedFile(repo, tracked)
 
     return createUntrackedFile(repo, rng)
 
+def test_performRandomEdit_seeded_is_deterministic(tmp_path: Path):  
+    repo = makeTestRepoWithSingleCommit(tmp_path)          
+    a = performRandomEdit(repo, seed=42)                 
+    # reset and replay                                     
+    run(["git", "reset", "--hard"], cwd=repo)
+    run(["git", "clean", "-fd"], cwd=repo) 
+    b = performRandomEdit(repo, seed=42)
+    # expect the same results from two deterministic (same seed) calls
+    assert a == b
 
 # ── Implemented: assertion utilities ──────────────────────────────────
 
@@ -606,6 +627,13 @@ def getCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
             trailers[key.strip()] = value.strip()
     return trailers
 
+def test_getCommitTrailers(tmp_path: Path):
+    repo = makeTestRepo(tmp_path)
+    addFileToGit(repo, makeTestFile(repo, "a.txt"))        
+    run(["git", "commit", "-q", "-m", "subject\n\nbody line\n\nparent-convo: abc\nplate-id: 42"], cwd=repo)                             
+    trailers = getCommitTrailers(repo, "HEAD")             
+    assert trailers == {"parent-convo": "abc", "plate-id": 
+"42"}          
 
 # ── Stubs: plate operations ───────────────────────────────────────────
 # Each stub raises NotImplementedError. Implementations should follow
