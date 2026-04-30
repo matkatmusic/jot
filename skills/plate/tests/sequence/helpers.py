@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import os
 import random
+import shutil
 import string
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -1059,12 +1061,41 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     if not branchExists(repo, plateBranchName):
         return
 
+    # Snapshot pre-call state so we can roll back on cherry-pick conflict.
+    preHeadSha = getSHAForRefViaRevParse(repo, "HEAD")
+
     # Step 1: clean WT.
     resetHardToHead(repo)
     cleanWorkTree(repo)
 
     # Step 2: cherry-pick HEAD..<branch>-plate (oldest first).
-    run(["git", "cherry-pick", f"HEAD..{plateBranchName}"], cwd=repo)
+    completed = subprocess.run(
+        ["git", "cherry-pick", f"HEAD..{plateBranchName}"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        # Conflict (or any non-zero exit). Abort the cherry-pick and
+        # restore HEAD to its pre-call SHA. Plate branch is preserved
+        # so the user can retry after rebasing or resolving manually.
+        subprocess.run(
+            ["git", "cherry-pick", "--abort"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        run(["git", "reset", QUIET_OUTPUT, "--hard", preHeadSha], cwd=repo)
+        cleanWorkTree(repo)
+        print(
+            f"warning: cherry-pick conflict during plate_done; "
+            f"aborted and restored HEAD to {preHeadSha}. "
+            f"Plate branch '{plateBranchName}' preserved.",
+            file=sys.stderr,
+        )
+        return
 
     # Step 3: delete the plate branch.
     deleteBranchForce(repo, plateBranchName)
@@ -1074,8 +1105,8 @@ def test_plate_done(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_done_replays_stack(repo)
 
-def plate_drop(repo: Path, branch: Optional[str] = None) -> Path:
-    """STUB. Pop the top plate from <branch>-plate, save as patch.
+def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
+    """Pop the top plate from <branch>-plate, save as patch.
 
     Sequence:
         - Build WT-tree via temp-index (capture tracked + untracked).
@@ -1086,11 +1117,19 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Path:
         - WT untouched.
 
     Returns:
-        Path to the generated .patch file.
+        Path to the generated .patch file, or None when no plate branch
+        exists (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
+
+    if not branchExists(repo, plateBranchName):
+        print(
+            f"warning: no plate branch '{plateBranchName}' — nothing to drop",
+            file=sys.stderr,
+        )
+        return None
 
     # Capture the entire WT (tracked + untracked) as a binary patch under
     # .plate/dropped/<plateBranchName>_<ts>.patch. The "." pathspec stages
@@ -1120,23 +1159,31 @@ def plate_trash(
     repo: Path,
     branch: Optional[str] = None,
     clean_wt: bool = False,
-) -> Path:
-    """STUB. Delete <branch>-plate entirely, save combined patch.
+) -> Optional[Path]:
+    """Delete <branch>-plate entirely, save per-plate patches under .plate/trashed/.
 
     Args:
         branch: working branch name; defaults to current.
         clean_wt: if True, run git reset --hard + git clean -fd after
-                  writing the patch (mode b — destructive of post-plate
+                  writing the patches (mode b — destructive of post-plate
                   WT edits not in the patch). If False, leave WT alone
-                  (mode a — patch redundant with WT). Decision pending.
+                  (mode a — patch redundant with WT).
 
     Returns:
         Path to the directory containing per-plate .patch files
-        (e.g. .plate/trashed/<branch>-plate_<ts>/).
+        (e.g. .plate/trashed/<branch>-plate_<ts>/), or None when no plate
+        branch exists (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
+
+    if not branchExists(repo, plateBranchName):
+        print(
+            f"warning: no plate branch '{plateBranchName}' — nothing to trash",
+            file=sys.stderr,
+        )
+        return None
 
     # Walk plate commits oldest-first.
     plates = run(
@@ -1179,10 +1226,10 @@ def plate_recycle(
     repo: Path,
     branch: Optional[str] = None,
     timestamp: Optional[str] = None,
-) -> str:
-    """STUB. Replay a trashed stack into a fresh <branch>-plate.
+) -> Optional[str]:
+    """Replay a trashed stack into a fresh <branch>-plate.
 
-    Implementation must use Path 2 — per-plate patches replayed
+    Implementation uses Path 2 — per-plate patches replayed
     sequentially. Path 1 (single-patch single-recovered-plate) was
     rejected because it loses commit boundaries.
 
@@ -1192,18 +1239,26 @@ def plate_recycle(
                    to most recent.
 
     Returns:
-        SHA of the recycled <branch>-plate tip.
+        SHA of the recycled <branch>-plate tip, or None when no trashed
+        session exists for the branch (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     trash_root = repo / ".plate" / "trashed"
-    sessions = sorted(
-        d for d in trash_root.iterdir() if d.name.startswith(f"{plateBranchName}_")
-    )
+    if not trash_root.is_dir():
+        sessions: list[Path] = []
+    else:
+        sessions = sorted(
+            d for d in trash_root.iterdir() if d.name.startswith(f"{plateBranchName}_")
+        )
     if not sessions:
-        raise FileNotFoundError(f"No trashed plates for {plateBranchName}")
+        print(
+            f"warning: no trashed plate '{plateBranchName}' — nothing to recycle",
+            file=sys.stderr,
+        )
+        return None
 
     if timestamp is not None:
         chosen = next(d for d in sessions if d.name.endswith(f"_{timestamp}"))
@@ -1636,3 +1691,228 @@ def _check_plate_next_returns_parent_convo_resume_command(repo: Path) -> None:
     cmd = plate_next(repo)
 
     assert cmd == f"cd {repo} && claude --resume CONVO-A"
+
+
+# ── Error-path scenarios ─────────────────────────────────────────────
+# Scenarios for the 5 untested error paths from PLATE STATE.md §C:
+#   - plate_drop / plate_trash / plate_recycle invoked without a plate
+#     branch must warn on stderr and return None (no exception).
+#   - plate_done with a cherry-pick conflict must abort, restore HEAD/WT,
+#     preserve the plate branch, and warn on stderr.
+#   - Cross-repo patch portability: a `--drop` patch produced in repoA
+#     applies cleanly in a separate repoB with the same base file.
+#   - Plate SHA remains recoverable from the object database after
+#     plate_done deletes the plate branch (no immediate gc).
+
+
+def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
+    """Scenario: no plate branch exists → plate_drop returns None, prints
+    warning to stderr, creates no .plate/dropped/ directory, leaves WT clean."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    assert not branchExists(repo, plateBranchName)
+
+    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+    wt_clean_before = checkForCleanWorkTree(repo)
+
+    result = plate_drop(repo)
+
+    captured = capsys.readouterr()
+    assert result is None
+    assert "no plate branch" in captured.err
+    assert plateBranchName in captured.err
+    # No patch directory created.
+    assert not (repo / ".plate" / "dropped").exists()
+    # Repo state unchanged.
+    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert checkForCleanWorkTree(repo) == wt_clean_before
+
+
+def test_plate_drop_no_branch(tmp_path: Path, capsys):
+    """Per-function: plate_drop with no plate branch warns + returns None."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_drop_no_branch_warns_and_exits(repo, capsys)
+
+
+def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
+    """Scenario: no plate branch exists → plate_trash returns None, prints
+    warning to stderr, creates no .plate/trashed/ directory, leaves WT clean."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    assert not branchExists(repo, plateBranchName)
+
+    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+
+    result = plate_trash(repo)
+
+    captured = capsys.readouterr()
+    assert result is None
+    assert "no plate branch" in captured.err
+    assert plateBranchName in captured.err
+    assert not (repo / ".plate" / "trashed").exists()
+    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+
+
+def test_plate_trash_no_branch(tmp_path: Path, capsys):
+    """Per-function: plate_trash with no plate branch warns + returns None."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_trash_no_branch_warns_and_exits(repo, capsys)
+
+
+def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
+    """Scenario: no trashed plate session exists → plate_recycle returns None,
+    prints warning to stderr, creates no plate branch, leaves repo unchanged."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    assert not branchExists(repo, plateBranchName)
+
+    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+
+    result = plate_recycle(repo)
+
+    captured = capsys.readouterr()
+    assert result is None
+    assert "nothing to recycle" in captured.err
+    assert plateBranchName in captured.err
+    assert not branchExists(repo, plateBranchName)
+    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+
+
+def test_plate_recycle_no_branch(tmp_path: Path, capsys):
+    """Per-function: plate_recycle with no trashed session warns + returns None."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_recycle_no_branch_warns_and_exits(repo, capsys)
+
+
+def _check_plate_done_conflict_aborts_and_restores(repo: Path, capsys) -> None:
+    """Scenario: plate_done's cherry-pick conflicts because the working
+    branch advanced on the same file the plate edits → plate_done aborts
+    the cherry-pick, restores HEAD/WT, preserves the plate branch, warns.
+
+    Setup:
+      1. Replace TEST_FILENAME contents with "plate version\\n", plate_push.
+      2. Reset WT, replace TEST_FILENAME contents with "branch version\\n"
+         on HEAD, commit it. Both edits replace the same line that the
+         shared base had → guaranteed cherry-pick conflict.
+
+    Assertions after plate_done:
+      - HEAD SHA == post-setup HEAD (the "branch version" commit).
+      - <branch>-plate ref still exists, and the original plate tip SHA
+        is still reachable from it (plate_done's implicit pre-push may
+        have advanced the ref, but the recoverable history is preserved).
+      - WT contents == HEAD's tree (the "branch version" file content).
+      - No .git/CHERRY_PICK_HEAD marker (clean abort).
+      - stderr contains a conflict warning naming the plate branch.
+    """
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    # 1. Plate edit replaces file contents entirely.
+    (repo / TEST_FILENAME).write_text("plate version\n")
+    plate_push(repo)
+    plate_tip_before = getSHAForRefViaRevParse(repo, plateBranchName)
+
+    # 2. Reset, then a conflicting commit replaces same line with different text.
+    resetHardToHead(repo)
+    (repo / TEST_FILENAME).write_text("branch version\n")
+    addFileToGit(repo, TEST_FILENAME)
+    createCommit(repo, "branch advance — will conflict with plate")
+
+    head_before_done = getSHAForRefViaRevParse(repo, "HEAD")
+    wt_before_done = (repo / TEST_FILENAME).read_text()
+
+    # 3. plate_done — cherry-pick should conflict, abort, restore.
+    plate_done(repo)
+
+    captured = capsys.readouterr()
+    # Restored state.
+    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before_done
+    assert (repo / TEST_FILENAME).read_text() == wt_before_done
+    assert checkForCleanWorkTree(repo)
+    # Plate branch preserved; original plate tip still reachable from it.
+    assert branchExists(repo, plateBranchName)
+    plate_history = run(["git", "rev-list", plateBranchName], cwd=repo).splitlines()
+    assert plate_tip_before in plate_history
+    # Cherry-pick state cleaned.
+    assert not (repo / ".git" / "CHERRY_PICK_HEAD").exists()
+    # Warning emitted.
+    assert "cherry-pick conflict" in captured.err
+    assert plateBranchName in captured.err
+
+
+def test_plate_done_conflict(tmp_path: Path, capsys):
+    """Per-function: plate_done's cherry-pick conflict aborts cleanly."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_done_conflict_aborts_and_restores(repo, capsys)
+
+
+def _check_drop_patch_applies_in_fresh_repo(repoA: Path, repoB: Path) -> None:
+    """Scenario: a `--drop` patch from repoA applies cleanly in a separate
+    repoB whose HEAD has the same base file content. Verifies the
+    "send the patch to a teammate" portability claim.
+
+    Both repos must share the same TEST_FILENAME content at HEAD.
+    """
+    # Sanity: same base content.
+    assert (repoA / TEST_FILENAME).read_text() == (repoB / TEST_FILENAME).read_text()
+
+    # In repoA: edit, push, drop → patch path.
+    edited_content = (repoA / TEST_FILENAME).read_text() + "portable-edit\n"
+    (repoA / TEST_FILENAME).write_text(edited_content)
+    untracked_name = createUntrackedFile(repoA, random.Random())["file"]
+    untracked_content = (repoA / untracked_name).read_text()
+
+    plate_push(repoA)
+    patch_path = plate_drop(repoA)
+    assert patch_path is not None
+    assert patch_path.exists()
+
+    # Copy patch into repoB (mirrors emailing/Slacking the file).
+    repoB_patch = repoB / "incoming.patch"
+    shutil.copyfile(patch_path, repoB_patch)
+
+    # Apply in repoB.
+    apply_patch(repoB, repoB_patch)
+
+    # Tracked edit applied byte-for-byte.
+    assert (repoB / TEST_FILENAME).read_text() == edited_content
+    # Untracked file from repoA's patch lands in repoB with same content.
+    assert (repoB / untracked_name).exists()
+    assert (repoB / untracked_name).read_text() == untracked_content
+    # No conflict markers in the patched file.
+    assert "<<<<<<<" not in (repoB / TEST_FILENAME).read_text()
+
+
+def test_drop_patch_cross_repo_portability(tmp_path: Path):
+    """Per-function: drop patch from repoA applies in a separate repoB."""
+    repoA = makeTestRepoWithSingleCommit(tmp_path / "a")
+    repoB = makeTestRepoWithSingleCommit(tmp_path / "b")
+    _check_drop_patch_applies_in_fresh_repo(repoA, repoB)
+
+
+def _check_plate_done_leaves_sha_recoverable(repo: Path) -> None:
+    """Scenario: after plate_done deletes the plate branch, the plate's
+    tip commit SHA is still resolvable from the object database. Documents
+    the recoverability invariant — would catch a future regression that
+    introduces an immediate `git gc --prune=now` or equivalent.
+    """
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    rng = random.Random()
+    createUntrackedFile(repo, rng)
+    plate_push(repo)
+    plate_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+
+    plate_done(repo)
+
+    # Plate branch ref is gone.
+    assert not branchExists(repo, plateBranchName)
+    # But the commit object is still in the repo (recoverable until gc).
+    assert getSHAForRefViaRevParse(repo, f"{plate_sha}^{{commit}}") == plate_sha
+
+
+def test_plate_done_leaves_sha_recoverable(tmp_path: Path):
+    """Per-function: plate_done's deleted plate SHA is still in the object DB."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_done_leaves_sha_recoverable(repo)

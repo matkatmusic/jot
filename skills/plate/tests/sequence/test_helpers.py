@@ -15,16 +15,22 @@ from helpers import (
     F1_FILENAME,
     TEST_FILE_CONTENTS,
     TEST_FILENAME,
+    _check_drop_patch_applies_in_fresh_repo,
     _check_first_derived_agent_records_trailers,
     _check_plate_carry_pushes_then_checks_out_target,
+    _check_plate_done_conflict_aborts_and_restores,
+    _check_plate_done_leaves_sha_recoverable,
     _check_plate_done_replays_stack,
     _check_plate_drop_deletes_last_plate,
+    _check_plate_drop_no_branch_warns_and_exits,
     _check_plate_drop_then_apply_patch_round_trip,
     _check_plate_next_returns_parent_convo_resume_command,
     _check_plate_push_creates_branch_capturing_wip,
+    _check_plate_recycle_no_branch_warns_and_exits,
     _check_plate_recycle_restores_stack,
     _check_plate_trash_clean_resets_wt,
     _check_plate_trash_default_preserves_wt,
+    _check_plate_trash_no_branch_warns_and_exits,
     _check_second_derived_agent_extends_chain,
     branchExists,
     checkForCleanWorkTree,
@@ -42,6 +48,7 @@ from helpers import (
     plate_drop,
     plate_push,
     run,
+    setup_repo,
 )
 
 
@@ -380,3 +387,79 @@ def test_sequence_14_plate_next_returns_deepest_derived_resume_command(
     # therefore returns A. Discrepancy flagged for user to resolve —
     # either change plate_next or update the walkthrough spec.
     _check_plate_next_returns_parent_convo_resume_command(repo)
+
+
+# ── error-path sequence specs ────────────────────────────────────────
+
+
+def test_sequence_15_plate_drop_with_no_plate_branch_warns_and_exits(
+    repo: Path, capsys
+) -> None:
+    # 1. User has a clean working branch with no plate branch yet.
+    # 2. User runs plate_drop(repo) by mistake.
+    # 3. plate_drop emits "no plate branch — nothing to drop" on stderr,
+    #    returns None, creates no .plate/dropped/ directory, leaves WT
+    #    and HEAD unchanged.
+    _check_plate_drop_no_branch_warns_and_exits(repo, capsys)
+
+
+def test_sequence_16_plate_trash_with_no_plate_branch_warns_and_exits(
+    repo: Path, capsys
+) -> None:
+    # 1. User has a clean working branch with no plate branch yet.
+    # 2. User runs plate_trash(repo) by mistake.
+    # 3. plate_trash emits "no plate branch — nothing to trash" on stderr,
+    #    returns None, creates no .plate/trashed/ directory, leaves HEAD
+    #    unchanged.
+    _check_plate_trash_no_branch_warns_and_exits(repo, capsys)
+
+
+def test_sequence_17_plate_recycle_with_no_trashed_session_warns_and_exits(
+    repo: Path, capsys
+) -> None:
+    # 1. User has a clean working branch with no .plate/trashed/ history.
+    # 2. User runs plate_recycle(repo) by mistake.
+    # 3. plate_recycle emits "nothing to recycle" on stderr, returns None,
+    #    creates no plate branch, leaves HEAD unchanged.
+    _check_plate_recycle_no_branch_warns_and_exits(repo, capsys)
+
+
+def test_sequence_18_plate_done_aborts_cleanly_on_cherry_pick_conflict(
+    repo: Path, capsys
+) -> None:
+    # 1. User edits a tracked file and plate_pushes (P1 captures "plate
+    #    version").
+    # 2. User resets WT and commits a CONFLICTING edit ("branch version")
+    #    on the working branch HEAD — the same line is now divergent.
+    # 3. User runs plate_done(repo). Cherry-pick conflicts on the shared
+    #    line.
+    # 4. plate_done aborts the cherry-pick, restores HEAD/WT to pre-call
+    #    state, preserves <branch>-plate so the original plate tip is
+    #    still reachable, and warns on stderr. No CHERRY_PICK_HEAD lingers.
+    _check_plate_done_conflict_aborts_and_restores(repo, capsys)
+
+
+def test_sequence_19_drop_patch_is_portable_across_repos(tmp_path: Path) -> None:
+    # 1. Two separate clones (repoA and repoB) of the same project, both
+    #    sharing the same TEST_FILENAME content at HEAD.
+    # 2. In repoA: edit TEST_FILENAME, create an untracked file, plate_push,
+    #    plate_drop → produces a portable .patch file.
+    # 3. The .patch file is copied into repoB (e.g., emailed to a teammate).
+    # 4. In repoB: apply_patch(repoB, patch) restores the dropped edits
+    #    byte-for-byte — both the tracked modification and the untracked
+    #    file land cleanly with no merge markers.
+    repoA = setup_repo(tmp_path / "a")
+    repoB = setup_repo(tmp_path / "b")
+    _check_drop_patch_applies_in_fresh_repo(repoA, repoB)
+
+
+def test_sequence_20_plate_done_leaves_sha_recoverable_after_branch_delete(
+    repo: Path,
+) -> None:
+    # 1. User creates a single plate (P1) with an untracked file.
+    # 2. User runs plate_done(repo) → cherry-pick replays P1, plate branch
+    #    is force-deleted.
+    # 3. The plate tip SHA is still resolvable from the object database
+    #    (recoverable until git gc). Documents the invariant — would catch
+    #    a future regression that introduces immediate gc/prune.
+    _check_plate_done_leaves_sha_recoverable(repo)

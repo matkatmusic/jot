@@ -9,18 +9,23 @@ All 9 plate operations are **implemented + tested** in `skills/plate/tests/seque
 | Operation | Test location | Status |
 |---|---|---|
 | `plate_push` | helpers.py + test_sequence_01, 02, 04 | ✅ implemented + 3 sequence-level tests |
-| `plate_done` | helpers.py + test_sequence_03, 04 | ✅ implemented + 2 sequence-level tests |
-| `plate_drop` | helpers.py + test_sequence_05, 06 | ✅ implemented + 2 sequence-level tests |
-| `plate_trash` | helpers.py + test_sequence_08 | ✅ both default and `clean_wt=True` modes |
-| `plate_recycle` | helpers.py + test_sequence_10 | ✅ implemented |
+| `plate_done` | helpers.py + test_sequence_03, 04, 18, 20 | ✅ implemented + happy-path + conflict-abort + reflog tests |
+| `plate_drop` | helpers.py + test_sequence_05, 06, 15, 19 | ✅ implemented + missing-branch + cross-repo portability |
+| `plate_trash` | helpers.py + test_sequence_08, 16 | ✅ default + `clean_wt=True` + missing-branch |
+| `plate_recycle` | helpers.py + test_sequence_10, 17 | ✅ implemented + missing-session warning |
 | `plate_carry` | helpers.py + test_sequence_11 | ✅ implemented |
 | `plate_next` | helpers.py + test_sequence_14 | ✅ implemented (semantic discrepancy noted) |
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ first + second derived |
-| `apply_patch` | helpers.py + test_sequence_07 | ✅ implemented + round-trip |
+| `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**78 passing tests, 0 failures.**
+**90 passing tests, 0 failures.**
 
-## What's actually missing for a shippable /plate (3 categories)
+Recent additions (2026-04-30): missing-branch guards on `--drop` / `--trash` /
+`--recycle` (warn on stderr, return None); cherry-pick conflict abort in
+`plate_done` (restores HEAD/WT, preserves plate branch); test sequences
+15–20 covering the previously-untested error paths.
+
+## What's actually missing for a shippable /plate
 
 ### A. Production wiring (the big gap)
 
@@ -34,8 +39,6 @@ The harness is **Python**. The `/plate` slash command users invoke calls **shell
 
 Items still flagged as needing user decision:
 
-- `--trash` patch granularity: per-plate (current impl) vs combined
-- `--recycle` session selection when multiple trashed: most-recent default vs require timestamp
 - `--carry` with clean WT: picker-only vs error
 - `simulate_derived_agent`: production trigger (when does an "agent" actually become "derived"?)
 - **`plate_next` semantics**: walkthrough spec says "deepest convo" (B), implementation returns parent-convo (A). `test_sequence_14` currently asserts the implementation; one of them needs to change.
@@ -44,24 +47,21 @@ Items still flagged as needing user decision:
 - EditFile per-agent file list (blocked on a hook that doesn't exist yet)
 - Auto-`/plate` on `SessionExit` hook
 
-### C. Untested error paths
-
-The 14 sequence tests cover the **happy path** for each operation. From `plans/plate-test-scenarios.md`, these scenarios are documented but untested:
-
-- Cherry-pick conflict during `plate_done` (branch advanced between push and done)
-- `--drop` / `--trash` / `--recycle` with no plate branch existing
-- Cross-repo patch portability (patch from repo A applies in repo B)
-- Reflog recovery after `--done` deletes plate branch
-- Cherry-pick aborted mid-sequence (cleanup behavior)
-
 ## Bottom line: what "delivered" looks like
 
-Roughly **20–30 hours** of work split across:
+Roughly **15–25 hours** of work split across:
 
 1. **Decide on the model** (Python vs shell, branch vs stash-ref) — 1–2h discussion
 2. **Wire the chosen path** — 6–10h (script bridge or full port)
 3. **Resolve the design decisions above** — 4–6h (mostly choices, not coding)
-4. **Add error-path tests** — 6–8h (cherry-pick conflicts, missing-plate paths, cross-repo portability)
-5. **Production validation**: actually run `/plate` interactively in a real conversation, confirm hooks fire, JSON metadata writes correctly, etc. — 3–4h
+4. **Production validation**: actually run `/plate` interactively in a real conversation, confirm hooks fire, JSON metadata writes correctly, etc. — 3–4h
 
-The current state is a **strong foundation** — the canonical sequences are locked in and verified, and the hardest design decisions (branch model, per-plate patches in trash, derived agent trailers) are settled with tests. What's missing is mostly the plumbing to expose this work to actual users via the `/plate` command, plus ~5 unresolved design choices that you'd want signed off before shipping.
+The current state is a **strong foundation** — the canonical sequences plus
+the major error paths (missing-branch, cherry-pick conflict, cross-repo
+patch portability, reflog recoverability) are locked in and verified, and
+the hardest design decisions (branch model, per-plate patches in trash,
+derived agent trailers, warn-and-exit on missing branch, abort-and-restore
+on conflict) are settled with tests. What's missing is mostly the plumbing
+to expose this work to actual users via the `/plate` command, plus the
+remaining unresolved design choices that you'd want signed off before
+shipping.
