@@ -1,22 +1,28 @@
 """Shared helpers for the /plate sequence test harness.
 
-Implemented:
-    - run(cmd, cwd, ...)              subprocess wrapper
-    - setup_repo(base)                fresh repo with topology
-    - performRandomEdit(repo)               simulate a user edit
-    - assertion utilities             getCurrentBranchName, branchExists,
-                                      countCommitsReachableFromRef, getTreeSHA,
-                                      getGitStatus, checkForCleanWorkTree,
-                                      getCommitSubject, getCommitTrailers
+Plate operations (all implemented):
+    plate_push, plate_done, plate_drop, plate_trash, plate_recycle,
+    plate_next, simulate_derived_agent, apply_patch
 
-Stubbed (raise NotImplementedError):
-    - plate_push, plate_done, plate_drop, plate_trash,
-      plate_recycle, plate_carry, plate_next
-    - simulate_derived_agent
-    - apply_patch
+`plate_push` writes commit trailers — `parent-branch` always; `convo-id`,
+`convo-name`, `convo-summary` when the matching kwarg is non-None.
 
-See plans/plate-walkthrough-log-2026-04-28.md for the locked-in
-sequences each stub must implement.
+Transcript helpers (read Claude Code JSONL session files):
+    extractConvoNameFromTranscript, extractConvoCwdFromTranscript,
+    localTranscriptIsReadable
+
+Listing / formatting helpers:
+    formatPlateAge, listPlateBranches
+
+Repo / commit utilities:
+    setup_repo, makeTestRepoWithSingleCommit, performRandomEdit,
+    getCurrentBranchName, branchExists, countCommitsReachableFromRef,
+    getTreeSHA, getGitStatus, checkForCleanWorkTree, getCommitSubject,
+    getCommitTrailers, saveChangesToPatch, resetHardToHead,
+    cleanWorkTree, deleteBranchForce, makeTempGitIndexPath, ...
+
+See `skills/plate/PLATE STATE.md` for the operational gap analysis and
+`plans/plate-walkthrough-log-2026-04-28.md` for the canonical sequences.
 """
 from __future__ import annotations
 
@@ -1590,22 +1596,6 @@ def test_plate_recycle(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_recycle_restores_stack(repo)
 
-def plate_carry(repo: Path, target_plate: str) -> None:
-    """STUB. Push current WIP, then check out target plate branch.
-
-    Phase A: canonical /plate push of current WIP onto
-             <current-branch>-plate.
-    Phase B: present picker (in tests, target_plate is given directly),
-             check out the chosen plate branch.
-    """
-    plate_push(repo)
-    checkOutBranch(repo, target_plate)
-
-def test_plate_carry(tmp_path: Path):
-    """Per-function: WIP + target plate → carry pushes source plate then checks out target."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    _check_plate_carry_pushes_then_checks_out_target(repo)
-
 def plate_next(repo: Path, index: Optional[int] = None) -> str:
     """List or jump to a parked plate.
 
@@ -2000,35 +1990,6 @@ def _check_plate_recycle_restores_stack(repo: Path) -> None:
     assert getTreeSHA(repo, plateBranchName) == plate_tip_tree_before
     assert getSHAForRefViaRevParse(repo, plateBranchName) == recycled_sha
     assert getSHAForRefViaRevParse(repo, branch) == branch_tip_before
-
-
-def _check_plate_carry_pushes_then_checks_out_target(repo: Path) -> None:
-    """Scenario: WIP on source branch + target plate exists → plate_carry
-    pushes WIP onto source-plate, then checks out target plate."""
-    source_branch = getCurrentBranchName(repo)
-    source_tip = getSHAForRefViaRevParse(repo, source_branch)
-    sourcePlateBranchName = f"{source_branch}-plate"
-
-    # Set up a target plate branch directly via plumbing (in production this
-    # would be created by another agent's plate_push).
-    targetPlateBranchName = "target-plate"
-    run(
-        ["git", "update-ref", f"refs/heads/{targetPlateBranchName}", source_tip],
-        cwd=repo,
-    )
-
-    untracked = createUntrackedFile(repo, random.Random())["file"]
-
-    plate_carry(repo, target_plate=targetPlateBranchName)
-
-    assert getCurrentBranchName(repo) == targetPlateBranchName
-    assert branchExists(repo, sourcePlateBranchName)
-    # Source plate captured the WIP (verify via ls-tree, not checkout).
-    plate_files = run(
-        ["git", "ls-tree", "-r", "--name-only", sourcePlateBranchName], cwd=repo
-    ).splitlines()
-    assert untracked in plate_files
-    assert getSHAForRefViaRevParse(repo, source_branch) == source_tip
 
 
 def _check_first_derived_agent_records_trailers(repo: Path) -> None:

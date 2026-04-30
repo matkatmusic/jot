@@ -4,7 +4,7 @@ _Snapshot: 2026-04-30_
 
 ## What the harness actually has (verified)
 
-All 9 plate operations are **implemented + tested** in `skills/plate/tests/sequence/helpers.py`:
+8 plate operations are **implemented + tested** in `skills/plate/tests/sequence/helpers.py` (`plate_carry` deprecated and removed — see "plate_carry removal" below):
 
 | Operation | Test location | Status |
 |---|---|---|
@@ -13,14 +13,15 @@ All 9 plate operations are **implemented + tested** in `skills/plate/tests/seque
 | `plate_drop` | helpers.py + test_sequence_05, 06, 15, 19 | ✅ implemented + missing-branch + cross-repo portability |
 | `plate_trash` | helpers.py + test_sequence_08, 16 | ✅ default + `clean_wt=True` + missing-branch |
 | `plate_recycle` | helpers.py + test_sequence_10, 17 | ✅ implemented + missing-session warning |
-| `plate_carry` | helpers.py + test_sequence_11 | ✅ implemented |
-| `plate_next` | helpers.py + test_sequence_21 | ✅ list/jump split — see "plate_next redesign" below |
+| `plate_next` | helpers.py + test_sequence_21 | ✅ list/jump split — subsumes plate_carry's role |
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ first + second derived |
 | `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**110 passing tests, 0 failures.**
+**108 passing tests, 0 failures.**
 
 ### Recent additions
+
+**2026-04-30 (late afternoon) — `plate_carry` removed**: deprecated and deleted. `plate_next(repo, index)` subsumes carry's job with better UX — index-based picker, automatic pre-push, lands HEAD on the target's parent branch with the plate's tree as actionable WIP, and emits a resume command. The two helper tests + sequence_11 were removed.
 
 **2026-04-30 (afternoon) — `plate_next` redesign**:
 
@@ -46,7 +47,6 @@ The harness is **Python**. The `/plate` slash command users invoke calls **shell
 
 Items still flagged as needing user decision:
 
-- `--carry` with clean WT: picker-only vs error
 - `simulate_derived_agent`: production trigger (when does an "agent" actually become "derived"?)
 - `.plate/` directory layout finalization (currently just `dropped/` and `trashed/`)
 - EditFile per-agent file list (blocked on a hook that doesn't exist yet)
@@ -57,6 +57,7 @@ Items still flagged as needing user decision:
 Resolved this session and removed from the open list:
 - ~~`plate_next` semantics~~ — list/jump navigator across independent plates (not derived-chain walker).
 - ~~JSON metadata layer~~ — replaced by commit trailers (`convo-id`, `parent-branch`, `convo-name`, `convo-summary`).
+- ~~`--carry` with clean WT: picker-only vs error~~ — moot; `plate_carry` removed in favor of `plate_next`.
 
 ## Bottom line: what "delivered" looks like
 

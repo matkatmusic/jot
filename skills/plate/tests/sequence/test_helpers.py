@@ -17,7 +17,6 @@ from helpers import (
     TEST_FILENAME,
     _check_drop_patch_applies_in_fresh_repo,
     _check_first_derived_agent_records_trailers,
-    _check_plate_carry_pushes_then_checks_out_target,
     _check_plate_next_list_shows_plates_sorted_with_current_marker,
     _check_plate_done_conflict_aborts_and_restores,
     _check_plate_done_leaves_sha_recoverable,
@@ -343,12 +342,10 @@ def test_sequence_10_plate_recycle_restores_latest_trashed_stack(repo: Path) -> 
     _check_plate_recycle_restores_stack(repo)
 
 
-def test_sequence_11_plate_carry_sets_down_wip_before_checkout(repo: Path) -> None:
-    # 1. User has a target plate branch and dirty WIP on the source branch.
-    # 2. User runs plate_carry(repo, target_plate).
-    # 3. Source <branch>-plate captures the WIP before checkout, current
-    #    branch becomes target_plate, source branch tip unchanged.
-    _check_plate_carry_pushes_then_checks_out_target(repo)
+# test_sequence_11 (plate_carry) removed — plate_carry was deprecated in
+# favor of plate_next (list/jump navigator). plate_next subsumes carry's
+# job with better UX (index-based selection, automatic resume command,
+# WIP-on-parent-branch landing state).
 
 
 def test_sequence_12_derived_agent_first_child_records_parent_trailers(
