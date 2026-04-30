@@ -1,5 +1,19 @@
 # /plate — Implementation Plan
 
+> ⚠️ **HISTORICAL — DO NOT TREAT AS CURRENT BEHAVIOR**
+>
+> This document is the original engineering playbook written against the pre-refactor design. It describes scripts, refs (`refs/plates/<convoID>/...`), and JSON files (`.plate/instances/<convoID>.json`) that the current implementation does NOT use.
+>
+> The actual implementation uses **branch commits** (`<branch>-plate`) and **commit trailers** (`convo-id`, `convo-name`, `convo-summary`, `parent-branch`). For the current truth, read in this order:
+>
+> 1. `skills/plate/PLATE STATE.md` — what's implemented, what's missing, what's needed for v1.0.
+> 2. `skills/plate/tests/sequence/helpers.py` — actual code for all 9 plate operations, plate_next list/jump sub-functions, and the four transcript helpers.
+> 3. `skills/plate/SESSION_CONTEXT.md` — process patterns and gotchas from the harness build.
+>
+> Code blocks below that reference `git stash create -u`, `git update-ref refs/plates/...`, and `.plate/instances/*.json` are not what the harness actually does. Preserved as a record of the original engineering plan.
+
+---
+
 Prescriptive engineering playbook for building the `/plate` skill from DESIGN.md.
 Every code block is runnable as-is. Every phase has an exit criterion.
 

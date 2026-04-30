@@ -18,13 +18,13 @@ from helpers import (
     _check_drop_patch_applies_in_fresh_repo,
     _check_first_derived_agent_records_trailers,
     _check_plate_carry_pushes_then_checks_out_target,
+    _check_plate_next_list_shows_plates_sorted_with_current_marker,
     _check_plate_done_conflict_aborts_and_restores,
     _check_plate_done_leaves_sha_recoverable,
     _check_plate_done_replays_stack,
     _check_plate_drop_deletes_last_plate,
     _check_plate_drop_no_branch_warns_and_exits,
     _check_plate_drop_then_apply_patch_round_trip,
-    _check_plate_next_returns_parent_convo_resume_command,
     _check_plate_push_creates_branch_capturing_wip,
     _check_plate_recycle_no_branch_warns_and_exits,
     _check_plate_recycle_restores_stack,
@@ -372,21 +372,24 @@ def test_sequence_13_derived_agent_second_child_extends_linear_chain(
     _check_second_derived_agent_extends_chain(repo)
 
 
-def test_sequence_14_plate_next_returns_deepest_derived_resume_command(
+# test_sequence_14 (old plate_next derived-chain behavior) removed —
+# plate_next semantics changed to sibling-plate navigation. New integration
+# test sequences for plate_next added below.
+
+
+def test_sequence_21_plate_next_list_shows_plates_sorted_with_current_marker(
     repo: Path,
 ) -> None:
-    # 1. User creates parent <branch>-plate.
-    # 2. User creates derived1 with convo ID A.
-    # 3. User creates derived2 with convo ID B.
-    # 4. User runs plate_next(repo) (currently checked out on derived2).
-    # 5. Returned command is:
-    #    cd <repo> && claude --resume A
-    #
-    # NOTE: spec docstring originally said "claude --resume B" (deepest
-    # convo); the implementation reads the parent-convo trailer and
-    # therefore returns A. Discrepancy flagged for user to resolve —
-    # either change plate_next or update the walkthrough spec.
-    _check_plate_next_returns_parent_convo_resume_command(repo)
+    # 1. User pushes a plate from main (convo "alpha work").
+    # 2. After a 1s gap, switches to a new feature-y branch off main and
+    #    pushes another plate (convo "beta work").
+    # 3. User runs plate_next(repo) with no index → list mode.
+    # 4. Returned string has two lines, newest first:
+    #      - line 1 = `1. \`beta work\` (current)  age: <age>`
+    #      - line 2 = `2. \`alpha work\` age: <age>`
+    #    Marker fires only on the entry whose ref equals
+    #    `<currentBranch>-plate` (feature-y-plate).
+    _check_plate_next_list_shows_plates_sorted_with_current_marker(repo)
 
 
 # ── error-path sequence specs ────────────────────────────────────────

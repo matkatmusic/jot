@@ -8,22 +8,29 @@ All 9 plate operations are **implemented + tested** in `skills/plate/tests/seque
 
 | Operation | Test location | Status |
 |---|---|---|
-| `plate_push` | helpers.py + test_sequence_01, 02, 04 | ✅ implemented + 3 sequence-level tests |
-| `plate_done` | helpers.py + test_sequence_03, 04, 18, 20 | ✅ implemented + happy-path + conflict-abort + reflog tests |
+| `plate_push` | helpers.py + test_sequence_01, 02, 04 | ✅ implemented + 3 sequence tests + convo trailer plumbing (`convo-id`, `convo-name`, `convo-summary`, `parent-branch`) |
+| `plate_done` | helpers.py + test_sequence_03, 04, 18, 20 | ✅ happy-path + conflict-abort + reflog tests |
 | `plate_drop` | helpers.py + test_sequence_05, 06, 15, 19 | ✅ implemented + missing-branch + cross-repo portability |
 | `plate_trash` | helpers.py + test_sequence_08, 16 | ✅ default + `clean_wt=True` + missing-branch |
 | `plate_recycle` | helpers.py + test_sequence_10, 17 | ✅ implemented + missing-session warning |
 | `plate_carry` | helpers.py + test_sequence_11 | ✅ implemented |
-| `plate_next` | helpers.py + test_sequence_14 | ✅ implemented (semantic discrepancy noted) |
+| `plate_next` | helpers.py + test_sequence_21 | ✅ list/jump split — see "plate_next redesign" below |
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ first + second derived |
 | `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**90 passing tests, 0 failures.**
+**110 passing tests, 0 failures.**
 
-Recent additions (2026-04-30): missing-branch guards on `--drop` / `--trash` /
-`--recycle` (warn on stderr, return None); cherry-pick conflict abort in
-`plate_done` (restores HEAD/WT, preserves plate branch); test sequences
-15–20 covering the previously-untested error paths.
+### Recent additions
+
+**2026-04-30 (afternoon) — `plate_next` redesign**:
+
+- `plate_push` gained optional `convo_id`, `convo_name`, `convo_summary` kwargs; always writes a `parent-branch:` trailer derived from `getCurrentBranchName(repo)`.
+- `plate_next(repo, index=None)` now delegates to `_plate_next_list` (no index) or `_plate_next_jump` (index given). Old derived-chain semantics removed (`test_sequence_14` deleted).
+- New helpers: `formatPlateAge`, `listPlateBranches`, `extractConvoNameFromTranscript`, `extractConvoCwdFromTranscript`, `localTranscriptIsReadable`.
+- Three return paths in jump-mode: local-resume (`cd <cwd> && claude --resume <name>`), lost (`PLATE_NEXT_LOST_MESSAGE`), self-index no-op. Invalid-index returns `PLATE_NEXT_INVALID_INDEX_MESSAGE`. Empty list returns `PLATE_NEXT_EMPTY_LIST_MESSAGE`.
+- Cross-machine handoff via Solution B: `convo-summary` trailer carries a structured ~400-word summary the next agent reads directly from git when the originating transcript file isn't on this machine.
+
+**2026-04-30 (morning) — error-path tests**: missing-branch guards on `--drop` / `--trash` / `--recycle` (warn on stderr, return None); cherry-pick conflict abort in `plate_done` (restores HEAD/WT, preserves plate branch); test sequences 15–20 covering previously-untested error paths.
 
 ## What's actually missing for a shippable /plate
 
@@ -35,33 +42,30 @@ The harness is **Python**. The `/plate` slash command users invoke calls **shell
 2. **Port the Python helpers back into shell** (`branch-snapshot.v2.sh` already exists for `push` but `done.sh`, `drop.sh`, etc., don't have branch-model versions). Manual translation work.
 3. **Replace shell scripts entirely** with a single Python entry point. Cleanest, but changes the SKILL.md plumbing.
 
-### B. Open design decisions in `plans/plate-walkthrough-log-2026-04-28.md`
+### B. Open design decisions
 
 Items still flagged as needing user decision:
 
 - `--carry` with clean WT: picker-only vs error
 - `simulate_derived_agent`: production trigger (when does an "agent" actually become "derived"?)
-- **`plate_next` semantics**: walkthrough spec says "deepest convo" (B), implementation returns parent-convo (A). `test_sequence_14` currently asserts the implementation; one of them needs to change.
 - `.plate/` directory layout finalization (currently just `dropped/` and `trashed/`)
-- JSON metadata layer — DESIGN.md §6 calls for `.plate/instances/<convoID>.json` tracking, harness doesn't have this
 - EditFile per-agent file list (blocked on a hook that doesn't exist yet)
 - Auto-`/plate` on `SessionExit` hook
+- **`convo-summary` format spec** — exact 400-word structure TBD (sections, ordering, fields). Goal: a reader can pick up the work productively in under a minute.
+- **`generatePlateSummary` implementation** — the agent code that produces the summary at push time (likely a sub-agent prompt, hook, or inline LLM call). Out of scope for the harness; in scope for the slash-command bridge.
+
+Resolved this session and removed from the open list:
+- ~~`plate_next` semantics~~ — list/jump navigator across independent plates (not derived-chain walker).
+- ~~JSON metadata layer~~ — replaced by commit trailers (`convo-id`, `parent-branch`, `convo-name`, `convo-summary`).
 
 ## Bottom line: what "delivered" looks like
 
-Roughly **15–25 hours** of work split across:
+Roughly **12–20 hours** of work split across:
 
-1. **Decide on the model** (Python vs shell, branch vs stash-ref) — 1–2h discussion
+1. **Decide on the production wiring strategy** — 1–2h discussion
 2. **Wire the chosen path** — 6–10h (script bridge or full port)
-3. **Resolve the design decisions above** — 4–6h (mostly choices, not coding)
-4. **Production validation**: actually run `/plate` interactively in a real conversation, confirm hooks fire, JSON metadata writes correctly, etc. — 3–4h
+3. **Resolve the remaining design decisions above** — 3–4h
+4. **Define the `convo-summary` format and wire `generatePlateSummary`** — 2–3h
+5. **Production validation**: run `/plate` interactively in a real conversation, confirm hooks fire, trailers write, plate_next list/jump works end-to-end — 2–3h
 
-The current state is a **strong foundation** — the canonical sequences plus
-the major error paths (missing-branch, cherry-pick conflict, cross-repo
-patch portability, reflog recoverability) are locked in and verified, and
-the hardest design decisions (branch model, per-plate patches in trash,
-derived agent trailers, warn-and-exit on missing branch, abort-and-restore
-on conflict) are settled with tests. What's missing is mostly the plumbing
-to expose this work to actual users via the `/plate` command, plus the
-remaining unresolved design choices that you'd want signed off before
-shipping.
+The current state is a **strong foundation** — the canonical sequences, the major error paths (missing-branch, cherry-pick conflict, cross-repo patch portability, reflog recoverability), and `plate_next` navigation across independent plates with cross-machine summary handoff are all locked in and verified. What's missing is mostly the plumbing to expose this work to actual users via the `/plate` command, the `convo-summary` format, and the remaining design choices.

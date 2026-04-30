@@ -1,5 +1,22 @@
 # /plate — Design Spec
 
+> ⚠️ **HISTORICAL — DO NOT TREAT AS CURRENT BEHAVIOR**
+>
+> This document predates the branch-model refactor (2026-04-29 → 2026-04-30). It describes the original **stash-ref + JSON metadata** design that drove the grill-me interviews. The implemented harness in `skills/plate/tests/sequence/helpers.py` uses a different model:
+>
+> - **Storage**: plate work lives on `<branch>-plate` git branches (real commits), not stash refs under `refs/plates/<convoID>/`.
+> - **Metadata**: conversation context is stored in commit trailers (`convo-id`, `convo-name`, `convo-summary`, `parent-branch`), not in `.plate/instances/<convoID>.json` files.
+> - **`plate_next` semantics**: list/jump navigator across independent plate branches with cross-machine summary handoff (Solution B). Not the parent-chain walker described in §4.
+>
+> For the current operational truth, read in this order:
+> 1. `skills/plate/PLATE STATE.md` — what's implemented, what's missing, what's needed for v1.0.
+> 2. `skills/plate/tests/sequence/helpers.py` — actual code for all 9 plate operations and `plate_next` sub-functions.
+> 3. `skills/plate/SESSION_CONTEXT.md` — process patterns and gotchas from the harness build.
+>
+> The sections below are preserved as a record of the original design intent. Where they describe storage layout, command surfaces, schemas, or discovery flows, the current implementation diverges. Use this doc for *why* questions and motivation; use the files above for *what* and *how*.
+
+---
+
 Consolidated design decisions from the grill-me interview session (2026-04-04 → 2026-04-09).
 This document captures everything locked in. Unresolved questions are listed at the bottom.
 
