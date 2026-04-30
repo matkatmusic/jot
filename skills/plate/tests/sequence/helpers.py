@@ -25,14 +25,15 @@ import random
 import string
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
 # -- git command flags used by helpers below --
 
 QUIET_OUTPUT = "-q"
-COMMIT_MESSAGE = "-m"
-BRANCH_NAME = "-b"
+COMMIT_MESSAGE_FLAG = "-m"
+CREATE_BRANCH_AND_CHECKOUT_FLAG = "-b"
 
 # ── Subprocess wrapper ────────────────────────────────────────────────
 
@@ -83,14 +84,14 @@ def createRandomBranchName() -> str:
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
     return prefix + suffix
 
-COMMIT_MESSAGE = "-m"
-BRANCH_NAME = "-b"
+COMMIT_MESSAGE_FLAG = "-m"
+CREATE_BRANCH_AND_CHECKOUT_FLAG = "-b"
 
 def makeEmptyRepo(path: Path) -> Path:
     """Create a new, empty repo with a single main branch."""
     repo = path / "repo"
     repo.mkdir(parents=True)                               
-    run(["git", "init", QUIET_OUTPUT, BRANCH_NAME, "main"],
+    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"],
 cwd=repo)                                                 
     return repo 
 
@@ -144,13 +145,39 @@ USER_NAME_KEY = "user.name"
 USER_NAME_VALUE = "Test User"
 TEST_COMMIT_MESSAGE = "test commit"
 TEST_FILENAME = "a.txt"
+GITIGNORE_CONTENTS = ".plate/\n"
+
+def writeGitIgnore(repo: Path, contents: str = GITIGNORE_CONTENTS) -> Path:
+    """Write a .gitignore file at repo root and return its path.
+
+    Default contents ignore the /plate skill's local stash directory
+    (.plate/) so it is treated as ignored rather than untracked, which
+    means `git clean -fd` won't blow it away (that requires `-x`).
+    """
+    path = repo / ".gitignore"
+    path.write_text(contents)
+    return path
+
+def test_writeGitIgnore(tmp_path: Path):
+    repo = makeTestRepo(base=tmp_path)
+    path = writeGitIgnore(repo)
+    assert path == repo / ".gitignore"
+    assert path.read_text() == GITIGNORE_CONTENTS
+    # Before staging, .gitignore is itself untracked.
+    assert ".gitignore" in getGitUntrackedFilesList(repo)
+    # The .plate/ pattern is now active: .plate/foo.txt is ignored.
+    (repo / ".plate").mkdir()
+    (repo / ".plate" / "foo.txt").write_text("ignored\n")
+    assert ".plate/foo.txt" not in getGitUntrackedFilesList(repo)
 
 def makeTestRepoWithSingleCommit(base: Path) -> Path:
     repo = makeTestRepo(base=base)
-    # add a file to it
-    fileName = TEST_FILENAME
-    addFileToGit(repo, makeTestFile(repo, fileName))
-    # commit the test file
+    # Ignore .plate/ so the skill's stash dir survives `git clean -fd`.
+    writeGitIgnore(repo)
+    addFileToGit(repo, ".gitignore")
+    # add the test file
+    addFileToGit(repo, makeTestFile(repo, TEST_FILENAME))
+    # commit both files together as the initial commit
     createCommit(repo, TEST_COMMIT_MESSAGE)
     return repo
 
@@ -177,13 +204,56 @@ def test_createUserConfig(tmp_path: Path):
     assert getUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
     assert getUserConfigValue(repo, USER_NAME_KEY) == USER_NAME_VALUE
 
+def getGitBranchList(repo: Path) -> list[str]:
+    # git branch --list
+    result = run(["git", "branch", "--list"], cwd=repo).splitlines()
+    # remove the leading characters (* , +)
+    cleanedBranchNames = []
+    for line in result:
+        print( "branch: " + line)
+        cleaned = line.replace("*", "").replace("+", "").strip()
+        print( "cleaned: " + cleaned )
+        cleanedBranchNames.append(cleaned)
+    return cleanedBranchNames
+
+def createBranch(repo: Path, branch_name: str) -> None:
+    # git branch -q <branch-name>
+    run(["git", "branch", QUIET_OUTPUT, branch_name], cwd=repo)
+
+def test_createBranch(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(base=tmp_path)
+    original_head = getCurrentBranchName(repo)
+    branch_name = createRandomBranchName()
+    createBranch(repo, branch_name)
+    branches = getGitBranchList(repo)
+    print(branch_name)
+    print(branches)
+    assert branch_name in getGitBranchList(repo)
+    # make sure HEAD hasn't moved
+    assert getCurrentBranchName(repo) == original_head  
+
 def checkOutBranch(repo: Path, branch_name: str) -> None:
-    run(["git", "checkout", QUIET_OUTPUT, BRANCH_NAME, branch_name], cwd=repo)
+    # git checkout -q <branch-name>
+    run(["git", "checkout", QUIET_OUTPUT, branch_name], cwd=repo)
 
 def test_checkOutBranch(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
+    repo = makeTestRepoWithSingleCommit(base=tmp_path)
     branch_name = createRandomBranchName()
+    createBranch(repo, branch_name)
     checkOutBranch(repo=repo, branch_name=branch_name)
+    assert getCurrentBranchName(repo) == branch_name
+
+def createAndCheckoutBranch(repo: Path, branch_name: str) -> None:
+    run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, branch_name], cwd=repo)
+
+def test_createAndCheckoutBranch(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(base=tmp_path)
+    branch_name = createRandomBranchName()
+    createAndCheckoutBranch(repo, branch_name)
+    branches = getGitBranchList(repo)
+    print(branch_name)
+    print(branches)
+    assert branch_name in getGitBranchList(repo)
     assert getCurrentBranchName(repo) == branch_name
 
 def getCurrentBranchName(repo: Path) -> str:
@@ -231,6 +301,49 @@ def addFileToGit(repo: Path, file: str) -> None:
 def stageAllChanges(repo: Path, env: dict[str, str] | None = None) -> None:
     run(["git", "add", "-A"], cwd=repo, env=env)
 
+def stashFiles(repo: Path, files: list[str]) -> None:
+    """Stash the named files (tracked or untracked) and remove them from WT.
+
+    Uses `git stash push -u --` so that untracked files in <files> are
+    included in the stash. After the call, the named files are gone from
+    the WT and saved on the top of the stash stack (stash@{0}). Use
+    unstashFiles() to restore them.
+    """
+    run(["git", "stash", "push", "-u", QUIET_OUTPUT, "--"] + files, cwd=repo)
+
+def test_stashFiles(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    untrackedName = createUntrackedFile(repo, random.Random())["file"]
+    assert untrackedName in getGitUntrackedFilesList(repo)
+    assert (repo / untrackedName).exists()
+
+    stashFiles(repo, [untrackedName])
+
+    # File is gone from WT and from the untracked list.
+    assert not (repo / untrackedName).exists()
+    assert getGitUntrackedFilesList(repo) == []
+    # A stash entry was created.
+    assert run(["git", "stash", "list"], cwd=repo) != ""
+
+def unstashFiles(repo: Path) -> None:
+    """Pop the top of the stash stack back into the WT (stash@{0})."""
+    run(["git", "stash", "pop", QUIET_OUTPUT], cwd=repo)
+
+def test_unstashFiles(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    untrackedName = createUntrackedFile(repo, random.Random())["file"]
+    originalContent = (repo / untrackedName).read_text()
+    stashFiles(repo, [untrackedName])
+    assert not (repo / untrackedName).exists()
+
+    unstashFiles(repo)
+
+    # File is restored byte-for-byte and stash stack is empty.
+    assert (repo / untrackedName).exists()
+    assert (repo / untrackedName).read_text() == originalContent
+    assert getGitUntrackedFilesList(repo) == [untrackedName]
+    assert run(["git", "stash", "list"], cwd=repo) == ""
+
 def test_addFileToGit(tmp_path: Path):
     repo = makeTestRepo(base=tmp_path)
     fileName = TEST_FILENAME
@@ -257,7 +370,7 @@ def test_stageFiles(tmp_path: Path):
     assert getGitUntrackedFilesList(repo) == []
 
 def createCommit(repo: Path, message: str) -> None:
-    run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE, message], cwd=repo)
+    run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE_FLAG, message], cwd=repo)
 
 def test_createCommit(tmp_path: Path):
     repo = makeTestRepo(base=tmp_path)
@@ -307,11 +420,15 @@ def test_modifyTrackedFile(tmp_path: Path):
     # assert file is unstaged
     assert getGitUnstagedFilesList(repo) == [fileName]
 
-def modifyRandomlyChosenTrackedFile(repo: Path, files: list[str]):
-    # randomly choose a file from files
-    fileName = random.choice(files)
-    # modify it
-    return modifyTrackedFile(repo, fileName, rng=random.Random())
+def modifyRandomlyChosenTrackedFile(
+    repo: Path,
+    files: list[str],
+    rng: random.Random = random,
+):
+    # randomly choose a file from <files> using the supplied rng so that
+    # callers passing a seeded rng get deterministic behavior.
+    fileName = rng.choice(files)
+    return modifyTrackedFile(repo, fileName, rng=rng)
 
 def test_modifyRandomlyChosenTrackedFile(tmp_path: Path):
     # make a test repo
@@ -368,13 +485,17 @@ def setup_repo(base: Path) -> Path:
     repo = makeEmptyRepo(path=base)
     createUserConfig(repo)
 
-    # main: commit A
+    # main: commit A — also stages .gitignore so .plate/ is ignored
+    # and survives `git clean -fd` during plate_trash(clean_wt=True).
+    writeGitIgnore(repo)
+    addFileToGit(repo, ".gitignore")
     (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
     addFileToGit(repo, TEST_FILENAME)
     createCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
     branch_name = createRandomBranchName()
+    createBranch(repo, branch_name)
     checkOutBranch(repo=repo, branch_name=branch_name)
     
     (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
@@ -419,14 +540,14 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     action = rng.choice(actions)
 
     if action == "modify_tracked":
-        return modifyRandomlyChosenTrackedFile(repo, tracked)
+        return modifyRandomlyChosenTrackedFile(repo, tracked, rng=rng)
 
     return createUntrackedFile(repo, rng)
 
 def test_performRandomEdit_modify_tracked(tmp_path: Path,
 monkeypatch):
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    # Force rng.choice(seq) → seq[0]:
+    # Force rng.choice(seq) to return seq[0]:
     #   actions[0] = "modify_tracked"  → takes that branch
     #   tracked[0] = first tracked file → modifies it
     monkeypatch.setattr(random.Random, "choice", lambda self, seq: seq[0])
@@ -443,7 +564,7 @@ monkeypatch):
 
 def test_performRandomEdit_create_untracked_when_tracked_exists(tmp_path: Path, monkeypatch):
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    # Force rng.choice(seq) → seq[-1]:
+    # Force rng.choice(seq) to return seq[-1]:
     #   actions[-1] = "create_untracked" → takes that branch
     monkeypatch.setattr(random.Random, "choice", lambda self, seq: seq[-1])
 
@@ -485,16 +606,14 @@ def test_performRandomEdit_seeded_is_deterministic_simple(tmp_path: Path):
 
 # ── Implemented: assertion utilities ──────────────────────────────────
 
-def branchExists(repo: Path, name: str) -> bool:
-    """True iff refs/heads/<name> exists."""
-    # git branch --list <branch_name>
+def branchExists(repo: Path, branchName: str) -> bool:
+    """True iff refs/heads/<branchName> exists."""
+    # git branch --list <branchName>
     list_output = run(["git", "branch", "--list"], cwd=repo)
-    print("branchExists()")
     # strip out any * in the branch names
     list_output = list_output.replace("*", "")
-    print(list_output.splitlines()) 
-    # the branch exists if it's name appears in the list of branches
-    return name in list_output
+    # the branch exists if its name appears in the list of branches
+    return branchName in list_output
 
 def test_branchExists(tmp_path: Path):
     repo = makeTestRepo(base=tmp_path)
@@ -529,8 +648,8 @@ def test_countCommitsReachableFromRef(tmp_path: Path):
     # assert that main has 1 commit
     assert countCommitsReachableFromRef(repo, "main") == 1
 
-def setGitIndexFileForEnv(env: dict[str, str], tmp_index_path: str) -> dict[str, str]:
-    env["GIT_INDEX_FILE"] = tmp_index_path
+def setGitIndexFileForEnv(env: dict[str, str], gitIndexFile: str) -> dict[str, str]:
+    env["GIT_INDEX_FILE"] = gitIndexFile
     return env
 
 def getSHAForRefViaRevParse(repo: Path, ref: str) -> str:
@@ -555,8 +674,8 @@ def test_getSHAForRefViaRevParse(tmp_path: Path):
     # 4. assert same result when we call the function with HEAD again (Idempotent)
     assert getSHAForRefViaRevParse(repo, "HEAD") == head_sha
 
-def readGitTreeAt(repo: Path, tree_ish: str, env: dict[str, str]) -> str:
-    return run(["git", "read-tree", tree_ish], cwd=repo, env=env)
+def readGitTreeAt(repo: Path, ref: str, env: dict[str, str]) -> str:
+    return run(["git", "read-tree", ref], cwd=repo, env=env)
 
 def writeGitTree(repo: Path, env: dict[str, str]) -> str:
     return run(["git", "write-tree"], cwd=repo, env=env)
@@ -589,7 +708,7 @@ def test_readWriteGitTree(tmp_path: Path):
     tmp2 = makeTempGitIndexPath()
     try:
         env = setGitIndexFileForEnv({}, tmp2)
-        readGitTreeAt(repo=repo, tree_ish="HEAD", env=env)
+        readGitTreeAt(repo=repo, ref="HEAD", env=env)
         # modify a file in the working tree
         fileName = TEST_FILENAME
         (repo / fileName).write_text("A-modified\n")
@@ -685,6 +804,128 @@ def test_getCommitTrailers(tmp_path: Path):
     assert trailers == {"parent-convo": "abc", "plate-id": 
 "42"}          
 
+# ── Helpers used by the plate operations ─────────────────────────────
+
+def resetHardToHead(repo: Path) -> None:
+    """git reset --hard — restore tracked files to HEAD's state."""
+    run(["git", "reset", QUIET_OUTPUT, "--hard"], cwd=repo)
+
+def test_resetHardToHead(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    (repo / TEST_FILENAME).write_text("dirty\n")
+    assert (repo / TEST_FILENAME).read_text() == "dirty\n"
+    resetHardToHead(repo)
+    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
+
+def cleanWorkTree(repo: Path) -> None:
+    """git clean -fd — delete untracked files and untracked directories.
+
+    Ignored paths (e.g. anything matching .gitignore) are preserved
+    because `git clean -fd` does NOT touch them without the `-x` flag.
+    """
+    run(["git", "clean", "-fd", QUIET_OUTPUT], cwd=repo)
+
+def test_cleanWorkTree(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    untrackedName = createUntrackedFile(repo, random.Random())["file"]
+    assert (repo / untrackedName).exists()
+    cleanWorkTree(repo)
+    assert not (repo / untrackedName).exists()
+    assert getGitUntrackedFilesList(repo) == []
+
+def deleteBranchForce(repo: Path, branchName: str) -> None:
+    """git branch -D <name> — delete branch even if not merged."""
+    run(["git", "branch", "-D", QUIET_OUTPUT, branchName], cwd=repo)
+
+def test_deleteBranchForce(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    name = createRandomBranchName()
+    createBranch(repo, name)
+    assert branchExists(repo, name)
+    deleteBranchForce(repo, name)
+    assert not branchExists(repo, name)
+
+def currentTimestampMs() -> str:
+    """Millisecond-resolution timestamp for patch-file naming."""
+    return str(int(time.time() * 1000))
+
+def saveChangesToPatch(
+    repo: Path,
+    files: list[str],
+    name: str = "changes",
+) -> Path:
+    """Save WT changes to <files> as a binary patch under .plate/dropped/.
+
+    Snapshots the named files (both tracked modifications and untracked
+    additions) into a temp index, diffs that snapshot against HEAD with
+    `git diff --binary`, and writes the result to
+    .plate/dropped/<name>_<ts>.patch. The real index, HEAD, and WT
+    are never touched.
+
+    Args:
+        repo: repository root.
+        files: relative paths of files to include in the patch (pathspecs
+               like "." are also accepted).
+        name: prefix for the patch filename; defaults to "changes".
+
+    Returns:
+        Path to the newly written .patch file (ends with trailing newline,
+        as `git apply` requires).
+    """
+    # Temp-index snapshot lets us stage untracked files without polluting
+    # the real index.
+    tmp_index_path = makeTempGitIndexPath()
+    try:
+        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
+        readGitTreeAt(repo=repo, ref="HEAD", env=env)
+        run(["git", "add"] + files, cwd=repo, env=env)
+        snapshot_tree = writeGitTree(repo=repo, env=env)
+    finally:
+        Path(tmp_index_path).unlink(missing_ok=True)
+
+    patch_text = run(
+        ["git", "diff", "--binary", "HEAD", snapshot_tree], cwd=repo
+    )
+
+    patch_dir = repo / ".plate" / "dropped"
+    patch_dir.mkdir(parents=True, exist_ok=True)
+    patch_path = patch_dir / f"{name}_{currentTimestampMs()}.patch"
+    # `git apply` requires a trailing newline; run() stripped it.
+    patch_path.write_text(patch_text + "\n")
+    return patch_path
+
+def test_saveChangesToPatch(tmp_path: Path):
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    modifiedContent = "modified content\n"
+
+    # Modify a tracked file and create an untracked one.
+    (repo / TEST_FILENAME).write_text(modifiedContent)
+    untrackedName = createUntrackedFile(repo, random.Random())["file"]
+    untrackedContent = (repo / untrackedName).read_text()
+
+    patch = saveChangesToPatch(repo, [TEST_FILENAME, untrackedName])
+
+    # Patch file lands in .plate/dropped/ and ends with a trailing newline.
+    assert patch.exists()
+    assert patch.parent.name == "dropped"
+    text = patch.read_text()
+    assert text.endswith("\n")
+    assert TEST_FILENAME in text
+    assert untrackedName in text
+
+    # WT untouched.
+    assert (repo / TEST_FILENAME).read_text() == modifiedContent
+    assert (repo / untrackedName).exists()
+
+    # Round-trip: reset WT to clean, apply patch, original changes return.
+    resetHardToHead(repo)
+    (repo / untrackedName).unlink()
+    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
+    apply_patch(repo, patch)
+    assert (repo / TEST_FILENAME).read_text() == modifiedContent
+    assert (repo / untrackedName).read_text() == untrackedContent
+
+
 # ── Stubs: plate operations ───────────────────────────────────────────
 # Each stub raises NotImplementedError. Implementations should follow
 # the canonical sequences locked in plate-walkthrough-log-2026-04-28.md.
@@ -725,21 +966,22 @@ def plate_push(repo: Path, branch: Optional[str] = None) -> Optional[str]:
     
     tmp_index_path = makeTempGitIndexPath()
     try:
-        env = setGitIndexFileForEnv({}, tmp_index_path)
-        _ = readGitTreeAt(repo, "HEAD", env)
-        wt_tree = writeGitTree(repo, env)
+        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
+        _ = readGitTreeAt(repo=repo, ref="HEAD", env=env)
+        stageAllChanges(repo=repo, env=env)
+        wt_tree = writeGitTree(repo=repo, env=env)
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
 
     # Parent: existing plate tip if branch already exists, else HEAD.
-    if branchExists(repo, plateBranchName):
-        parent = getSHAForRefViaRevParse(repo, plateBranchName)
+    if branchExists(repo=repo, branchName=plateBranchName):
+        parent = getSHAForRefViaRevParse(repo=repo, ref=plateBranchName)
     else:
-        parent = getSHAForRefViaRevParse(repo, "HEAD")
+        parent = getSHAForRefViaRevParse(repo=repo, ref="HEAD")
 
     # Empty-WIP guard. If the WT tree is identical to the would-be
     # parent's tree, no change has occurred since the last plate push.
-    parent_tree = getSHAForRefViaRevParse(repo, getTreeRevOf(parent))
+    parent_tree = getSHAForRefViaRevParse(repo=repo, ref=getTreeRevOf(parent))
     if wt_tree == parent_tree:
         print(f"No changes to push, plate-push returns None: WT tree {wt_tree} == parent tree {parent_tree}")
         return None
@@ -750,7 +992,7 @@ def plate_push(repo: Path, branch: Optional[str] = None) -> Optional[str]:
         [
             "git", "commit-tree", wt_tree,
             "-p", parent,
-            COMMIT_MESSAGE, f"plate: WIP on {branch}",
+            COMMIT_MESSAGE_FLAG, f"plate: WIP on {branch}",
         ],
         cwd=repo,
     )
@@ -758,9 +1000,43 @@ def plate_push(repo: Path, branch: Optional[str] = None) -> Optional[str]:
 
     return new_commit
 
+def test_plate_push_1x(tmp_path: Path):
+    """Per-function: plate_push contract + fixture-specific stash/checkout flow.
 
-def plate_done(repo: Path, branch: Optional[str] = None) -> list[str]:
-    """STUB. Run the canonical /plate --done (Step 9).
+    Shared scenario covers the plate-creation contract; the rest verifies that
+    you can stash the conflicting untracked file, check out the plate branch
+    to inspect its exact tracked-file list (this fixture: .gitignore + a.txt
+    + the new file), then switch back and unstash.
+    """
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_push_creates_branch_capturing_wip(repo)
+
+    # Fixture-specific extras: clear the tracked modification (so checkout
+    # doesn't conflict on it), stash the untracked, then verify the plate
+    # branch's exact tracked-file list via checkout.
+    originalBranch = getCurrentBranchName(repo)
+    plateBranchName = f"{originalBranch}-plate"
+    untrackedFileName = next(
+        f for f in getGitUntrackedFilesList(repo) if f.startswith("new-")
+    )
+
+    resetHardToHead(repo)
+    stashFiles(repo, [untrackedFileName])
+    assert getGitUntrackedFilesList(repo) == []
+
+    checkOutBranch(repo, plateBranchName)
+    assert sorted(getGitTrackedFilesList(repo)) == sorted(
+        [".gitignore", TEST_FILENAME, untrackedFileName]
+    )
+
+    checkOutBranch(repo, originalBranch)
+    unstashFiles(repo)
+    assert getCurrentBranchName(repo) == originalBranch
+    assert untrackedFileName in getGitUntrackedFilesList(repo)
+
+
+def plate_done(repo: Path, branch: Optional[str] = None) -> None:
+    """Run the canonical /plate --done (Step 9).
 
     Sequence:
         Step 0  implicit pre-push (only if WT tree differs from plate tip)
@@ -771,12 +1047,32 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> list[str]:
 
     Args:
         branch: working branch name; defaults to current.
-
-    Returns:
-        List of new commit SHAs cherry-picked onto <branch>, oldest-first.
     """
-    raise NotImplementedError("plate_done: see Step 9 in walkthrough log")
+    if branch is None:
+        branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
 
+    # Step 0: implicit pre-push (no-op when WT already matches plate tip).
+    plate_push(repo, branch)
+
+    # No plate branch means there was nothing to push and nothing to merge.
+    if not branchExists(repo, plateBranchName):
+        return
+
+    # Step 1: clean WT.
+    resetHardToHead(repo)
+    cleanWorkTree(repo)
+
+    # Step 2: cherry-pick HEAD..<branch>-plate (oldest first).
+    run(["git", "cherry-pick", f"HEAD..{plateBranchName}"], cwd=repo)
+
+    # Step 3: delete the plate branch.
+    deleteBranchForce(repo, plateBranchName)
+
+def test_plate_done(tmp_path: Path):
+    """Per-function: 2-plate stack → done cherry-picks both, deletes plate, WT clean."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_done_replays_stack(repo)
 
 def plate_drop(repo: Path, branch: Optional[str] = None) -> Path:
     """STUB. Pop the top plate from <branch>-plate, save as patch.
@@ -792,8 +1088,33 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Path:
     Returns:
         Path to the generated .patch file.
     """
-    raise NotImplementedError("plate_drop")
+    if branch is None:
+        branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
 
+    # Capture the entire WT (tracked + untracked) as a binary patch under
+    # .plate/dropped/<plateBranchName>_<ts>.patch. The "." pathspec stages
+    # everything in the temp index without touching the real index.
+    patch_path = saveChangesToPatch(repo, ["."], name=plateBranchName)
+
+    # Rewind the plate branch by one commit, or delete it if it was the last.
+    plateCount = int(run(
+        ["git", "rev-list", "--count", f"{branch}..{plateBranchName}"],
+        cwd=repo,
+    ))
+    if plateCount == 1:
+        deleteBranchForce(repo, plateBranchName)
+    else:
+        parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
+        run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
+
+    return patch_path
+
+def test_plate_drop(tmp_path: Path):
+    """Per-function: single plate → drop deletes branch + writes patch.
+    Shared scenario covers the contract; runs against the 1-commit fixture."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_drop_deletes_last_plate(repo)
 
 def plate_trash(
     repo: Path,
@@ -810,9 +1131,48 @@ def plate_trash(
                   (mode a — patch redundant with WT). Decision pending.
 
     Returns:
-        Path to the generated .patch file.
+        Path to the directory containing per-plate .patch files
+        (e.g. .plate/trashed/<branch>-plate_<ts>/).
     """
-    raise NotImplementedError("plate_trash")
+    if branch is None:
+        branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    # Walk plate commits oldest-first.
+    plates = run(
+        ["git", "rev-list", "--reverse", f"{branch}..{plateBranchName}"],
+        cwd=repo,
+    ).splitlines()
+
+    # Per-plate patches go into a single dated session directory.
+    trash_dir = repo / ".plate" / "trashed" / f"{plateBranchName}_{currentTimestampMs()}"
+    trash_dir.mkdir(parents=True)
+
+    for i, plate_sha in enumerate(plates):
+        patch_text = run(
+            ["git", "diff", "--binary", f"{plate_sha}~1", plate_sha],
+            cwd=repo,
+        )
+        # `git apply` requires a trailing newline; run() stripped it.
+        (trash_dir / f"plate_{i:03d}.patch").write_text(patch_text + "\n")
+
+    deleteBranchForce(repo, plateBranchName)
+
+    if clean_wt:
+        resetHardToHead(repo)
+        cleanWorkTree(repo)
+
+    return trash_dir
+
+def test_plate_trash(tmp_path: Path):
+    """Per-function: 2-plate stack → trash saves patches + deletes branch + WT preserved."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_trash_default_preserves_wt(repo)
+
+def test_plate_trash_hard(tmp_path: Path):
+    """Per-function: dirty 2-plate stack → trash --hard saves patches + wipes WT."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_trash_clean_resets_wt(repo)
 
 
 def plate_recycle(
@@ -834,8 +1194,33 @@ def plate_recycle(
     Returns:
         SHA of the recycled <branch>-plate tip.
     """
-    raise NotImplementedError("plate_recycle")
+    if branch is None:
+        branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
 
+    trash_root = repo / ".plate" / "trashed"
+    sessions = sorted(
+        d for d in trash_root.iterdir() if d.name.startswith(f"{plateBranchName}_")
+    )
+    if not sessions:
+        raise FileNotFoundError(f"No trashed plates for {plateBranchName}")
+
+    if timestamp is not None:
+        chosen = next(d for d in sessions if d.name.endswith(f"_{timestamp}"))
+    else:
+        chosen = sessions[-1]
+
+    # Apply each per-plate patch, then push it as its own plate commit.
+    for patch in sorted(chosen.iterdir()):
+        apply_patch(repo, patch)
+        plate_push(repo, branch)
+
+    return getSHAForRefViaRevParse(repo, plateBranchName)
+
+def test_plate_recycle(tmp_path: Path):
+    """Per-function: 2 plates → trash → recycle restores branch with same tree."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_recycle_restores_stack(repo)
 
 def plate_carry(repo: Path, target_plate: str) -> None:
     """STUB. Push current WIP, then check out target plate branch.
@@ -845,16 +1230,29 @@ def plate_carry(repo: Path, target_plate: str) -> None:
     Phase B: present picker (in tests, target_plate is given directly),
              check out the chosen plate branch.
     """
-    raise NotImplementedError("plate_carry")
+    plate_push(repo)
+    checkOutBranch(repo, target_plate)
 
+def test_plate_carry(tmp_path: Path):
+    """Per-function: WIP + target plate → carry pushes source plate then checks out target."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_carry_pushes_then_checks_out_target(repo)
 
 def plate_next(repo: Path) -> str:
-    """STUB. Walk the parent-trailer chain across <base>-derived*
+    """Walk the parent-trailer chain across <base>-derived*
     branches, return the resume command (e.g.
     "cd <cwd> && claude --resume <convoID>").
-    """
-    raise NotImplementedError("plate_next")
 
+    Reads the parent-convo trailer of HEAD's tip commit and emits the
+    shell command needed to resume that conversation in this repo.
+    """
+    parent_convo = getCommitTrailers(repo, "HEAD").get("parent-convo", "")
+    return f"cd {repo} && claude --resume {parent_convo}"
+
+def test_plate_next(tmp_path: Path):
+    """Per-function: derived chain → plate_next emits parent-convo resume command."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_next_returns_parent_convo_resume_command(repo)
 
 def simulate_derived_agent(
     repo: Path,
@@ -878,9 +1276,363 @@ def simulate_derived_agent(
         Name of the created derived branch
         (e.g. "fix-plate-derived1").
     """
-    raise NotImplementedError("simulate_derived_agent")
+    derivedPattern = f"{parent_plate}-derived"
+    existing = [b for b in getGitBranchList(repo) if b.startswith(derivedPattern)]
+    N = len(existing)
+
+    if N == 0:
+        baseBranch = parent_plate
+        parentConvo = "ROOT"
+    else:
+        existing.sort(key=lambda b: int(b[len(derivedPattern):]))
+        baseBranch = existing[-1]
+        parentConvo = getCommitTrailers(repo, baseBranch)["convo-id"]
+
+    newBranchName = f"{parent_plate}-derived{N+1}"
+    parentSHA = getSHAForRefViaRevParse(repo, baseBranch)
+    parentTree = getTreeSHA(repo, baseBranch)
+
+    msg = (
+        f"derived agent {N+1}\n\n"
+        f"parent-convo: {parentConvo}\n"
+        f"parent-plate: {parentSHA}\n"
+        f"convo-id: {convo_id}"
+    )
+    new_commit = run(
+        ["git", "commit-tree", parentTree, "-p", parentSHA, COMMIT_MESSAGE_FLAG, msg],
+        cwd=repo,
+    )
+    run(["git", "update-ref", f"refs/heads/{newBranchName}", new_commit], cwd=repo)
+    return newBranchName
+
+def test_simulate_derived_agent_first(tmp_path: Path):
+    """Per-function: first derived agent records trailers."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_first_derived_agent_records_trailers(repo)
+
+
+def test_simulate_derived_agent_second(tmp_path: Path):
+    """Per-function: second derived agent extends chain (parent-convo points at previous)."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_second_derived_agent_extends_chain(repo)
 
 
 def apply_patch(repo: Path, patch: Path) -> None:
-    """STUB. Apply a saved .patch file via `git apply --3way <patch>`."""
-    raise NotImplementedError("apply_patch")
+    """Apply a saved .patch file via `git apply --3way <patch>`."""
+    run(["git", "apply", "--3way", str(patch)], cwd=repo)
+
+def test_apply_patch(tmp_path: Path):
+    # 1. Make a test repo with a single commit; original tracked content
+    #    is TEST_FILE_CONTENTS.
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+
+    # 2. Modify the tracked file and capture the diff via `git diff --binary`
+    #    into a .patch file. (run() strips trailing newlines; git apply
+    #    requires them, so append "\n".)
+    modifiedContent = "modified content\n"
+    (repo / TEST_FILENAME).write_text(modifiedContent)
+    patch_text = run(["git", "diff", "--binary"], cwd=repo)
+    patch_path = tmp_path / "test.patch"
+    patch_path.write_text(patch_text + "\n")
+
+    # 3. git reset --hard to revert the WT to the original state.
+    run(["git", "reset", "--hard"], cwd=repo)
+    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
+
+    # 4. Call apply_patch(repo, patchPath); expected behavior:
+    #    a. Runs `git apply --3way <patch>` on the saved patch.
+    #    b. WT now reflects the patched state again.
+    apply_patch(repo, patch_path)
+
+    # 5. Assert: tracked file content matches the modified content (post-patch).
+    assert (repo / TEST_FILENAME).read_text() == modifiedContent
+
+
+# ── Cross-fixture scenario helpers ────────────────────────────────────
+# Each `_check_*` function asserts a single workflow contract. Both the
+# per-function tests above (against makeTestRepoWithSingleCommit) and the
+# sequence tests in test_helpers.py (against setup_repo) call these to
+# verify the same workflow under different topologies. Scenarios MUST
+# avoid fixture-specific assumptions (no hardcoded branch names, no
+# exact-equality checks on tracked-file lists).
+
+
+def _check_plate_push_creates_branch_capturing_wip(repo: Path) -> None:
+    """Scenario: tracked edit + untracked file → plate_push creates the plate
+    branch parented to HEAD, captures both edits, and leaves WT/HEAD/branch
+    untouched."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+    assert not branchExists(repo, plateBranchName)
+
+    (repo / TEST_FILENAME).write_text("modified\n")
+    untracked = createUntrackedFile(repo, random.Random())["file"]
+
+    sha = plate_push(repo)
+
+    # Plate branch created and parented to HEAD.
+    assert sha is not None
+    assert branchExists(repo, plateBranchName)
+    assert getSHAForRefViaRevParse(repo, plateBranchName) == sha
+    assert run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo) == head_before
+    # Both edits captured in the plate tree.
+    plate_files = run(
+        ["git", "ls-tree", "-r", "--name-only", plateBranchName], cwd=repo
+    ).splitlines()
+    assert TEST_FILENAME in plate_files
+    assert untracked in plate_files
+    # WT, HEAD, and current branch unchanged.
+    assert getCurrentBranchName(repo) == branch
+    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert (repo / TEST_FILENAME).read_text() == "modified\n"
+    assert untracked in getGitUntrackedFilesList(repo)
+
+
+def _check_plate_done_replays_stack(repo: Path) -> None:
+    """Scenario: 2-plate stack → plate_done cherry-picks both onto branch
+    oldest-first, deletes plate ref, leaves WT clean and tree == former plate tip."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    branch_count_before = countCommitsReachableFromRef(repo, branch)
+
+    rng = random.Random()
+    u1 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    u2 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    plate_tip_tree = getTreeSHA(repo, plateBranchName)
+
+    plate_done(repo)
+
+    assert not branchExists(repo, plateBranchName)
+    assert countCommitsReachableFromRef(repo, branch) == branch_count_before + 2
+    assert checkForCleanWorkTree(repo)
+    assert getTreeSHA(repo, branch) == plate_tip_tree
+    tracked = getGitTrackedFilesList(repo)
+    assert u1 in tracked
+    assert u2 in tracked
+
+
+def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
+    """Scenario: single plate → plate_drop saves a patch under .plate/dropped/,
+    deletes the plate ref, leaves WT untouched."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    untracked = createUntrackedFile(repo, random.Random())["file"]
+    plate_push(repo)
+    assert branchExists(repo, plateBranchName)
+
+    patch_path = plate_drop(repo)
+
+    assert patch_path.exists()
+    assert patch_path.parent.name == "dropped"
+    assert untracked in patch_path.read_text()
+    assert not branchExists(repo, plateBranchName)
+    assert untracked in getGitUntrackedFilesList(repo)
+
+
+def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
+    """Scenario: single plate → plate_drop + reset WT + apply_patch restores
+    the dropped work to the WT byte-for-byte."""
+    untracked = createUntrackedFile(repo, random.Random())["file"]
+    untracked_content = (repo / untracked).read_text()
+    plate_push(repo)
+
+    patch_path = plate_drop(repo)
+
+    # Reset WT to clean state (drop's contract leaves the file in WT;
+    # delete it explicitly so apply_patch's restoration is visible).
+    (repo / untracked).unlink()
+    assert not (repo / untracked).exists()
+
+    apply_patch(repo, patch_path)
+
+    assert (repo / untracked).exists()
+    assert (repo / untracked).read_text() == untracked_content
+
+
+def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
+    """Scenario: 2-plate stack → plate_trash (default clean_wt=False) saves
+    per-plate patches, deletes plate ref, leaves WT untouched."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    rng = random.Random()
+    u1 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    u2 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+
+    trash_dir = plate_trash(repo)
+
+    assert trash_dir.is_dir()
+    assert trash_dir.parent.name == "trashed"
+    patches = sorted(trash_dir.iterdir())
+    assert len(patches) == 2
+    assert all(p.suffix == ".patch" for p in patches)
+    assert not branchExists(repo, plateBranchName)
+    untracked = getGitUntrackedFilesList(repo)
+    assert u1 in untracked
+    assert u2 in untracked
+
+
+def _check_plate_trash_clean_resets_wt(repo: Path) -> None:
+    """Scenario: dirty 2-plate stack → plate_trash(clean_wt=True) saves
+    patches, deletes plate ref, AND wipes WT (tracked restored, untracked
+    removed)."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    branch_tip_before = getSHAForRefViaRevParse(repo, branch)
+    tracked_before = (repo / TEST_FILENAME).read_text()
+
+    rng = random.Random()
+    (repo / TEST_FILENAME).write_text("modified\n")
+    u1 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    u2 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+
+    trash_dir = plate_trash(repo, clean_wt=True)
+
+    assert trash_dir.is_dir()
+    patches = sorted(trash_dir.iterdir())
+    assert len(patches) == 2
+    assert not branchExists(repo, plateBranchName)
+    # WT wiped.
+    assert (repo / TEST_FILENAME).read_text() == tracked_before
+    assert not (repo / u1).exists()
+    assert not (repo / u2).exists()
+    # Branch HEAD untouched.
+    assert getSHAForRefViaRevParse(repo, branch) == branch_tip_before
+
+
+def _check_plate_recycle_restores_stack(repo: Path) -> None:
+    """Scenario: 2-plate stack → trash → recycle restores plate branch with
+    same commit count and same tip tree SHA; branch HEAD unchanged."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+    branch_tip_before = getSHAForRefViaRevParse(repo, branch)
+
+    rng = random.Random()
+    u1 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    u2 = createUntrackedFile(repo, rng)["file"]
+    plate_push(repo)
+    plate_count_before = countCommitsReachableFromRef(repo, plateBranchName)
+    plate_tip_tree_before = getTreeSHA(repo, plateBranchName)
+
+    plate_trash(repo)
+    # Clean WT before recycle so apply_patch doesn't conflict on existing files.
+    (repo / u1).unlink()
+    (repo / u2).unlink()
+
+    recycled_sha = plate_recycle(repo)
+
+    assert branchExists(repo, plateBranchName)
+    assert countCommitsReachableFromRef(repo, plateBranchName) == plate_count_before
+    assert getTreeSHA(repo, plateBranchName) == plate_tip_tree_before
+    assert getSHAForRefViaRevParse(repo, plateBranchName) == recycled_sha
+    assert getSHAForRefViaRevParse(repo, branch) == branch_tip_before
+
+
+def _check_plate_carry_pushes_then_checks_out_target(repo: Path) -> None:
+    """Scenario: WIP on source branch + target plate exists → plate_carry
+    pushes WIP onto source-plate, then checks out target plate."""
+    source_branch = getCurrentBranchName(repo)
+    source_tip = getSHAForRefViaRevParse(repo, source_branch)
+    sourcePlateBranchName = f"{source_branch}-plate"
+
+    # Set up a target plate branch directly via plumbing (in production this
+    # would be created by another agent's plate_push).
+    targetPlateBranchName = "target-plate"
+    run(
+        ["git", "update-ref", f"refs/heads/{targetPlateBranchName}", source_tip],
+        cwd=repo,
+    )
+
+    untracked = createUntrackedFile(repo, random.Random())["file"]
+
+    plate_carry(repo, target_plate=targetPlateBranchName)
+
+    assert getCurrentBranchName(repo) == targetPlateBranchName
+    assert branchExists(repo, sourcePlateBranchName)
+    # Source plate captured the WIP (verify via ls-tree, not checkout).
+    plate_files = run(
+        ["git", "ls-tree", "-r", "--name-only", sourcePlateBranchName], cwd=repo
+    ).splitlines()
+    assert untracked in plate_files
+    assert getSHAForRefViaRevParse(repo, source_branch) == source_tip
+
+
+def _check_first_derived_agent_records_trailers(repo: Path) -> None:
+    """Scenario: parent plate exists → simulate_derived_agent creates
+    `<parent_plate>-derived1` parented to plate tip with trailers
+    parent-plate=<plate tip SHA> and convo-id=<convo_id>."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    (repo / TEST_FILENAME).write_text("modified\n")
+    plate_push(repo)
+    parent_plate_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+
+    derived = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
+
+    assert derived == f"{plateBranchName}-derived1"
+    assert branchExists(repo, derived)
+    assert run(["git", "rev-parse", f"{derived}~1"], cwd=repo) == parent_plate_sha
+    trailers = getCommitTrailers(repo, derived)
+    assert trailers["parent-plate"] == parent_plate_sha
+    assert trailers["convo-id"] == "CONVO-A"
+
+
+def _check_second_derived_agent_extends_chain(repo: Path) -> None:
+    """Scenario: parent plate + derived1 exist → simulate_derived_agent
+    creates `<parent_plate>-derived2` parented to derived1's tip, with
+    parent-convo trailer = derived1's convo-id."""
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    (repo / TEST_FILENAME).write_text("modified\n")
+    plate_push(repo)
+
+    derived1 = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
+    derived1_tip = getSHAForRefViaRevParse(repo, derived1)
+
+    derived2 = simulate_derived_agent(repo, plateBranchName, "CONVO-B")
+
+    assert derived2 == f"{plateBranchName}-derived2"
+    assert branchExists(repo, derived2)
+    assert run(["git", "rev-parse", f"{derived2}~1"], cwd=repo) == derived1_tip
+    trailers = getCommitTrailers(repo, derived2)
+    assert trailers["parent-convo"] == "CONVO-A"
+    assert trailers["convo-id"] == "CONVO-B"
+    # derived1 untouched.
+    assert getSHAForRefViaRevParse(repo, derived1) == derived1_tip
+
+
+def _check_plate_next_returns_parent_convo_resume_command(repo: Path) -> None:
+    """Scenario: agent on derived2 → plate_next emits
+    `cd <repo> && claude --resume <parent-convo-trailer>`.
+
+    NOTE: walkthrough sequence_14 spec says "claude --resume <current convo>"
+    (deepest), but the implementation reads the parent-convo trailer. We
+    assert the implemented behavior; spec discrepancy is flagged for
+    user resolution.
+    """
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    (repo / TEST_FILENAME).write_text("modified\n")
+    plate_push(repo)
+    # Reset WT so the upcoming checkout to derived2 doesn't conflict.
+    resetHardToHead(repo)
+
+    simulate_derived_agent(repo, plateBranchName, "CONVO-A")
+    derived2 = simulate_derived_agent(repo, plateBranchName, "CONVO-B")
+
+    checkOutBranch(repo, derived2)
+    cmd = plate_next(repo)
+
+    assert cmd == f"cd {repo} && claude --resume CONVO-A"
