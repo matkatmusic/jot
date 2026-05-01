@@ -2161,18 +2161,18 @@ def test_plate_recycle(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_recycle_restores_stack(repo)
 
-def plate_next(repo: Path, index: Optional[int] = None) -> str:
+def plate_next(repo: Path, index: Optional[str] = None) -> str:
     """List or jump to a parked plate.
 
     Modes:
       - `index is None`: return a numbered list of every plate branch
         in the repo, sorted by tip-commit time descending.
-      - `index` provided (1-based): push current WIP onto the current
-        plate, switch HEAD to the target plate's parent branch, restore
-        the target plate's tree onto WT as unstaged WIP, and return a
-        resume command (local-resume form when the target's transcript
-        is readable on this machine; remote-handoff form when only a
-        convo-summary trailer is available; lost-message otherwise).
+      - `index` provided (1-based, raw argv string): push current WIP
+        onto the current plate, switch HEAD to the target plate's parent
+        branch, restore the target plate's tree onto WT as unstaged WIP,
+        and return a resume command. Validation (numeric-only, range)
+        lives in `_plate_next_jump` so the CLI can pass argv through
+        without parsing.
 
     Selecting the current plate as the target is a no-op with a message.
     """
@@ -2225,17 +2225,30 @@ PLATE_NEXT_INVALID_INDEX_MESSAGE = (
     "please choose a valid index when switching to the next plate"
 )
 
+PLATE_NEXT_NON_NUMERIC_MESSAGE = (
+    "--next <#>: <#> must be a number and not letters or symbols."
+)
+
 PLATE_NEXT_EMPTY_LIST_MESSAGE = (
     "No changes plated.  Make some changes to your repo and then /plate "
     "to capture them"
 )
 
 
-def _plate_next_jump(repo: Path, plates: list[dict], index: int) -> str:
-    """Push current WIP, switch to target plate's parent branch, restore tree as WIP, emit resume command."""
-    if index < 1 or index > len(plates):
+def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
+    """Push current WIP, switch to target plate's parent branch, restore tree as WIP, emit resume command.
+
+    `index` is the raw argv string. Validation order:
+      1. Numeric-only check (str.isdigit) — rejects letters, symbols,
+         whitespace, decimals, signs, and empty strings.
+      2. Range check (1..len(plates)).
+    """
+    if not isinstance(index, str) or not index.isdigit():
+        return PLATE_NEXT_NON_NUMERIC_MESSAGE
+    idx_int = int(index)
+    if idx_int < 1 or idx_int > len(plates):
         return PLATE_NEXT_INVALID_INDEX_MESSAGE
-    target = plates[index - 1]
+    target = plates[idx_int - 1]
     branch = getCurrentBranchName(repo)
     currentPlateRef = f"{branch}-plate"
     if target["ref"] == currentPlateRef:
@@ -3093,7 +3106,7 @@ def _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes
     )
 
     # Jump.
-    result = plate_next(repo, index=fixy_index)
+    result = plate_next(repo, index=str(fixy_index))
 
     # 1. WIP captured: feature-x-plate gained a commit.
     feature_plate_count_after = countCommitsReachableFromRef(repo, "feature-x-plate")
@@ -3166,7 +3179,7 @@ def _check_plate_next_jump_lost_message_when_transcript_unreadable(base: Path) -
             i + 1 for i, p in enumerate(plates) if p["ref"] == "fix-y-plate"
         )
 
-        result = plate_next(repo, index=fixy_index)
+        result = plate_next(repo, index=str(fixy_index))
 
         # Lost message returned (identical in both cases).
         assert result == PLATE_NEXT_LOST_MESSAGE
@@ -3217,7 +3230,7 @@ def _check_plate_next_jump_self_index_is_noop(repo: Path, tmp_path: Path) -> Non
         i + 1 for i, p in enumerate(plates) if p["ref"] == "feature-x-plate"
     )
 
-    result = plate_next(repo, index=self_index)
+    result = plate_next(repo, index=str(self_index))
 
     # Return string identifies the plate via the title precedence chain.
     # feature-x-plate has a fake transcript (set by topology helper), so the
@@ -3277,7 +3290,7 @@ def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
     #    exist, the listing has no `(current)` entry — the self-index
     #    early-return cannot fire — so the jump must proceed all the way
     #    through to the resume command.
-    result = plate_next(repo, index=fixy_index)
+    result = plate_next(repo, index=str(fixy_index))
 
     # 5. Assert the no-op message did NOT fire (proves the self-check
     #    didn't spuriously match).
@@ -3306,10 +3319,18 @@ def test_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(tmp_path: Pa
 
 
 def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: Path) -> None:
-    """Scenario: user passes an out-of-range index (too large, zero, or
-    negative). plate_next returns the canned `PLATE_NEXT_INVALID_INDEX_MESSAGE`
-    string and the repo is untouched — no implicit pre-push, no branch
-    switch, no WT change.
+    """Scenario: user passes a bad index value. plate_next returns the
+    appropriate canned message and the repo is untouched — no implicit
+    pre-push, no branch switch, no WT change.
+
+    Two error buckets, each with its own message:
+      - Non-numeric ("abc", "1.5", "-1", "3a", "", "  ", "@#$") →
+        `PLATE_NEXT_NON_NUMERIC_MESSAGE`. `str.isdigit()` rejects letters,
+        decimals, signs, mixed input, empty strings, whitespace, and
+        symbols.
+      - Out-of-range ("99", "0") → `PLATE_NEXT_INVALID_INDEX_MESSAGE`.
+        Note "-1" migrates to the non-numeric bucket: "-1".isdigit() is
+        False because "-" is non-digit.
     """
     # 1. Build the two-branch topology so there are exactly 2 plates in the
     #    repo (feature-x-plate, fix-y-plate). HEAD ends on feature-x with a
@@ -3328,13 +3349,27 @@ def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: P
     feature_txt_before = (repo / "feature.txt").read_text()
     wt_clean_before = checkForCleanWorkTree(repo)
 
-    # 3. For each invalid index (way too large, zero, negative), call
-    #    plate_next and assert the user-facing message is returned and
-    #    repo state is unchanged.
-    for invalid_index in (99, 0, -1):
+    # 3. Build (input, expected_message) pairs covering both buckets.
+    cases = [
+        # Non-numeric bucket — every str.isdigit()==False input.
+        ("abc", PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("1.5", PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("-1",  PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("3a",  PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("",    PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("  ",  PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        ("@#$", PLATE_NEXT_NON_NUMERIC_MESSAGE),
+        # Range bucket — numeric strings that are out of [1..len(plates)].
+        ("99",  PLATE_NEXT_INVALID_INDEX_MESSAGE),
+        ("0",   PLATE_NEXT_INVALID_INDEX_MESSAGE),
+    ]
+
+    # 4. For each case, call plate_next and assert (a) correct message and
+    #    (b) repo state is unchanged.
+    for invalid_index, expected_message in cases:
         result = plate_next(repo, index=invalid_index)
-        assert result == PLATE_NEXT_INVALID_INDEX_MESSAGE, (
-            f"index {invalid_index}: expected invalid-index message, got {result!r}"
+        assert result == expected_message, (
+            f"index {invalid_index!r}: expected {expected_message!r}, got {result!r}"
         )
         # No side effects.
         assert getCurrentBranchName(repo) == "feature-x"

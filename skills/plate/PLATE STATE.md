@@ -1,10 +1,10 @@
 # /plate Skill — Current State and Gap to Shippable v1.0
 
-_Snapshot: 2026-05-01_
+_Snapshot: 2026-05-01 (evening — production wiring landed)_
 
 ## What the harness actually has (verified)
 
-8 plate operations are **implemented + tested** in `skills/plate/tests/sequence/helpers.py` (`plate_carry` deprecated and removed):
+8 plate operations are **implemented + tested + wired to the `/plate` slash command** via `common/scripts/plate/cli.py` and `skills/plate/scripts/plate.sh` (`plate_carry` deprecated and removed):
 
 | Operation | Test location | Status |
 |---|---|---|
@@ -17,9 +17,19 @@ _Snapshot: 2026-05-01_
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ explicit chained-delegation only (the sibling auto-detection model was replaced by shared-branch + extraction) |
 | `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**112 passing tests, 0 failures.**
+**136 passing tests, 0 failures.**
 
 ### Recent additions
+
+**2026-05-01 (evening) — production wiring landed (PLATE STATE.md §A resolved)**:
+
+- `/plate` slash command now invokes `common/scripts/plate/cli.py` directly via the existing UserPromptSubmit hook (`scripts/orchestrator.sh`). All variants run inline — no `pending-*.json` drop files, no SKILL.md AskUserQuestion bridges, no foreground-claude detour.
+- `skills/plate/scripts/plate.sh` rewritten to mirror `jot.sh::jot_main` shape: substring fast-path filter, strict prompt regex, hook JSON parse, `cli.py` exec, single `emit_block` per terminal exit, `ERR` trap.
+- `skills/plate/SKILL.md` collapsed to /jot-style stub — front-matter `name`/`description` plus the same `# Task: do nothing.` body that tells the foreground claude not to react.
+- `common/scripts/plate/cli.py` (NEW, 175 LoC) — single argv dispatcher for 8 variants: `push`, `done`, `drop`, `trash`, `recycle`, `next`, `next <#>`, `show` (currently returns `"TODO"`; design deferred). Uses `sys.path` injection to import `helpers.py` as `plate_lib` (proper move + test split deferred).
+- `plate_next(repo, index)` signature change: `Optional[int]` → `Optional[str]`. CLI passes argv straight through; `_plate_next_jump` validates numeric-only via `str.isdigit()` before range check. New constant `PLATE_NEXT_NON_NUMERIC_MESSAGE = "--next <#>: <#> must be a number and not letters or symbols."`. `"-1"` migrated from range-check bucket → non-numeric bucket.
+- 24 new tests: 16 in `test_cli.py` (mock-based variant routing + trailer kwarg propagation), 8 in `test_e2e_wiring.py` (hook JSON → `decision:"block"` JSON contract). E2E test suite proves the full pipeline (orchestrator → plate.sh → cli.py → plate_lib → emit_block) works end-to-end and that the substring fast-path silently bails on non-/plate prompts.
+- Rigor checks done: disabled `isdigit()` guard → invalid-index test fails via `int("abc")` ValueError; pointed CLI_PATH at non-existent file → e2e test fails with "no such file" reason. Both restored.
 
 **2026-05-01 — multi-agent shared-plate-branch attribution**:
 
@@ -42,22 +52,27 @@ _Snapshot: 2026-05-01_
 
 ## What's actually missing for a shippable /plate
 
-### A. Production wiring (the big gap, blocks all of §B's roadmap items)
+### A. Production wiring — DONE 2026-05-01 (resolved)
 
-The harness is **Python**. The `/plate` slash command users invoke calls **shell scripts** in `skills/plate/scripts/` that use a **different model** (stash-refs, not branch commits). The two implementations are not connected. To ship the branch-model design we just tested, you need ONE of:
-
-1. **Wire shell scripts to call the Python helpers** (e.g., `push.sh` shells out to `python -c "from helpers import plate_push; plate_push(...)"`). Pays the ~50–100ms Python startup cost per call.
-2. **Port the Python helpers back into shell** (`branch-snapshot.v2.sh` already exists for `push` but `done.sh`, `drop.sh`, etc., don't have branch-model versions). Manual translation work.
-3. **Replace shell scripts entirely** with a single Python entry point. Cleanest, but changes the SKILL.md plumbing.
+`/plate` slash command now executes the branch-model code via `cli.py`. Plan was Option 3 from the prior version of this doc (single Python entry point); see "Recent additions" above for details. Old shell scripts and Python helpers tied to the stash-ref + JSON-instance model still exist on disk but are no longer reachable from `/plate`. Stage 2 (dead-code purge) remains as a follow-up commit (see §C below).
 
 ### B. Roadmap (in execution order)
 
-1. **Production wiring** (§A above) — single shell entry point that invokes the Python delegating function, which calls the existing library code in `helpers.py`.
-2. **Auto-`/plate` on `SessionExit` hook** — fire `plate_push` automatically when a Claude session ends. Requires the production wiring to be in place so the hook has something to call.
-3. **`generatePlateSummary` (background tmux agent)** — fired post-plate-commit. Reads the repo and the convo's `transcript_path` (passed as context), produces the structured ~400-word summary, writes it to the new plate's `convo-summary` trailer, AND strips `convo-summary` trailers from earlier plate commits (only the latest plate carries a summary).
+1. ~~**Production wiring**~~ — DONE.
+2. **Auto-`/plate` on `SessionExit` hook** — fire `plate_push` automatically when a Claude session ends. Wiring is in place; just needs a SessionExit hook entry that posts a `/plate`-equivalent payload to the orchestrator (or invokes `cli.py push` directly).
+3. **`generatePlateSummary` (background tmux agent)** — fired post-plate-commit. Reads the repo and the convo's `transcript_path` (passed as context), produces the structured ~400-word summary, writes it to the new plate's `convo-summary` trailer, AND strips `convo-summary` trailers from earlier plate commits (only the latest plate carries a summary). `cli.py` currently calls a stub returning `None`; replace the stub when the agent ships.
 4. **`convo-summary` format spec** — exact sections, ordering, and fields for the ~400-word block. Goal: a reader can pick up the work productively in under a minute.
 
+### C. Dead-code purge (Stage 2 follow-up commit)
+
+The branch-model wiring landed in parallel — old code paths still exist on disk but are unreferenced by `/plate`. Separate commit recommended for clean revertability:
+
+- `skills/plate/scripts/`: `push.sh`, `done.sh`, `drop.sh`, `next.sh`, `list-paused-plates.sh`, `register-parent.sh`, `snapshot-stash.sh`, `branch-snapshot.sh`, `branch-snapshot.v2.sh` (~10 files)
+- `common/scripts/plate/`: `instance_rw.py`, `append_plate_to_stack.py`, `cascade_parent_chain.py`, `check_drift_alert.py`, `check_live_children.py`, `check_rolling_intent_refresh.py`, `clear_drift_alert.py`, `list_paused_plates.py`, `next_resume_point.py`, `print_resume_pointer.py`, `register_parent.py`, `verify_stash_refs.py`, `build_settings_json.py` (~13 files)
+- KEEP: `transcript_parse.py` (used by future summary work), `render_tree.sh` / `render_tree.py` (kept around since `--show` design is deferred)
+
 Resolved (and removed from the open list) — preserved here so future readers see the trail of decisions:
+- ~~Production wiring strategy choice~~ — Option 3 (single Python entry) selected and shipped.
 - ~~`plate_next` semantics~~ — list/jump navigator across independent plates (not derived-chain walker).
 - ~~JSON metadata layer~~ — replaced by commit trailers (`convo-id`, `parent-branch`, `convo-name`, `convo-summary`).
 - ~~`--carry` with clean WT: picker-only vs error~~ — moot; `plate_carry` removed in favor of `plate_next`.
@@ -67,12 +82,15 @@ Resolved (and removed from the open list) — preserved here so future readers s
 
 ## Bottom line: what "delivered" looks like
 
-Roughly **10–17 hours** of work in this order:
+Stage 1 (production wiring) shipped 2026-05-01. Remaining work to v1.0:
 
-1. **Decide on the production wiring strategy** — 1–2h discussion.
-2. **Wire the chosen path** — 6–10h (script bridge or full port).
-3. **Implement auto-`/plate` on SessionExit** — 1–2h once wiring is in.
-4. **Define `convo-summary` format spec + wire `generatePlateSummary`** — 2–3h.
-5. **Production validation**: run `/plate` interactively in a real conversation, confirm hooks fire, trailers write, plate_next list/jump works end-to-end, multi-agent shared-branch flow holds — 2–3h.
+1. **Stage 2 dead-code purge** — ~30 min. Separate commit; trivial deletes once Stage 1 lives in production.
+2. **Auto-`/plate` on SessionExit** — ~30–60 min. Add hook entry that calls `cli.py push` with the session's transcript path.
+3. **`convo-summary` format spec** — ~1–2 h. Small design doc; ordering, sections, length budget.
+4. **`generatePlateSummary` background agent** — ~2–3 h. Tmux launcher + sub-agent prompt + post-commit trailer write + earlier-plate trailer strip.
+5. **Cosmetic: suppress `plate_drop` stderr warning** that leaks through `2>&1` into the user-visible `reason` — ~10 min.
+6. **Proper `helpers.py` → `plate_lib.py` move + test split** — ~1–2 h. Currently cli.py uses `sys.path` injection into the test tree; works but is a wart. Lower priority since plate isn't yet packaged.
 
-The current state is a **strong foundation** — the canonical sequences, the major error paths (missing-branch, cherry-pick conflict, cross-repo patch portability, reflog recoverability), `plate_next` navigation across independent plates with cross-machine summary handoff, and shared-plate-branch attribution for multiple parallel agents are all locked in and verified. What's missing is the plumbing to expose this work to actual users via the `/plate` command and the auto-fire mechanics around it.
+**Total remaining: ~5–8 hours** spread across follow-ups. The user-facing `/plate` command is functional today.
+
+The current state is a **complete, verified foundation with live wiring** — canonical sequences, major error paths, `plate_next` navigation with cross-machine summary handoff, shared-plate-branch attribution for multiple parallel agents, and the user-facing slash command are all locked in. Remaining work is auto-fire mechanics and summary-generation polish, not core capability.
