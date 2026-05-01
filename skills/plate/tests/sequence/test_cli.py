@@ -53,6 +53,7 @@ def test_routes_push_to_plate_push() -> None:
         "convo_id": "sid-123",
         "convo_name": "my-convo",
         "convo_summary": None,
+        "transcript_path": "/tmp/transcript.jsonl",
     }
     # extract* helper called with the transcript path.
     assert mn.call_args.args == (Path("/tmp/transcript.jsonl"),)
@@ -204,6 +205,7 @@ def test_push_propagates_none_when_extract_returns_none() -> None:
         "convo_id": "sid",
         "convo_name": None,
         "convo_summary": None,
+        "transcript_path": "/tmp/tp.jsonl",
     }
 
 
@@ -220,6 +222,7 @@ def test_push_with_empty_transcript_path_skips_extractors() -> None:
         "convo_id": "sid",
         "convo_name": None,
         "convo_summary": None,
+        "transcript_path": None,
     }
 
 

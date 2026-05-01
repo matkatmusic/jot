@@ -28,9 +28,18 @@ spawn_terminal_if_needed() {
   if [ -n "$clients" ]; then
     return 0
   fi
-  # Optional: maximize the newly-spawned Terminal window to desktop bounds.
-  # Finder's "bounds of window of desktop" excludes the menu bar and tracks
-  # the active display, so this works for multi-monitor setups.
+  # Optional window-bounds adjustment after `do script` opens the new
+  # Terminal window. Three modes:
+  #   "yes"     — maximize to desktop bounds. Used by /debate (4-pane
+  #               layout needs the room).
+  #   "compact" — clamp to a small centred rect (1000×700). Used by
+  #               single-pane spawners (e.g. /plate) so they don't
+  #               inherit a maximized geometry left behind by /debate
+  #               or by the user manually maximizing a previous window.
+  #   ""        — no adjustment (legacy default).
+  # Finder's "bounds of window of desktop" excludes the menu bar and
+  # tracks the active display, so multi-monitor setups work for both
+  # "yes" and "compact" modes.
   local maximize_block=""
   if [ "$maximize" = "yes" ]; then
     maximize_block='
@@ -39,6 +48,22 @@ tell application "Finder"
 end tell
 tell application "Terminal"
   set bounds of front window to screenBounds
+end tell'
+  elif [ "$maximize" = "compact" ]; then
+    maximize_block='
+tell application "Finder"
+  set screenBounds to bounds of window of desktop
+end tell
+set sx to item 1 of screenBounds
+set sy to item 2 of screenBounds
+set ex to item 3 of screenBounds
+set ey to item 4 of screenBounds
+set winW to 1000
+set winH to 700
+set winX to sx + ((ex - sx - winW) div 2)
+set winY to sy + ((ey - sy - winH) div 2)
+tell application "Terminal"
+  set bounds of front window to {winX, winY, winX + winW, winY + winH}
 end tell'
   fi
   case "${OSTYPE:-}" in

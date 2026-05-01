@@ -58,6 +58,13 @@ def _cmd_push(argv: list[str]) -> str:
         convo_id=convo_id or None,
         convo_name=convo_name,
         convo_summary=None,
+        # Pass transcript_path explicitly: the multi-agent extraction
+        # path (`_buildExtractedTree`) needs the actual transcript file
+        # to scan for tool_use entries. Production passes a session UUID
+        # as convo_id, NOT a path; without this, extraction falls back
+        # to `Path(convo_id)` which doesn't exist, returns no edits, and
+        # the resulting tree equals parent_tree → push silently no-ops.
+        transcript_path=transcript_path or None,
     )
     if sha is None:
         return "plate: no changes to stack"

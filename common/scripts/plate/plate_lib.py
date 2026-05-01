@@ -827,6 +827,7 @@ def _buildExtractedTree(
     plate_branch: str,
     convo_id: str,
     parent_sha: str,
+    transcript_path: Optional[str] = None,
 ) -> str:
     """Build a commit tree starting from `parent_sha`'s tree, applying ONLY
     the file changes attributable to `convo_id` per the transcript.
@@ -854,10 +855,14 @@ def _buildExtractedTree(
     """
     _, cutoff = findMyLastPlate(repo, plate_branch, convo_id)
 
-    transcript_path = Path(convo_id)
-    edited_abs = extractFilesEditedSinceTimestamp(transcript_path, since_iso=cutoff)
+    # In production cli.py passes a session UUID as `convo_id` and the
+    # transcript path separately. Fall back to treating `convo_id` as a
+    # path only when no `transcript_path` was supplied (legacy test
+    # callers pass `convo_id=str(transcript_file)` directly).
+    transcript_arg = Path(transcript_path) if transcript_path else Path(convo_id)
+    edited_abs = extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
     deleted_candidates = extractFilesDeletedSinceTimestamp(
-        transcript_path, since_iso=cutoff, repo_root=repo
+        transcript_arg, since_iso=cutoff, repo_root=repo
     )
 
     # Filter deletions to files actually tracked at the parent commit
@@ -905,6 +910,7 @@ def plate_push(
     convo_id: Optional[str] = None,
     convo_name: Optional[str] = None,
     convo_summary: Optional[str] = None,
+    transcript_path: Optional[str] = None,
 ) -> Optional[str]:
     """Run the canonical /plate push and stamp commit trailers.
 
@@ -953,7 +959,10 @@ def plate_push(
     )
 
     if use_extraction:
-        commit_tree = _buildExtractedTree(repo, base_plate_name, convo_id, parent)
+        commit_tree = _buildExtractedTree(
+            repo, base_plate_name, convo_id, parent,
+            transcript_path=transcript_path,
+        )
     else:
         commit_tree = _buildFullWtTree(repo)
 

@@ -234,19 +234,17 @@ def spawn(
     )
 
     # Open a Terminal.app window attached to this session (parity with
-    # /debate). No maximize — single-pane session, regular size is fine.
-    if log_file:
-        terminal_cmd = (
-            f'source {shlex.quote(str(_PLATFORM_SH))} && '
-            f'spawn_terminal_if_needed {shlex.quote(session_name)} '
-            f'{shlex.quote(log_file)} plate'
-        )
-    else:
-        terminal_cmd = (
-            f'source {shlex.quote(str(_PLATFORM_SH))} && '
-            f'spawn_terminal_if_needed {shlex.quote(session_name)} '
-            f'/dev/null plate'
-        )
+    # /debate). `compact` clamps the new window to a centered 1000×700
+    # rect — without it, Terminal.app inherits the bounds of the most
+    # recent window, which means after a /debate run (which maximizes)
+    # the plate window would also open maximized. Single-pane sessions
+    # don't need that real estate.
+    terminal_log_arg = shlex.quote(log_file) if log_file else "/dev/null"
+    terminal_cmd = (
+        f'source {shlex.quote(str(_PLATFORM_SH))} && '
+        f'spawn_terminal_if_needed {shlex.quote(session_name)} '
+        f'{terminal_log_arg} plate compact'
+    )
     subprocess.Popen(["bash", "-c", terminal_cmd], env=spawn_env)
 
     return f"tmux attach -t {session_name}:{window_name}"

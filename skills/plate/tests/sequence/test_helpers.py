@@ -755,6 +755,69 @@ def test_plate_push_with_convo_id(tmp_path: Path):
     # Multi-line summary input collapses to single line of space-joined words.
     assert trailers["convo-summary"] == "line one line two line three"
 
+def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path):
+    """Regression for the production-vs-test convo_id semantics mismatch.
+
+    cli.py passes a session UUID as ``convo_id`` and the transcript file
+    path as a SEPARATE ``transcript_path`` argument. Earlier code in
+    ``_buildExtractedTree`` did ``Path(convo_id)`` and treated the UUID
+    as a path; that path doesn't exist, so the extracted tree wound up
+    empty and equal to parent_tree, making the second agent's push
+    silently no-op even though the transcript actually carried real
+    Edit/Write entries. This test pins the explicit-transcript_path
+    plumbing so the regression can't return.
+
+    Failing condition: with a UUID convo_id (no path) plus a valid
+    transcript_path, the second-agent push returns None instead of
+    creating a new commit on ``main-plate``.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
+    createUserConfig(repo)
+    writeGitIgnore(repo)
+    addFileToGit(repo, ".gitignore")
+    (repo / "a.txt").write_text("base\n")
+    addFileToGit(repo, "a.txt")
+    createCommit(repo, "initial")
+
+    # Agent A: UUID-style convo_id, transcript stored at a separate path.
+    uuid_A = "9f2be37f-0620-4877-b2e5-03c4ac2cdf35"
+    transcript_A = tmp_path / f"{uuid_A}.jsonl"
+    _writeFakeTranscriptWithToolUse(
+        transcript_A,
+        [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
+          "input": {"file_path": str(repo / "a.txt")}}],
+    )
+    (repo / "a.txt").write_text("base\nA1\n")
+    pa_sha = plate_push(repo, convo_id=uuid_A, transcript_path=str(transcript_A))
+    assert pa_sha is not None, "first push must create a plate"
+
+    # Agent B: different UUID, different transcript with a Write entry.
+    uuid_B = "11111111-2222-3333-4444-555555555555"
+    transcript_B = tmp_path / f"{uuid_B}.jsonl"
+    _writeFakeTranscriptWithToolUse(
+        transcript_B,
+        [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",
+          "input": {"file_path": str(repo / "b.txt")}}],
+    )
+    (repo / "b.txt").write_text("B")
+
+    pb_sha = plate_push(repo, convo_id=uuid_B, transcript_path=str(transcript_B))
+    assert pb_sha is not None, (
+        "second-agent push must create a plate when transcript_path resolves "
+        "to a real file containing tool_use entries — regression marker for "
+        "the Path(convo_id) bug"
+    )
+
+    pb_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
+    assert pb_b_content == "B"
+
+    trailers = getCommitTrailers(repo, "main-plate")
+    assert trailers["convo-id"] == uuid_B, (
+        "trailer must carry the UUID we passed, not the transcript path"
+    )
+
 def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     tmp_path: Path,
 ):
