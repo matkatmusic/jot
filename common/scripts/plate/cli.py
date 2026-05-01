@@ -64,13 +64,17 @@ def _cmd_push(argv: list[str]) -> str:
     branch = plate_lib.getCurrentBranchName(repo)
     # Fire-and-forget background summary agent. Returns immediately.
     # PLATE_SKIP_LAUNCH=1 short-circuits (used by tests).
+    attach_hint: Optional[str] = None
     try:
         from spawn_summary_agent import spawn as _spawn_summary
-        _spawn_summary(repo, branch, sha, transcript_path)
+        attach_hint = _spawn_summary(repo, branch, sha, transcript_path)
     except Exception:
         # Spawn failures must never block the user-facing push success.
         pass
-    return f"plate: pushed {sha[:8]} on {branch}-plate"
+    msg = f"plate: pushed {sha[:8]} on {branch}-plate"
+    if attach_hint:
+        msg += f"\nobserve the background agent at {attach_hint}"
+    return msg
 
 
 def _cmd_done(argv: list[str]) -> str:

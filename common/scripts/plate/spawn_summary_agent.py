@@ -54,27 +54,30 @@ def spawn(
     tmpdir = Path(tempfile.mkdtemp(prefix="plate-summary-"))
     output_file = tmpdir / "summary.txt"
 
-    # Per-invocation hooks.json: only SessionEnd fires our stop hook.
-    # Crucially, the plugin-level hooks.json (with /plate auto-fire) is
-    # NOT loaded by the spawned claude — the per-invocation settings.json
+    # Per-invocation settings.json with inlined hooks block. Claude Code
+    # expects `hooks` to be an OBJECT mapping event names → matcher
+    # arrays, NOT a path string — that mistake produces a "Settings
+    # Warning" prompt at agent startup and silently disables the hook.
+    # Mirrors jot's pattern in claude-launcher.sh::build_claude_cmd.
+    #
+    # The plugin-level hooks.json (with /plate auto-fire) is NOT loaded
+    # by the spawned claude because this per-invocation settings.json
     # supplies its own hooks block.
-    hooks_path = tmpdir / "hooks.json"
-    hooks_path.write_text(json.dumps({
-        "SessionEnd": [{
-            "hooks": [{
-                "type": "command",
-                "command": (
-                    f"bash {shlex.quote(str(_STOP_HOOK))} "
-                    f"{shlex.quote(str(repo))} {shlex.quote(branch)} "
-                    f"{shlex.quote(str(output_file))}"
-                ),
-            }],
-        }],
-    }, indent=2))
-
+    stop_command = (
+        f"bash {shlex.quote(str(_STOP_HOOK))} "
+        f"{shlex.quote(str(repo))} {shlex.quote(branch)} "
+        f"{shlex.quote(str(output_file))}"
+    )
     settings_path = tmpdir / "settings.json"
     settings_path.write_text(json.dumps({
-        "hooks": str(hooks_path),
+        "hooks": {
+            "SessionEnd": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": stop_command,
+                }],
+            }],
+        },
     }, indent=2))
 
     payload = {
@@ -116,7 +119,8 @@ def spawn(
             env=spawn_env,
         )
 
-    return str(tmpdir)
+    # Caller-facing tmux attach hint pointing at this specific window.
+    return f"tmux attach -t plate-summary:{window_name}"
 
 
 def _tmux_has_session(name: str) -> bool:
