@@ -10,12 +10,12 @@
         ]
       }
     ],
-    "SessionStart": [
+    "SessionEnd": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/skills/plate/scripts/plate-session-start.sh"
+            "command": "jq '. + {prompt: \"/plate\"}' | bash ${CLAUDE_PLUGIN_ROOT}/scripts/orchestrator.sh"
           }
         ]
       }
