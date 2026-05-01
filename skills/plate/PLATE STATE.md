@@ -47,7 +47,6 @@ The harness is **Python**. The `/plate` slash command users invoke calls **shell
 
 Items still flagged as needing user decision:
 
-- `simulate_derived_agent`: production trigger (when does an "agent" actually become "derived"?)
 - `.plate/` directory layout finalization (currently just `dropped/` and `trashed/`)
 - EditFile per-agent file list (blocked on a hook that doesn't exist yet)
 - Auto-`/plate` on `SessionExit` hook
@@ -58,6 +57,7 @@ Resolved this session and removed from the open list:
 - ~~`plate_next` semantics~~ — list/jump navigator across independent plates (not derived-chain walker).
 - ~~JSON metadata layer~~ — replaced by commit trailers (`convo-id`, `parent-branch`, `convo-name`, `convo-summary`).
 - ~~`--carry` with clean WT: picker-only vs error~~ — moot; `plate_carry` removed in favor of `plate_next`.
+- ~~`simulate_derived_agent` production trigger~~ — `plate_push` itself detects the derived case via convo-id mismatch and routes to `<branch>-plate-derivedN`. See "derived agent detection" in `helpers.py::plate_push`.
 
 ## Bottom line: what "delivered" looks like
 

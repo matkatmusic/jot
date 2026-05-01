@@ -1201,6 +1201,55 @@ def makeTempGitIndexPath() -> str:
         os.close(fd)
         return tmp_index_path
 
+def _resolveTargetPlate(
+    repo: Path,
+    base_plate_name: str,
+    convo_id: Optional[str],
+) -> tuple[str, str]:
+    """Determine which plate branch a push lands on, and what its parent SHA is.
+
+    Returns (target_plate_branch_name, parent_commit_sha).
+
+    Rules:
+        1. No plate exists yet                       → base, parent=HEAD.
+        2. convo_id matches base plate's owner      → base, parent=base tip.
+        3. convo_id is None (legacy/no-trailer)     → base, parent=base tip.
+        4. convo_id matches an existing derivedN's
+           owner (returning derived agent)          → derivedN, parent=derivedN tip.
+        5. Different convo_id (new derived agent)   → next derivedN, parent=base tip.
+
+    Rule 5 implements the "second terminal, parallel agent" workflow: when a
+    different agent (different transcript_path / convo_id) invokes plate_push
+    while a base plate already exists, the work is parked on its own
+    `<branch>-plate-derivedN` branch parented to the base plate's current tip.
+    Multiple derived agents land as siblings (each parented to the base plate's
+    tip), not as a chain.
+    """
+    if not branchExists(repo, base_plate_name):
+        return base_plate_name, getSHAForRefViaRevParse(repo, "HEAD")
+
+    base_owner = getCommitTrailers(repo, base_plate_name).get("convo-id")
+
+    # Rules 2 & 3: same agent (or legacy/no-convo-id) → advance the base plate.
+    if convo_id is None or convo_id == base_owner:
+        return base_plate_name, getSHAForRefViaRevParse(repo, base_plate_name)
+
+    # Rule 4: returning derived agent → advance their existing derived branch.
+    derived_prefix = f"{base_plate_name}-derived"
+    existing_deriveds = [
+        b for b in getGitBranchList(repo)
+        if b.startswith(derived_prefix) and b[len(derived_prefix):].isdigit()
+    ]
+    for d in existing_deriveds:
+        if getCommitTrailers(repo, d).get("convo-id") == convo_id:
+            return d, getSHAForRefViaRevParse(repo, d)
+
+    # Rule 5: brand-new derived agent → next sibling derivedN parented to base tip.
+    used_numbers = [int(b[len(derived_prefix):]) for b in existing_deriveds]
+    next_n = (max(used_numbers) + 1) if used_numbers else 1
+    return f"{derived_prefix}{next_n}", getSHAForRefViaRevParse(repo, base_plate_name)
+
+
 def plate_push(
     repo: Path,
     convo_id: Optional[str] = None,
@@ -1235,7 +1284,10 @@ def plate_push(
         WT tree already matches the would-be parent's tree.
     """
     branch = getCurrentBranchName(repo)
-    plateBranchName = f"{branch}-plate"
+    base_plate_name = f"{branch}-plate"
+
+    # Resolve target plate (base or derivedN) based on convo-id ownership.
+    target_plate, parent = _resolveTargetPlate(repo, base_plate_name, convo_id)
 
     # Snapshot the working tree via a temp index — real index/HEAD/WT untouched.
     tmp_index_path = makeTempGitIndexPath()
@@ -1246,11 +1298,6 @@ def plate_push(
         wt_tree = writeGitTree(repo=repo, env=env)
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
-
-    if branchExists(repo=repo, branchName=plateBranchName):
-        parent = getSHAForRefViaRevParse(repo=repo, ref=plateBranchName)
-    else:
-        parent = getSHAForRefViaRevParse(repo=repo, ref="HEAD")
 
     parent_tree = getSHAForRefViaRevParse(repo=repo, ref=getTreeRevOf(parent))
     if wt_tree == parent_tree:
@@ -1276,7 +1323,7 @@ def plate_push(
         ],
         cwd=repo,
     )
-    run(["git", "update-ref", f"refs/heads/{plateBranchName}", new_commit], cwd=repo)
+    run(["git", "update-ref", f"refs/heads/{target_plate}", new_commit], cwd=repo)
 
     return new_commit
 
@@ -1353,6 +1400,105 @@ def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
     assert "convo-id" not in trailers
     assert "convo-name" not in trailers
     assert "convo-summary" not in trailers
+
+
+def test_plate_push_creates_derived_when_different_convo_id(tmp_path: Path):
+    """Scenario: Agent A pushes the base plate. Agent B (different convo_id)
+    pushes while in the same repo with WT inheriting Agent A's work plus B's
+    own edits. plate_push must route B's commit to `main-plate-derived1`,
+    parented to `main-plate`'s tip — NOT advance `main-plate`."""
+    # 1. Single-commit repo on main. Agent A pushes the base plate.
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    (repo / TEST_FILENAME).write_text("base\nagentA edit\n")
+    pa_sha = plate_push(repo, convo_id="agentA.jsonl", convo_name="A")
+    assert pa_sha is not None
+
+    # 2. Agent B inherits A's WT state and adds more edits, then pushes.
+    (repo / TEST_FILENAME).write_text("base\nagentA edit\nagentB edit\n")
+    pb_sha = plate_push(repo, convo_id="agentB.jsonl", convo_name="B")
+    assert pb_sha is not None
+
+    # 3. main-plate-derived1 was created and is parented to main-plate's tip.
+    assert branchExists(repo, "main-plate-derived1")
+    derived_parent = run(
+        ["git", "rev-parse", "main-plate-derived1~1"], cwd=repo
+    )
+    assert derived_parent == pa_sha
+
+    # 4. main-plate ref is unchanged (Agent A's plate not advanced by B).
+    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
+
+    # 5. Trailers on derived1 reflect Agent B's convo.
+    derived_trailers = getCommitTrailers(repo, "main-plate-derived1")
+    assert derived_trailers["convo-id"] == "agentB.jsonl"
+    assert derived_trailers["convo-name"] == "B"
+
+
+def test_plate_push_advances_existing_derived_for_returning_agent(tmp_path: Path):
+    """Scenario: derived1 exists from Agent B's first push. Agent B returns
+    and pushes again with the same convo_id. plate_push must advance
+    main-plate-derived1, not create derived2 or touch main-plate."""
+    # 1. Set up the (Agent A → Agent B) topology from the prior test.
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    (repo / TEST_FILENAME).write_text("base\nA1\n")
+    pa_sha = plate_push(repo, convo_id="agentA.jsonl")
+    (repo / TEST_FILENAME).write_text("base\nA1\nB1\n")
+    plate_push(repo, convo_id="agentB.jsonl")
+    derived1_first_sha = getSHAForRefViaRevParse(repo, "main-plate-derived1")
+
+    # 2. Agent B returns with more edits.
+    (repo / TEST_FILENAME).write_text("base\nA1\nB1\nB2 follow-up\n")
+    new_sha = plate_push(repo, convo_id="agentB.jsonl")
+    assert new_sha is not None
+
+    # 3. main-plate-derived1 advanced (new tip), parented to its previous tip.
+    assert getSHAForRefViaRevParse(repo, "main-plate-derived1") == new_sha
+    assert new_sha != derived1_first_sha
+    derived_parent = run(
+        ["git", "rev-parse", "main-plate-derived1~1"], cwd=repo
+    )
+    assert derived_parent == derived1_first_sha
+
+    # 4. No derived2 was created. main-plate still untouched.
+    assert not branchExists(repo, "main-plate-derived2")
+    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
+
+
+def test_plate_push_creates_sibling_derived_for_third_agent(tmp_path: Path):
+    """Scenario: main-plate (Agent A) and main-plate-derived1 (Agent B) both
+    exist. Agent C (third convo) pushes. plate_push must create
+    main-plate-derived2 as a SIBLING parented to main-plate's tip — NOT
+    chained off derived1."""
+    # 1. Set up Agent A's base plate and Agent B's derived1.
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    (repo / TEST_FILENAME).write_text("base\nA1\n")
+    pa_sha = plate_push(repo, convo_id="agentA.jsonl")
+    (repo / TEST_FILENAME).write_text("base\nA1\nB1\n")
+    plate_push(repo, convo_id="agentB.jsonl")
+    derived1_sha_before = getSHAForRefViaRevParse(repo, "main-plate-derived1")
+
+    # 2. Agent C pushes — different convo from both A and B.
+    (repo / TEST_FILENAME).write_text("base\nA1\nB1\nC1\n")
+    pc_sha = plate_push(repo, convo_id="agentC.jsonl", convo_name="C")
+    assert pc_sha is not None
+
+    # 3. main-plate-derived2 created, parented to main-plate's tip (Pa) — NOT
+    #    to derived1's tip. Sibling, not chain.
+    assert branchExists(repo, "main-plate-derived2")
+    derived2_parent = run(
+        ["git", "rev-parse", "main-plate-derived2~1"], cwd=repo
+    )
+    assert derived2_parent == pa_sha
+    assert derived2_parent != derived1_sha_before
+
+    # 4. derived1 untouched, main-plate untouched.
+    assert getSHAForRefViaRevParse(repo, "main-plate-derived1") == derived1_sha_before
+    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
+
+    # 5. Trailers on derived2 reflect Agent C's convo.
+    derived2_trailers = getCommitTrailers(repo, "main-plate-derived2")
+    assert derived2_trailers["convo-id"] == "agentC.jsonl"
+    assert derived2_trailers["convo-name"] == "C"
 
 
 def plate_done(repo: Path, branch: Optional[str] = None) -> None:
