@@ -1,11 +1,18 @@
 """pytest fixtures for the /plate sequence test harness."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 
-from helpers import setup_repo
+# plate_lib (formerly tests/sequence/helpers.py) now lives in
+# common/scripts/plate/. Inject that on sys.path so this conftest and
+# every test in this directory can `import plate_lib`.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" / "plate"))
+
+from plate_lib import setup_repo  # noqa: E402
 
 
 @pytest.fixture

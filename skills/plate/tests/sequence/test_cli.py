@@ -12,13 +12,8 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-# cli.py lives in common/scripts/plate/. Add that to sys.path so we can
-# import it as a top-level module.
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_CLI_DIR = _REPO_ROOT / "common" / "scripts" / "plate"
-if str(_CLI_DIR) not in sys.path:
-    sys.path.insert(0, str(_CLI_DIR))
-
+# cli.py lives in common/scripts/plate/ alongside plate_lib.py.
+# conftest.py has already added that directory to sys.path.
 import cli  # noqa: E402
 
 

@@ -36,15 +36,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# plate_lib lives in skills/plate/tests/sequence/helpers.py for now —
-# pragmatic v1 (proper move + split is a follow-up). Inject that path
-# so we can `import helpers as plate_lib`.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_PLATE_LIB_DIR = _REPO_ROOT / "skills" / "plate" / "tests" / "sequence"
-if str(_PLATE_LIB_DIR) not in sys.path:
-    sys.path.insert(0, str(_PLATE_LIB_DIR))
-
-import helpers as plate_lib  # noqa: E402
+# plate_lib is a sibling module in this same directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import plate_lib  # noqa: E402
 
 
 def _cmd_push(argv: list[str]) -> str:

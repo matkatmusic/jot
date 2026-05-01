@@ -2399,8 +2399,7 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
 # ──────────────────────────────────────────────────────────────────────
 
 _REBASE_EDITOR_SCRIPT = (
-    Path(__file__).resolve().parents[4]
-    / "common" / "scripts" / "plate" / "_rebase_reword_summary.py"
+    Path(__file__).resolve().parent / "_rebase_reword_summary.py"
 )
 
 def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:

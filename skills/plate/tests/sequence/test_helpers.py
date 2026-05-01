@@ -14,15 +14,16 @@ from pathlib import Path
 
 import pytest
 
-# After the test_* functions migrated out of helpers.py, every library
+# After the test_* functions migrated out of plate_lib.py, every library
 # symbol the tests reference must be importable into this namespace —
 # including underscore-prefixed scenario callables (`_check_*`) and
 # private helpers (`_writeFakeTranscriptWithToolUse`, etc.) that
-# `from helpers import *` would skip. Pull them in explicitly via vars().
-import helpers as _helpers
+# `from plate_lib import *` would skip. Pull them in explicitly via vars().
+# (sys.path setup already done by conftest.py.)
+import plate_lib as _plate_lib
 globals().update({
     name: value
-    for name, value in vars(_helpers).items()
+    for name, value in vars(_plate_lib).items()
     if not name.startswith("__")
 })
 
@@ -1029,7 +1030,7 @@ def test_setup_repo_checks_out_non_main_branch(repo: Path) -> None:
 
 def test_setup_repo_branch_name_is_varied(tmp_path: Path) -> None:
     """Two fresh repos in succession should pick different branch names."""
-    from helpers import setup_repo
+    from plate_lib import setup_repo
 
     seen = set()
     for i in range(10):
@@ -1120,7 +1121,7 @@ def test_performRandomEdit_seeded_is_deterministic(repo: Path, tmp_path: Path) -
     """Same seed → same action."""
     a = performRandomEdit(repo, seed=12345)
     # Reset by setting up a parallel repo from the same fixture base
-    from helpers import setup_repo
+    from plate_lib import setup_repo
 
     other = setup_repo(tmp_path / "other")
     b = performRandomEdit(other, seed=12345)

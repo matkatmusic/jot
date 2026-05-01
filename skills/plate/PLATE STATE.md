@@ -38,7 +38,6 @@ Old stash-ref + JSON-instance code paths still exist on disk but are unreference
 ## Known polish items
 
 - **Cosmetic**: `plate_drop` prints `warning: no plate branch...` to stderr; `2>&1` in plate.sh leaks it into the user-visible `reason`. Suppress in plate_drop or filter in cli.py.
-- **Proper `helpers.py` → `plate_lib.py` move + test split** — currently cli.py uses `sys.path` injection into the test tree. Works but is a wart. Lower priority since plate isn't yet packaged.
 - **`--show` variant** currently returns literal `"TODO"`; design deferred.
 
 ## Bottom line
