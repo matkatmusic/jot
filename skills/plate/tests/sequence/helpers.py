@@ -1037,6 +1037,260 @@ def test_extractConvoCwdFromTranscript_returns_none_when_file_missing(tmp_path: 
     assert extractConvoCwdFromTranscript(tmp_path / "missing.jsonl") is None
 
 
+_FILE_MODIFYING_TOOL_NAMES = frozenset(
+    {"Edit", "Write", "MultiEdit", "NotebookEdit"}
+)
+
+
+def extractFilesEditedSinceTimestamp(
+    transcript_path: Path,
+    since_iso: Optional[str],
+) -> list[str]:
+    """Return absolute file paths from the transcript's tool_use entries
+    that modified files (`Edit`, `Write`, `MultiEdit`, `NotebookEdit`),
+    filtered to records with `timestamp > since_iso` (strict greater-than).
+
+    `since_iso=None` returns all matching entries (no cutoff). Returns
+    `[]` when the transcript can't be opened.
+
+    Used by `plate_push`'s author-detection branch to determine which
+    files this agent has touched since their last plate commit.
+    """
+    files: set[str] = set()
+    try:
+        with Path(transcript_path).open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                ts = record.get("timestamp")
+                if since_iso is not None:
+                    if not isinstance(ts, str) or ts <= since_iso:
+                        continue
+                # tool_use blocks live under message.content[].
+                content = record.get("message", {}).get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    if block.get("name") not in _FILE_MODIFYING_TOOL_NAMES:
+                        continue
+                    file_path = block.get("input", {}).get("file_path")
+                    if isinstance(file_path, str) and file_path:
+                        files.add(file_path)
+    except OSError:
+        return []
+    return sorted(files)
+
+
+def _writeFakeTranscriptWithToolUse(
+    path: Path,
+    entries: list[dict],
+) -> Path:
+    """Helper for tests: write a minimal JSONL transcript where each entry is a
+    top-level `assistant` record carrying a tool_use block in
+    `message.content`. Each `entries[i]` dict needs keys:
+        timestamp: ISO-8601 string
+        tool:      tool name (Edit/Write/Read/Bash/...)
+        input:     dict for the tool's input
+    """
+    lines = []
+    for e in entries:
+        lines.append(json.dumps({
+            "type": "assistant",
+            "timestamp": e["timestamp"],
+            "message": {
+                "content": [{
+                    "type": "tool_use",
+                    "id": f"toolu_{e['timestamp']}",
+                    "name": e["tool"],
+                    "input": e["input"],
+                }],
+            },
+        }))
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def test_extractFilesEditedSinceTimestamp_filters_by_tool_and_cutoff(tmp_path: Path):
+    transcript = _writeFakeTranscriptWithToolUse(
+        tmp_path / "t.jsonl",
+        [
+            {"timestamp": "2026-04-30T10:00:00.000Z", "tool": "Edit",
+             "input": {"file_path": "/repo/file_a.txt"}},
+            {"timestamp": "2026-04-30T10:01:00.000Z", "tool": "Write",
+             "input": {"file_path": "/repo/file_b.txt"}},
+            {"timestamp": "2026-04-30T10:02:00.000Z", "tool": "Read",
+             "input": {"file_path": "/repo/file_c.txt"}},  # NOT a modifier
+            {"timestamp": "2026-04-30T10:03:00.000Z", "tool": "MultiEdit",
+             "input": {"file_path": "/repo/file_d.txt"}},
+            {"timestamp": "2026-04-30T10:04:00.000Z", "tool": "Edit",
+             "input": {"file_path": "/repo/file_a.txt"}},  # dup
+        ],
+    )
+
+    # Cutoff at T2 (10:01:00) — entries at/before excluded; Read excluded; dedup.
+    result = extractFilesEditedSinceTimestamp(
+        transcript, since_iso="2026-04-30T10:01:00.000Z"
+    )
+    assert result == ["/repo/file_a.txt", "/repo/file_d.txt"]
+
+    # No cutoff → all file-modifying entries (still no Read; still deduped).
+    result_all = extractFilesEditedSinceTimestamp(transcript, since_iso=None)
+    assert result_all == ["/repo/file_a.txt", "/repo/file_b.txt", "/repo/file_d.txt"]
+
+    # Missing file → [].
+    assert extractFilesEditedSinceTimestamp(tmp_path / "missing.jsonl", None) == []
+
+
+_SHELL_EXPANSION_CHARS = frozenset("$`*?[]{}()<>")
+
+
+def _parseRmTargets(cmd: str, repo_root_resolved: Path) -> set[str]:
+    """Find literal file path arguments after `rm` (or `/bin/rm`) tokens in a
+    shell command string. Returns repo-relative paths for arguments that
+    resolve inside `repo_root_resolved`. Skips shell-expanded args
+    ($, backtick, *, ?, [, {), flag tokens (starting with -), and resets
+    on shell separators (&&, ||, ;, |).
+
+    `git rm <file>` works because the loop skips "git" (not a trigger),
+    then sees "rm" and starts collecting. `git rm --cached <file>` also
+    works — the `--cached` flag is skipped by the dash-prefix rule.
+    """
+    import shlex
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return set()
+
+    targets: set[str] = set()
+    in_rm = False
+    for tok in tokens:
+        if tok in ("&&", "||", ";", "|"):
+            in_rm = False
+            continue
+        if tok in ("rm", "/bin/rm"):
+            in_rm = True
+            continue
+        if not in_rm:
+            continue
+        if tok.startswith("-"):
+            continue
+        if any(c in tok for c in _SHELL_EXPANSION_CHARS):
+            continue
+        try:
+            p = (repo_root_resolved / tok).resolve()
+            rel = p.relative_to(repo_root_resolved)
+        except (OSError, ValueError):
+            continue
+        targets.add(str(rel))
+    return targets
+
+
+def extractFilesDeletedSinceTimestamp(
+    transcript_path: Path,
+    since_iso: Optional[str],
+    repo_root: Path,
+) -> list[str]:
+    """Return repo-relative file paths from `Bash` tool_use commands that
+    look like `rm` or `git rm` invocations and resolve INSIDE `repo_root`.
+
+    Filtered to records with `timestamp > since_iso` (strict greater-than).
+    `since_iso=None` returns all matching entries. Returns `[]` when the
+    transcript can't be opened.
+
+    Heuristic — won't catch `rm $(...)` or other shell expansions; won't
+    catch `find ... -delete`. Common literal cases work.
+
+    The tracked-at-prev-plate filter (to skip `<repo>/tmp/` scratch files
+    that aren't part of the project's tracked tree) is applied by the
+    caller, not here — `plate_push` has the prev-plate SHA available and
+    can run `git ls-tree` against it.
+    """
+    files: set[str] = set()
+    repo_root_resolved = Path(repo_root).resolve()
+    try:
+        with Path(transcript_path).open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                ts = record.get("timestamp")
+                if since_iso is not None:
+                    if not isinstance(ts, str) or ts <= since_iso:
+                        continue
+                content = record.get("message", {}).get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    if block.get("name") != "Bash":
+                        continue
+                    cmd = block.get("input", {}).get("command", "")
+                    if not isinstance(cmd, str):
+                        continue
+                    files.update(_parseRmTargets(cmd, repo_root_resolved))
+    except OSError:
+        return []
+    return sorted(files)
+
+
+def test_extractFilesDeletedSinceTimestamp(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    transcript = _writeFakeTranscriptWithToolUse(
+        tmp_path / "t.jsonl",
+        [
+            {"timestamp": "2026-04-30T10:00:00.000Z", "tool": "Bash",
+             "input": {"command": f"rm {repo}/inside_a.txt"}},
+            {"timestamp": "2026-04-30T10:01:00.000Z", "tool": "Bash",
+             "input": {"command": "rm /var/log/outside.txt"}},  # outside repo
+            {"timestamp": "2026-04-30T10:02:00.000Z", "tool": "Bash",
+             "input": {"command": f"git rm {repo}/inside_b.txt"}},
+            {"timestamp": "2026-04-30T10:03:00.000Z", "tool": "Bash",
+             "input": {"command": f"rm {repo}/inside_c.txt {repo}/inside_d.txt"}},
+            {"timestamp": "2026-04-30T10:04:00.000Z", "tool": "Bash",
+             "input": {"command": "rm $(cat list.txt)"}},  # shell expansion
+            {"timestamp": "2026-04-30T10:05:00.000Z", "tool": "Bash",
+             "input": {"command": f"rm -rf {repo}/inside_e.txt"}},  # flag stripped
+            {"timestamp": "2026-04-30T10:06:00.000Z", "tool": "Edit",
+             "input": {"file_path": f"{repo}/not_a_deletion.txt"}},  # not Bash
+        ],
+    )
+
+    # All entries, no cutoff — only inside-repo, no expansions, flags ignored.
+    result = extractFilesDeletedSinceTimestamp(transcript, since_iso=None, repo_root=repo)
+    assert result == [
+        "inside_a.txt", "inside_b.txt", "inside_c.txt", "inside_d.txt", "inside_e.txt",
+    ]
+
+    # Cutoff at T2 → entries strictly > 10:02 (inside_c, inside_d, inside_e).
+    result_recent = extractFilesDeletedSinceTimestamp(
+        transcript, since_iso="2026-04-30T10:02:00.000Z", repo_root=repo
+    )
+    assert result_recent == ["inside_c.txt", "inside_d.txt", "inside_e.txt"]
+
+    # Missing transcript → [].
+    assert extractFilesDeletedSinceTimestamp(
+        tmp_path / "missing.jsonl", None, repo
+    ) == []
+
+
 def listPlateBranches(repo: Path) -> list[dict]:
     """Return all plate-related branch refs in the repo, newest first.
 
@@ -1201,6 +1455,75 @@ def makeTempGitIndexPath() -> str:
         os.close(fd)
         return tmp_index_path
 
+def findMyLastPlate(
+    repo: Path,
+    plate_branch: str,
+    convo_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """Find the most recent commit on `plate_branch` whose `convo-id` trailer
+    matches `convo_id`.
+
+    Returns (sha, committer_date_iso) — the SHA of the matching commit and
+    its committer date as an ISO-8601 string with timezone (e.g.
+    `2026-04-30 14:47:14 -0700`). Returns (None, None) when the branch
+    doesn't exist or no commit on it carries a matching trailer.
+
+    Used by `plate_push`'s author-detection branch to find this agent's
+    cutoff time when scanning the transcript for files this agent has
+    edited or deleted since their last plate.
+    """
+    if not branchExists(repo, plate_branch):
+        return (None, None)
+
+    raw = run(
+        [
+            "git", "log", plate_branch,
+            "--format=%H|%ci|%(trailers:key=convo-id,valueonly,unfold=true)",
+        ],
+        cwd=repo,
+    )
+    for line in raw.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            continue
+        sha, date_iso, trailer = parts
+        if trailer.strip() == convo_id:
+            return (sha, date_iso)
+    return (None, None)
+
+
+def test_findMyLastPlate(tmp_path: Path):
+    """findMyLastPlate walks the branch and returns most recent matching trailer."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    branch = getCurrentBranchName(repo)
+    plate_branch = f"{branch}-plate"
+
+    # No branch yet → (None, None).
+    assert findMyLastPlate(repo, plate_branch, "A") == (None, None)
+
+    # Push 3 plates with alternating convo_ids: A, B, A.
+    (repo / TEST_FILENAME).write_text("A1\n")
+    sha_a1 = plate_push(repo, convo_id="A")
+    (repo / TEST_FILENAME).write_text("A1\nB1\n")
+    plate_push(repo, convo_id="B")
+    (repo / TEST_FILENAME).write_text("A1\nB1\nA2\n")
+    sha_a2 = plate_push(repo, convo_id="A")
+
+    # findMyLastPlate("A") returns the most recent A commit (sha_a2) with date.
+    sha, date = findMyLastPlate(repo, plate_branch, "A")
+    assert sha == sha_a2
+    assert sha != sha_a1
+    assert date is not None
+    # ISO-8601 date with timezone (e.g. "2026-04-30 14:47:14 -0700").
+    assert len(date) >= len("2026-04-30 14:47:14 -0700")
+
+    # convo_id not present → (None, None).
+    assert findMyLastPlate(repo, plate_branch, "C") == (None, None)
+
+    # Non-existent branch → (None, None).
+    assert findMyLastPlate(repo, "nonexistent-plate", "A") == (None, None)
+
+
 def _resolveTargetPlate(
     repo: Path,
     base_plate_name: str,
@@ -1208,46 +1531,120 @@ def _resolveTargetPlate(
 ) -> tuple[str, str]:
     """Determine which plate branch a push lands on, and what its parent SHA is.
 
-    Returns (target_plate_branch_name, parent_commit_sha).
+    Always returns (base_plate_name, parent_sha) — multiple agents working on
+    the same branch all share the same `<branch>-plate` ref. Per-agent
+    attribution lives in the `convo-id` commit trailer; per-agent change
+    isolation is handled later in `plate_push` via transcript extraction.
 
-    Rules:
-        1. No plate exists yet                       → base, parent=HEAD.
-        2. convo_id matches base plate's owner      → base, parent=base tip.
-        3. convo_id is None (legacy/no-trailer)     → base, parent=base tip.
-        4. convo_id matches an existing derivedN's
-           owner (returning derived agent)          → derivedN, parent=derivedN tip.
-        5. Different convo_id (new derived agent)   → next derivedN, parent=base tip.
+    Returns:
+        - (base, HEAD)        when no plate exists yet
+        - (base, base tip)    when the plate exists (linear history)
 
-    Rule 5 implements the "second terminal, parallel agent" workflow: when a
-    different agent (different transcript_path / convo_id) invokes plate_push
-    while a base plate already exists, the work is parked on its own
-    `<branch>-plate-derivedN` branch parented to the base plate's current tip.
-    Multiple derived agents land as siblings (each parented to the base plate's
-    tip), not as a chain.
+    Note: an earlier design routed different convo_ids onto sibling
+    `<branch>-plate-derivedN` branches. That auto-derived behavior was
+    replaced by the shared-plate-branch + transcript-extraction model.
+    The chained-derived workflow (explicit delegation via
+    `simulate_derived_agent`) is unrelated and remains in the codebase.
     """
     if not branchExists(repo, base_plate_name):
         return base_plate_name, getSHAForRefViaRevParse(repo, "HEAD")
+    return base_plate_name, getSHAForRefViaRevParse(repo, base_plate_name)
 
-    base_owner = getCommitTrailers(repo, base_plate_name).get("convo-id")
 
-    # Rules 2 & 3: same agent (or legacy/no-convo-id) → advance the base plate.
-    if convo_id is None or convo_id == base_owner:
-        return base_plate_name, getSHAForRefViaRevParse(repo, base_plate_name)
+def _buildFullWtTree(repo: Path) -> str:
+    """Snapshot the working tree via a temp index and return its tree SHA.
 
-    # Rule 4: returning derived agent → advance their existing derived branch.
-    derived_prefix = f"{base_plate_name}-derived"
-    existing_deriveds = [
-        b for b in getGitBranchList(repo)
-        if b.startswith(derived_prefix) and b[len(derived_prefix):].isdigit()
-    ]
-    for d in existing_deriveds:
-        if getCommitTrailers(repo, d).get("convo-id") == convo_id:
-            return d, getSHAForRefViaRevParse(repo, d)
+    Same-author / first-plate path: the commit tree IS the full WT, so
+    `git diff prev..mine` correctly attributes everything since prev to me
+    (because I'm the one who made prev too).
+    """
+    tmp_index_path = makeTempGitIndexPath()
+    try:
+        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
+        _ = readGitTreeAt(repo=repo, ref="HEAD", env=env)
+        stageAllChanges(repo=repo, env=env)
+        return writeGitTree(repo=repo, env=env)
+    finally:
+        Path(tmp_index_path).unlink(missing_ok=True)
 
-    # Rule 5: brand-new derived agent → next sibling derivedN parented to base tip.
-    used_numbers = [int(b[len(derived_prefix):]) for b in existing_deriveds]
-    next_n = (max(used_numbers) + 1) if used_numbers else 1
-    return f"{derived_prefix}{next_n}", getSHAForRefViaRevParse(repo, base_plate_name)
+
+def _buildExtractedTree(
+    repo: Path,
+    plate_branch: str,
+    convo_id: str,
+    parent_sha: str,
+) -> str:
+    """Build a commit tree starting from `parent_sha`'s tree, applying ONLY
+    the file changes attributable to `convo_id` per the transcript.
+
+    Used when a different agent committed the previous plate. Plain
+    snapshot of WT would attribute the other agent's intervening edits to
+    me; extraction filters to my edits/deletions only.
+
+    Algorithm:
+        1. Find my last plate on this branch → cutoff timestamp
+           (None if I've never plated here).
+        2. Extract files I edited since cutoff from my transcript (Edit /
+           Write / MultiEdit / NotebookEdit tool_use entries).
+        3. Extract files I deleted since cutoff (Bash rm / git rm),
+           filtered to paths that were tracked in `parent_sha`'s tree
+           (skips scratch deletions in `<repo>/tmp/` etc.).
+        4. Start temp index = parent_sha's tree.
+           For each edited file: stage its current WT content (`git add`).
+           For each deleted file: remove from temp index (`git rm --cached`).
+        5. Write tree → that's the commit tree.
+
+    Result: prev plate's tree + my edits + my deletions, nothing more.
+    The other agent's intervening WT changes stay in WT (unstaged), to
+    be captured by their next plate.
+    """
+    _, cutoff = findMyLastPlate(repo, plate_branch, convo_id)
+
+    transcript_path = Path(convo_id)
+    edited_abs = extractFilesEditedSinceTimestamp(transcript_path, since_iso=cutoff)
+    deleted_candidates = extractFilesDeletedSinceTimestamp(
+        transcript_path, since_iso=cutoff, repo_root=repo
+    )
+
+    # Filter deletions to files actually tracked at the parent commit
+    # (skips scratch removals in <repo>/tmp/ that aren't in the project tree).
+    tracked_at_parent = set(
+        run(
+            ["git", "ls-tree", "-r", "--name-only", parent_sha],
+            cwd=repo,
+        ).splitlines()
+    )
+    deleted = [p for p in deleted_candidates if p in tracked_at_parent]
+
+    # Convert absolute edited paths to repo-relative; skip those outside repo.
+    repo_resolved = repo.resolve()
+    edited_relative: list[str] = []
+    for abs_path in edited_abs:
+        try:
+            rel = Path(abs_path).resolve().relative_to(repo_resolved)
+        except (OSError, ValueError):
+            continue
+        edited_relative.append(str(rel))
+
+    tmp_index_path = makeTempGitIndexPath()
+    try:
+        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
+        readGitTreeAt(repo=repo, ref=parent_sha, env=env)
+        # Stage edited files from current WT; skip files no longer present
+        # (those are deletions, handled below).
+        for rel_path in edited_relative:
+            if (repo / rel_path).exists():
+                run(["git", "add", "--", rel_path], cwd=repo, env=env)
+        # Remove deleted files from the temp index.
+        for rel_path in deleted:
+            run(
+                ["git", "rm", "--cached", "--ignore-unmatch", "--", rel_path],
+                cwd=repo,
+                env=env,
+            )
+        return writeGitTree(repo=repo, env=env)
+    finally:
+        Path(tmp_index_path).unlink(missing_ok=True)
 
 
 def plate_push(
@@ -1286,22 +1683,31 @@ def plate_push(
     branch = getCurrentBranchName(repo)
     base_plate_name = f"{branch}-plate"
 
-    # Resolve target plate (base or derivedN) based on convo-id ownership.
+    # Always-shared plate branch; parent is HEAD if no plate exists, else
+    # the current plate tip (regardless of who pushed it).
     target_plate, parent = _resolveTargetPlate(repo, base_plate_name, convo_id)
 
-    # Snapshot the working tree via a temp index — real index/HEAD/WT untouched.
-    tmp_index_path = makeTempGitIndexPath()
-    try:
-        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
-        _ = readGitTreeAt(repo=repo, ref="HEAD", env=env)
-        stageAllChanges(repo=repo, env=env)
-        wt_tree = writeGitTree(repo=repo, env=env)
-    finally:
-        Path(tmp_index_path).unlink(missing_ok=True)
+    # Choose between two tree-build strategies:
+    #   - Mixed-author path: previous plate exists with a different convo-id
+    #     than mine → build the tree from prev's tree + my edits/deletions
+    #     extracted from my transcript (keeps the other agent's intervening
+    #     WT changes out of my commit).
+    #   - Same-author / first-time path: snapshot full WT (existing logic).
+    use_extraction = (
+        convo_id is not None
+        and branchExists(repo, base_plate_name)
+        and getCommitTrailers(repo, base_plate_name).get("convo-id") not in (None, convo_id)
+    )
+
+    if use_extraction:
+        commit_tree = _buildExtractedTree(repo, base_plate_name, convo_id, parent)
+    else:
+        commit_tree = _buildFullWtTree(repo)
 
     parent_tree = getSHAForRefViaRevParse(repo=repo, ref=getTreeRevOf(parent))
-    if wt_tree == parent_tree:
+    if commit_tree == parent_tree:
         return None
+    wt_tree = commit_tree
 
     trailerLines = [f"parent-branch: {branch}"]
     if convo_id is not None:
@@ -1386,6 +1792,118 @@ def test_plate_push_with_convo_id(tmp_path: Path):
     assert trailers["convo-summary"] == "line one line two line three"
 
 
+def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
+    tmp_path: Path,
+):
+    """Integration test for the shared-plate-branch + transcript-extraction model.
+
+    Two agents push commits to the same `<branch>-plate` branch in alternation.
+    Each agent's commit must contain only their own attributable changes, not
+    the other agent's intervening unplated WT edits.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
+    createUserConfig(repo)
+    writeGitIgnore(repo)
+    addFileToGit(repo, ".gitignore")
+    (repo / "a.txt").write_text("base\n")
+    addFileToGit(repo, "a.txt")
+    createCommit(repo, "initial")
+
+    # 1 & 2: Agent A's transcript with one Edit-on-a.txt entry (timestamps far
+    # in the future so the cutoff filter never excludes them in this test).
+    transcript_A = tmp_path / "transcript_A.jsonl"
+    _writeFakeTranscriptWithToolUse(
+        transcript_A,
+        [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
+          "input": {"file_path": str(repo / "a.txt")}}],
+    )
+
+    # 3 & 4: WT a.txt = "base\nA1\n"; Agent A plates → Pa1.
+    (repo / "a.txt").write_text("base\nA1\n")
+    pa1_sha = plate_push(repo, convo_id=str(transcript_A))
+    assert pa1_sha is not None
+    pa1_a_content = run(["git", "show", "main-plate:a.txt"], cwd=repo)
+    assert pa1_a_content == "base\nA1"  # git show strips trailing \n
+
+    # 5: Agent A makes an unplated WT edit to a.txt; transcript adds a 2nd entry
+    # (still far-future timestamp; multiple entries deduplicate to one file).
+    (repo / "a.txt").write_text("base\nA1\nA2-not-yet-plated\n")
+    _writeFakeTranscriptWithToolUse(
+        transcript_A,
+        [
+            {"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
+             "input": {"file_path": str(repo / "a.txt")}},
+            {"timestamp": "2099-01-01T00:01:00.000Z", "tool": "Edit",
+             "input": {"file_path": str(repo / "a.txt")}},
+        ],
+    )
+
+    # 6 & 7: Agent B's transcript with one Write-on-b.txt entry; create b.txt.
+    transcript_B = tmp_path / "transcript_B.jsonl"
+    _writeFakeTranscriptWithToolUse(
+        transcript_B,
+        [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",
+          "input": {"file_path": str(repo / "b.txt")}}],
+    )
+    (repo / "b.txt").write_text("B")
+
+    # 8: Agent B plates → Pb1.
+    pb1_sha = plate_push(repo, convo_id=str(transcript_B))
+    assert pb1_sha is not None
+
+    # 9: Pb1's tree contains a.txt = Pa1's plated version (NOT A2),
+    #    b.txt = "B", convo-id trailer = Agent B's transcript path.
+    pb1_a_content = run(["git", "show", "main-plate:a.txt"], cwd=repo)
+    assert pb1_a_content == "base\nA1"
+    assert "A2-not-yet-plated" not in pb1_a_content
+    pb1_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
+    assert pb1_b_content == "B"
+    pb1_trailers = getCommitTrailers(repo, "main-plate")
+    assert pb1_trailers["convo-id"] == str(transcript_B)
+    # Pb1 parents to Pa1 (linear history on the shared branch).
+    assert run(["git", "rev-parse", "main-plate~1"], cwd=repo) == pa1_sha
+
+    # 10: Agent A plates → Pa2 (their own unplated A2 edit is now captured).
+    pa2_sha = plate_push(repo, convo_id=str(transcript_A))
+    assert pa2_sha is not None
+
+    # 11: Pa2's tree includes A2 line; b.txt carries forward from Pb1.
+    pa2_a_content = run(["git", "show", "main-plate:a.txt"], cwd=repo)
+    assert pa2_a_content == "base\nA1\nA2-not-yet-plated"
+    pa2_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
+    assert pa2_b_content == "B"
+    pa2_trailers = getCommitTrailers(repo, "main-plate")
+    assert pa2_trailers["convo-id"] == str(transcript_A)
+
+    # 12: Agent B "deletes" b.txt — append a Bash rm entry to Agent B's
+    #     transcript; actually unlink the file from WT to mirror the rm.
+    _writeFakeTranscriptWithToolUse(
+        transcript_B,
+        [
+            {"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",
+             "input": {"file_path": str(repo / "b.txt")}},
+            {"timestamp": "2099-01-01T00:03:00.000Z", "tool": "Bash",
+             "input": {"command": f"rm {repo}/b.txt"}},
+        ],
+    )
+    (repo / "b.txt").unlink()
+
+    # 13: Agent B plates → Pb2.
+    pb2_sha = plate_push(repo, convo_id=str(transcript_B))
+    assert pb2_sha is not None
+
+    # 14: Pb2's tree no longer contains b.txt; a.txt unchanged from Pa2.
+    pb2_files = run(
+        ["git", "ls-tree", "-r", "--name-only", "main-plate"], cwd=repo
+    ).splitlines()
+    assert "b.txt" not in pb2_files
+    assert "a.txt" in pb2_files
+    pb2_a_content = run(["git", "show", "main-plate:a.txt"], cwd=repo)
+    assert pb2_a_content == "base\nA1\nA2-not-yet-plated"
+
+
 def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
     """Without convo_* kwargs, only parent-branch is written."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
@@ -1400,105 +1918,6 @@ def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
     assert "convo-id" not in trailers
     assert "convo-name" not in trailers
     assert "convo-summary" not in trailers
-
-
-def test_plate_push_creates_derived_when_different_convo_id(tmp_path: Path):
-    """Scenario: Agent A pushes the base plate. Agent B (different convo_id)
-    pushes while in the same repo with WT inheriting Agent A's work plus B's
-    own edits. plate_push must route B's commit to `main-plate-derived1`,
-    parented to `main-plate`'s tip — NOT advance `main-plate`."""
-    # 1. Single-commit repo on main. Agent A pushes the base plate.
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    (repo / TEST_FILENAME).write_text("base\nagentA edit\n")
-    pa_sha = plate_push(repo, convo_id="agentA.jsonl", convo_name="A")
-    assert pa_sha is not None
-
-    # 2. Agent B inherits A's WT state and adds more edits, then pushes.
-    (repo / TEST_FILENAME).write_text("base\nagentA edit\nagentB edit\n")
-    pb_sha = plate_push(repo, convo_id="agentB.jsonl", convo_name="B")
-    assert pb_sha is not None
-
-    # 3. main-plate-derived1 was created and is parented to main-plate's tip.
-    assert branchExists(repo, "main-plate-derived1")
-    derived_parent = run(
-        ["git", "rev-parse", "main-plate-derived1~1"], cwd=repo
-    )
-    assert derived_parent == pa_sha
-
-    # 4. main-plate ref is unchanged (Agent A's plate not advanced by B).
-    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
-
-    # 5. Trailers on derived1 reflect Agent B's convo.
-    derived_trailers = getCommitTrailers(repo, "main-plate-derived1")
-    assert derived_trailers["convo-id"] == "agentB.jsonl"
-    assert derived_trailers["convo-name"] == "B"
-
-
-def test_plate_push_advances_existing_derived_for_returning_agent(tmp_path: Path):
-    """Scenario: derived1 exists from Agent B's first push. Agent B returns
-    and pushes again with the same convo_id. plate_push must advance
-    main-plate-derived1, not create derived2 or touch main-plate."""
-    # 1. Set up the (Agent A → Agent B) topology from the prior test.
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    (repo / TEST_FILENAME).write_text("base\nA1\n")
-    pa_sha = plate_push(repo, convo_id="agentA.jsonl")
-    (repo / TEST_FILENAME).write_text("base\nA1\nB1\n")
-    plate_push(repo, convo_id="agentB.jsonl")
-    derived1_first_sha = getSHAForRefViaRevParse(repo, "main-plate-derived1")
-
-    # 2. Agent B returns with more edits.
-    (repo / TEST_FILENAME).write_text("base\nA1\nB1\nB2 follow-up\n")
-    new_sha = plate_push(repo, convo_id="agentB.jsonl")
-    assert new_sha is not None
-
-    # 3. main-plate-derived1 advanced (new tip), parented to its previous tip.
-    assert getSHAForRefViaRevParse(repo, "main-plate-derived1") == new_sha
-    assert new_sha != derived1_first_sha
-    derived_parent = run(
-        ["git", "rev-parse", "main-plate-derived1~1"], cwd=repo
-    )
-    assert derived_parent == derived1_first_sha
-
-    # 4. No derived2 was created. main-plate still untouched.
-    assert not branchExists(repo, "main-plate-derived2")
-    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
-
-
-def test_plate_push_creates_sibling_derived_for_third_agent(tmp_path: Path):
-    """Scenario: main-plate (Agent A) and main-plate-derived1 (Agent B) both
-    exist. Agent C (third convo) pushes. plate_push must create
-    main-plate-derived2 as a SIBLING parented to main-plate's tip — NOT
-    chained off derived1."""
-    # 1. Set up Agent A's base plate and Agent B's derived1.
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    (repo / TEST_FILENAME).write_text("base\nA1\n")
-    pa_sha = plate_push(repo, convo_id="agentA.jsonl")
-    (repo / TEST_FILENAME).write_text("base\nA1\nB1\n")
-    plate_push(repo, convo_id="agentB.jsonl")
-    derived1_sha_before = getSHAForRefViaRevParse(repo, "main-plate-derived1")
-
-    # 2. Agent C pushes — different convo from both A and B.
-    (repo / TEST_FILENAME).write_text("base\nA1\nB1\nC1\n")
-    pc_sha = plate_push(repo, convo_id="agentC.jsonl", convo_name="C")
-    assert pc_sha is not None
-
-    # 3. main-plate-derived2 created, parented to main-plate's tip (Pa) — NOT
-    #    to derived1's tip. Sibling, not chain.
-    assert branchExists(repo, "main-plate-derived2")
-    derived2_parent = run(
-        ["git", "rev-parse", "main-plate-derived2~1"], cwd=repo
-    )
-    assert derived2_parent == pa_sha
-    assert derived2_parent != derived1_sha_before
-
-    # 4. derived1 untouched, main-plate untouched.
-    assert getSHAForRefViaRevParse(repo, "main-plate-derived1") == derived1_sha_before
-    assert getSHAForRefViaRevParse(repo, "main-plate") == pa_sha
-
-    # 5. Trailers on derived2 reflect Agent C's convo.
-    derived2_trailers = getCommitTrailers(repo, "main-plate-derived2")
-    assert derived2_trailers["convo-id"] == "agentC.jsonl"
-    assert derived2_trailers["convo-name"] == "C"
 
 
 def plate_done(repo: Path, branch: Optional[str] = None) -> None:
