@@ -29,6 +29,10 @@ def _run_session_end(payload: dict, repo_path: Path) -> tuple[str, str, int]:
         "CLAUDE_PLUGIN_ROOT": str(_REPO_ROOT),
         "CLAUDE_PLUGIN_DATA": "/tmp/plate-session-end-test-data",
         "PLATE_LOG_FILE": "/tmp/plate-session-end-test-data/plate-log.txt",
+        # Short-circuit spawn_summary_agent.spawn() so the test never
+        # launches a real `claude` agent in a tmux pane (leaks zombie
+        # panes sitting at the workspace-trust prompt).
+        "PLATE_SKIP_LAUNCH": "1",
     }
     Path(env["CLAUDE_PLUGIN_DATA"]).mkdir(parents=True, exist_ok=True)
     cmd = (

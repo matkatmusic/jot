@@ -10,11 +10,21 @@ Two roles selected by argv[1]:
 
   message    — invoked as GIT_EDITOR. Rewrites COMMIT_EDITMSG depending
                on whether the current commit is the original tip:
-                 - tip:     strip any existing `convo-summary:` trailer,
-                            append the new one (collapsed to a single line).
+                 - tip:     replace the subject line with the agent's
+                            new subject (line 1 of <new-summary-file>),
+                            strip any existing `convo-summary:` trailer,
+                            and append the new one with the body part
+                            (collapsed to a single line).
                  - non-tip: only strip `convo-summary:` if present.
+                            Subject is preserved untouched.
                Other trailers (convo-id, convo-name, parent-branch) are
-               preserved as-is.
+               preserved as-is on every commit.
+
+`<new-summary-file>` format: agent writes a payload with
+  Line 1: subject (≤50 chars)
+  Line 2: blank
+  Lines 3+: 5-section summary body
+Split is on the first blank line.
 
 Determining "current commit" during message edit: read
 `.git/rebase-merge/stopped-sha` (or `.git/rebase-merge/orig-head` for the
@@ -79,6 +89,54 @@ def _append_summary_trailer(message: str, summary: str) -> str:
     return rebuilt
 
 
+def _parse_payload(text: str) -> tuple[str, str]:
+    """Split agent output into (subject, summary_body).
+
+    Format: line 1 is the subject; the first blank line is the separator;
+    everything after is the summary body.
+    Tolerates missing blank line (treats whole content as subject + empty body)
+    and trailing whitespace.
+    """
+    if not text.strip():
+        return ("", "")
+    lines = text.splitlines()
+    subject = lines[0].strip()
+    blank_idx = next(
+        (i for i, line in enumerate(lines) if i > 0 and line.strip() == ""),
+        None,
+    )
+    if blank_idx is None:
+        return (subject, "")
+    body = "\n".join(lines[blank_idx + 1:]).strip()
+    return (subject, body)
+
+
+def _replace_subject(message: str, new_subject: str) -> str:
+    """Replace the first non-blank, non-comment line of the COMMIT_EDITMSG
+    with `new_subject`. Subsequent lines (trailers, comment block, etc.)
+    are preserved verbatim. Used only for the tip commit.
+
+    Subject is hard-capped at 50 chars per the template spec; over-length
+    input is truncated rather than rejected (rejection would dead-end the
+    rebase mid-flight).
+    """
+    new_subject = new_subject.strip()
+    if len(new_subject) > 50:
+        new_subject = new_subject[:50].rstrip()
+    if not new_subject:
+        return message  # no replacement; keep original subject
+    lines = message.splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines[i] = new_subject
+            break
+    rebuilt = "\n".join(lines)
+    if message.endswith("\n") and not rebuilt.endswith("\n"):
+        rebuilt += "\n"
+    return rebuilt
+
+
 def _is_tip_commit(commit_editmsg_text: str) -> bool:
     """Detect whether the current reword step is the last one.
 
@@ -109,9 +167,15 @@ def _do_message(commit_msg_path: Path, tip_sha: str, summary_file: Path,
     stripped = _strip_summary_trailer(original)
     on_tip = _is_tip_commit(original)
     if on_tip:
-        summary = summary_file.read_text()
-        new = _append_summary_trailer(stripped, summary)
+        # Tip commit: parse the agent's payload, replace subject, append
+        # the body as the new convo-summary trailer.
+        subject, body = _parse_payload(summary_file.read_text())
+        with_new_subject = _replace_subject(stripped, subject) if subject else stripped
+        new = _append_summary_trailer(with_new_subject, body) if body else with_new_subject
+        if not new.endswith("\n"):
+            new += "\n"
     else:
+        # Non-tip: only strip stale convo-summary. Subject stays as-is per spec.
         new = stripped
         if not new.endswith("\n"):
             new += "\n"

@@ -25,9 +25,17 @@ summary from `git log` to pick up where the previous work left off.
      git log <branch>-plate --format='%H%n%(trailers)%n---' --name-only
 3. Read the transcript at `transcript_path` to understand the user's goal and
    the reasoning behind the work captured in the plate.
-4. Write a SINGLE plain-text summary to `output_file` following the template
-   exactly: lowercase keys with colons, 5 sections in order (omitting `open
-   questions:` if none), ~400 words.
+4. Write the output file with TWO parts separated by a single blank line:
+   - **Line 1**: a ≤50-character commit subject describing what changed in
+     this plate commit. Imperative mood, no trailing period
+     (e.g. `Extract git_lib from plate_lib`). This replaces the placeholder
+     `plate: WIP on <branch>` subject on the tip commit only — earlier
+     plate commits keep their original subjects.
+   - **Line 2**: blank.
+   - **Lines 3+**: the 5-section summary body (lowercase keys with colons,
+     `what:` `why:` `how:` `open questions:` `next steps:` in order,
+     omitting `open questions:` if none, ~400 words). This becomes the
+     `convo-summary:` trailer on the tip commit.
 5. After writing the file, exit. Do NOT take any further actions.
 
 ## Rules

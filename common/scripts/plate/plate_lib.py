@@ -2677,9 +2677,12 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
         convo-summary (the new push just landed; agent hasn't written
         the new summary yet).
 
-    After running rewriteBranchTipSummary(repo, branch, "<new text>"):
-      - commit-1 has NO convo-summary trailer.
-      - commit-2 (new tip) has convo-summary == "<new text>".
+    After running rewriteBranchTipSummary with the agent payload
+    "Refactor plate ops\n\nthe new summary text":
+      - commit-1 has NO convo-summary trailer; its subject is still "plate-1".
+      - commit-2 (new tip) has convo-summary == "the new summary text"
+        AND its subject is now "Refactor plate ops" (replacing the
+        placeholder).
       - All other trailers (convo-id, convo-name, parent-branch) are
         preserved on both commits.
       - The branch ref points at the new tip.
@@ -2732,8 +2735,10 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     assert pre_trailers_1.get("convo-summary") == "old summary"
     assert "convo-summary" not in pre_trailers_2
 
-    # Run.
-    new_tip_sha = rewriteBranchTipSummary(repo, branch, "the new summary text")
+    # Run. Agent payload format: <subject>\n\n<5-section summary body>.
+    new_tip_sha = rewriteBranchTipSummary(
+        repo, branch, "Refactor plate ops\n\nthe new summary text",
+    )
 
     # The branch ref must have advanced (or at least changed SHA).
     assert getSHAForRefViaRevParse(repo, plate_branch) == new_tip_sha
@@ -2754,6 +2759,18 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     )
     assert tip_trailers.get("convo-name") == "my conversation"
     assert tip_trailers.get("parent-branch") == branch
+
+    # Tip subject: replaced with the agent's subject (line 1 of the payload).
+    new_tip_subject = run(["git", "log", "-1", "--format=%s", new_tip], cwd=repo)
+    assert new_tip_subject == "Refactor plate ops", (
+        f"expected tip subject 'Refactor plate ops'; got {new_tip_subject!r}"
+    )
+
+    # Parent subject: PRESERVED untouched (the rewriter only edits the tip's subject).
+    new_parent_subject = run(["git", "log", "-1", "--format=%s", new_parent], cwd=repo)
+    assert new_parent_subject == "plate-1", (
+        f"expected parent subject 'plate-1' preserved; got {new_parent_subject!r}"
+    )
 
     # Parent trailers: convo-summary stripped; other trailers preserved.
     parent_trailers = getCommitTrailers(repo, new_parent)

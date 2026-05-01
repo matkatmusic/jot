@@ -1,6 +1,6 @@
-# jot + plate + todo
+# jot + plate + todo + debate
 
-Focus-preserving skills for Claude Code. Both work by intercepting the prompt via a `UserPromptSubmit` hook, doing the durable work synchronously, and handing off enrichment or follow-up to a background Claude in tmux — so your current conversation keeps running uninterrupted.
+Focus-preserving skills for Claude Code. Each one intercepts the prompt via a `UserPromptSubmit` hook, does the durable work synchronously, and (when applicable) hands enrichment or follow-up off to a background `claude` instance running in its own tmux pane — so your current conversation keeps running uninterrupted. **Background agents always run in dedicated tmux sessions** (`jot:jots`, `debate-N`, `plate-summary-N`); attaching is optional and the foreground conversation is never blocked on them.
 
 ## `/jot <idea>`
 
@@ -31,21 +31,33 @@ Multi-agent debate (Claude + Gemini + Codex) in a four-pane tmux window. Agents 
 
 ## `/plate`
 
-Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to a different task. Snapshot it on the stack, switch context freely, then replay the stack as sequential `[plate]` commits with `/plate --done`.
+Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to a different task. Snapshot it on a per-branch plate ref, switch contexts freely, then replay or jump back to it later. Plates are real git commits on `<branch>-plate` refs (not stash refs), so they survive `git stash drop`, `git clean -fd`, branch switches, and even `git push` if you publish the plate ref. Cross-machine handoff works via commit trailers — a teammate cloning the repo can read what's on a parked plate without your local machine being reachable.
 
 ### Commands
 
-- `/plate` — snapshot the current working tree onto the stack, tagged to your session
-- `/plate --show` — render the stack as a tree
-- `/plate --next` — walk the parent chain upward to find the next resume point
-- `/plate --drop` — save the top plate as a patch file and restore the working tree underneath it
-- `/plate --done` — replay the stack bottom-up as sequential commits on the current branch
+| Command | Effect |
+|---|---|
+| `/plate` | Snapshot the current working tree as a commit on `<branch>-plate` (creates the ref if missing). Async background agent then writes a 5-section recovery summary to the tip's `convo-summary:` trailer ~30s later. |
+| `/plate --done` | Cherry-pick the plate stack bottom-up onto the current branch as sequential commits. Aborts cleanly on conflict, restoring HEAD/WT. |
+| `/plate --drop` | Pop the top plate, save it under `<repo>/.plate/trash/<branch>/<ts>_dropped_<sha>/{info.json, plate_001.patch}`. |
+| `/plate --trash` | Delete the entire `<branch>-plate` ref; save every plate commit as numbered patches under `<repo>/.plate/trash/<branch>/<ts>_trashed_<sha>/`. |
+| `/plate --recycle` | Restore the most recent dropped/trashed session for the current branch. Re-parents at `info.json::parent_sha_at_save` (NOT current HEAD) so restoring a stale plate doesn't accidentally rebase it onto unrelated work. |
+| `/plate --recycle --list` | Read-only enumeration of every dropped/trashed session, grouped by branch, newest first. |
+| `/plate --recycle <session-dir-name>` | Restore a specific session by directory name. |
+| `/plate --next` | Numbered list of every parked plate across all branches, sorted by tip-commit time. |
+| `/plate --next <#>` | Jump to plate #N: snapshots current WIP first (so nothing is lost), checks out the target plate's parent branch, restores the plate's tree as unstaged WIP, and emits a `claude --resume` command pointing at the originating conversation. |
+| `/plate --show` | (Currently returns `"TODO"` — design deferred.) |
+
+Plates also fire **automatically on `SessionEnd`**, so any uncommitted WIP at the moment a Claude conversation closes lands on `<branch>-plate` without you having to remember to run `/plate`. Re-entrant fires are blocked by a `PLATE_SKIP_AUTO=1` belt-and-suspenders env var.
 
 ### How it works
 
-- `UserPromptSubmit` hook fires, `plate_dispatch` writes a named git ref (`refs/plates/<convo>/<plate-N>`) pointing at a throwaway stash commit — no branch mutation, no working-tree touch
-- Stack metadata (plate summaries, parent chain, file lists) persists in `.plate/instances/<session>.json`
-- `/plate --done` preserves each stash-vs-prev diff via a temp patch file and applies via `git apply --3way`, committing with `[plate] <summary>` messages. Binary plates work because the temp-file pipeline preserves exact bytes (`$(…)` command substitution strips trailing newlines and can't carry NULs — see `done.sh` comments for details).
+- **Hook entry**: `UserPromptSubmit` (or `SessionEnd` for the auto-fire) routes `/plate` through `scripts/jot-plugin-orchestrator.sh` → `skills/plate/scripts/plate.sh::plate_main`, which dispatches to `common/scripts/plate/cli.py` for every variant. The CLI returns the user-facing message via `emit_block` so the literal `/plate` prompt never reaches the foreground model.
+- **Branch-model storage**: each plate is a `git commit-tree` against `<branch>-plate` with trailers `parent-branch`, `convo-id`, `convo-name`, and (added asynchronously) `convo-summary`. No `.plate/instances/` JSON, no stash refs.
+- **Multi-agent same-branch attribution**: when two parallel Claude sessions push to the same `<branch>-plate`, each commit captures only the files that agent edited. Detection is via the previous tip's `convo-id` trailer; isolation is via parsing each agent's transcript for `Edit`/`Write`/`MultiEdit`/`NotebookEdit` tool-use entries plus `Bash` `rm`/`git rm` parses since the previous plate.
+- **Async summary agent**: after a successful push, `common/scripts/plate/spawn_summary_agent.py` fires a background `claude` in a fresh tmux pane (`plate-summary-<N>`, counter-suffixed to avoid cross-project collisions). The agent reads the plate branch + transcript, writes a 5-section summary (`what:`/`why:`/`how:`/`open questions:`/`next steps:` per `skills/plate/summary-template.md`) to a tempfile, and self-exits when a watcher hook detects the file. A `SessionEnd` hook on that pane then runs `cli.py set-plate-summary` which uses `git rebase -i` reword (in a detached worktree) to add the trailer to the new tip and strip stale `convo-summary` trailers from earlier commits. The pane is auto-attached in a Terminal.app window via `spawn_terminal_if_needed` so you can watch it work.
+- **Sandboxed permissions**: the spawned summary agent gets a narrow read-only `permissions.allow` block in its per-invocation `settings.json` — Read on the prompt/template/transcript/output paths plus 11 read-only git verbs (in both bare-`git` and `rtk git` form). It cannot mutate the repo even if the prompt tries to.
+- **Logs**: per-repo at `<repo>/.plate/plate-log.txt`. Both `plate.sh` and the summary-agent's hooks log to the same file via the exported `PLATE_LOG_FILE` env var.
 
 ## Architecture
 
@@ -56,16 +68,26 @@ Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to
 
 ## Requirements
 
-Here are the required tools and versions needed to use the jot skill/hook.
+Required tools for `/jot`, `/plate`, `/todo`, and `/debate`:
 
-| Tool | Install |
-|---|---|
-| `claude` (Claude Code CLI) | [claude.ai/download](https://claude.ai/download) |
-| `jq` | `brew install jq` |
-| `python3` | ships with macOS / `brew install python@3` |
-| `tmux` (3.0+) | `brew install tmux` |
+| Tool | Used by | Install |
+|---|---|---|
+| `claude` (Claude Code CLI) | all skills (foreground + spawned background agents) | [claude.ai/download](https://claude.ai/download) |
+| `git` (2.30+) | `/plate` (entire branch model + rebase-reword trailer rewrite); also `/jot` and `/todo` for context capture | `brew install git` (macOS ships an older one) |
+| `jq` | hook JSON shaping (`SessionEnd` injects `prompt:"/plate"` via `jq`); orchestrator dispatch parsing | `brew install jq` |
+| `python3` (3.10+) | `cli.py`, `spawn_summary_agent.py`, transcript parsers, hook helpers | ships with macOS / `brew install python@3` |
+| `tmux` (3.0+) | every background agent pane (`jot:jots`, `debate-N`, `plate-summary-N`) | `brew install tmux` |
+| `osascript` (macOS-only) | `spawn_terminal_if_needed` auto-opens a Terminal.app window attaching to the agent's tmux session | ships with macOS |
 
-macOS is the primary target. `spawn_terminal_if_needed` uses `osascript` to auto-open Terminal.app and attach to the `jot` tmux session on first use; on non-Darwin hosts it no-ops and you'll need to attach manually (`tmux attach -t jot`).
+**Tmux session conventions** — each skill uses a distinct, predictable session name so you can attach without guessing:
+
+| Skill | Session | Layout |
+|---|---|---|
+| `/jot` | `jot:jots` | one shared session, one pane per `/jot` invocation, lifecycle-tied (`Stop` hook kills the pane on completion) |
+| `/debate` | `debate-N` (counter-suffixed) | four panes — Claude / Gemini / Codex / synthesis — one session per `/debate` invocation |
+| `/plate` summary agent | `plate-summary-N` (counter-suffixed) | one pane per `/plate` push, self-exits when summary written |
+
+macOS is the primary target. On non-Darwin hosts `spawn_terminal_if_needed` no-ops and you'll need to attach manually (`tmux attach -t <session>` from the table above).
 
 ## Installation
 

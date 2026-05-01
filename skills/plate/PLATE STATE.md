@@ -1,56 +1,37 @@
-# /plate Skill — Current State and Gap to Shippable v1.0
+# /plate Skill — State
 
-_Snapshot: 2026-05-01 (live-test polish — Items 0/2/3/5/6/7/8 of `plans/review-skills-plate-plate-state-md-and-functional-neumann.md` shipped)_
+_Snapshot: 2026-05-01 (post live-test polish)._ 141 passing tests. Live-tested: `/plate` push, generatePlateSummary trailer pipeline (end-to-end), auto-Terminal.app spawn.
 
-## What the harness actually has (verified)
+## Live validation still pending
 
-8 plate operations are **implemented + tested + wired to the `/plate` slash command** via `common/scripts/plate/cli.py` and `skills/plate/scripts/plate.sh` (`plate_carry` deprecated and removed):
+In dependency order — each is wired and unit-tested but hasn't been exercised in a real conversation yet:
 
-| Operation | Test location | Status |
-|---|---|---|
-| `plate_push` | helpers.py + test_sequence_01, 02, 04 | ✅ shared-branch model + convo trailer plumbing (`convo-id`, `convo-name`, `convo-summary`, `parent-branch`) + multi-agent same-branch attribution via transcript extraction |
-| `plate_done` | helpers.py + test_sequence_03, 04, 18, 20 | ✅ happy-path + conflict-abort + reflog tests |
-| `plate_drop` | helpers.py + test_sequence_05, 06, 15, 19 | ✅ implemented + missing-branch + cross-repo portability |
-| `plate_trash` | helpers.py + test_sequence_08, 16 | ✅ default + `clean_wt=True` + missing-branch |
-| `plate_recycle` | helpers.py + test_sequence_10, 17 | ✅ implemented + missing-session warning |
-| `plate_next` | helpers.py + test_sequence_21 | ✅ list/jump split — subsumes plate_carry's role |
-| `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ explicit chained-delegation only (the sibling auto-detection model was replaced by shared-branch + extraction) |
-| `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
+1. **Per-repo log destination**: `<repo>/.plate/plate-log.txt` accumulates entries from both `plate.sh` and the spawned summary agent's hooks (PLATE_LOG_FILE export).
+2. **Older-plate summary stripping**: run `/plate` twice in the same conversation; assert ONLY the new tip carries `convo-summary` after the second run completes.
+3. **Auto-`/plate` on `SessionEnd`**: close a Claude conversation (without manually running `/plate`) in a dirty repo; assert a plate ref appears with the WIP captured.
+4. **Drop / trash / recycle round-trip**, all four variants:
+   - `/plate --drop` → `<repo>/.plate/trash/<branch>/<ts>_dropped_<sha>/{info.json, plate_001.patch}` layout appears.
+   - `/plate --recycle --list` lists the dropped session.
+   - `/plate --recycle` re-parents at `info.json::parent_sha_at_save` (NOT current HEAD).
+   - `/plate --recycle <session-dir-name>` restores an explicit older session.
+5. **Concurrent `/plate` from two repos**: fire `/plate` in two worktrees within ~5 seconds of each other; assert `tmux ls` shows two distinct sessions (`plate-summary-N`, `plate-summary-N+1`), each with its own pane and trailer-rewrite.
+6. **Recycle abort on missing parent SHA**: manually delete the parent-branch commit referenced in `info.json`; `/plate --recycle` must error out cleanly without mutating the repo.
 
-**141 passing tests, 0 failures.**
+## Not implemented (deferred by design)
 
-Drop/trash storage was unified into `<repo>/.plate/trash/<branch>/<ts>_<action>_<short-sha>/{info.json, plate_NNN.patch}` (action = `dropped` for `--drop`, `trashed` for `--trash`). `plate_recycle` re-parents the restored plate at `info.json`'s `parent_sha_at_save` and aborts cleanly if that SHA is no longer in the repo. New variants: `/plate --recycle --list` (read-only enumeration) and `/plate --recycle <session-dir-name>` (restore an explicit session).
+- **`/plate --show`** — slash-command variant exists but `cli.py::_cmd_show` returns literal `"TODO"`. Design (likely a `git log --graph` over `*-plate` refs, or a tree-of-stacks view) hasn't been written. `render_tree.sh` / `render_tree.py` are kept around in case the design lands.
 
-Auto-`/plate` on session end is wired: `hooks/hooks.json`'s `SessionEnd` entry pipes the hook payload through `jq '. + {prompt: "/plate"}'` into `scripts/jot-plugin-orchestrator.sh`. Belt-and-suspenders `[ "$PLATE_SKIP_AUTO" = "1" ] && exit 0` guard prevents re-entrant fires from the spawned summary agent.
+## Known polish items (small, non-blocking)
 
-generatePlateSummary is wired: after each successful `cli.py push`, `common/scripts/plate/spawn_summary_agent.py` fires a tmux pane running a claude agent with `skills/plate/scripts/prompts/summary-agent.md` as its first message. The pane name uses a counter-based session naming (`plate-summary-<N>`) so concurrent `/plate` invocations across worktrees never collide. The agent's per-invocation `settings.json` carries a narrow read-only `permissions.allow` block (Read on the prompt/template/transcript/output paths + 11 read-only git verbs in both `git` and `rtk git` form, no destructive verbs) plus two hooks: a `Stop` matcher (`plate-summary-exit-when-done.sh`) that emits a `decision:"block"` when the output file exists and is non-empty (forces self-termination), and a `SessionEnd` matcher (`plate-summary-stop.sh`) that calls `cli.py set-plate-summary` which runs `plate_lib.rewriteBranchTipSummary` — a `git rebase -i` reword (in a detached worktree) driven by `_rebase_reword_summary.py` that strips `convo-summary` trailers from older commits and adds the new one to the tip. After spawning, `spawn_summary_agent.py` invokes `spawn_terminal_if_needed` (parity with `/debate`) so the agent's pane auto-attaches in a Terminal.app window.
+- **`plate_drop` stderr leak**: `plate_drop` prints `warning: no plate branch...` to stderr; `2>&1` in `plate.sh` folds it into the user-visible `reason`. Suppress at source or filter in `cli.py`.
+- **Stale SHA references in summaries**: the spawned agent reads the plate ref BEFORE the rebase-reword regenerates the tip SHA, so any commit-SHA the agent quotes in the summary text is one rewrite stale (still reachable via reflog, but confusing). Mitigation: tell the agent in `summary-agent.md` to reference files/changes, not SHAs.
+- **`rtk` wrapper not used in agent's `next steps:`**: the spawned agent suggests bare `pytest …` rather than project-convention `rtk pytest …`. One-line note in `summary-agent.md`.
+- **`convo-summary` template polish**: 5-section template (`what:` / `why:` / `how:` / `open questions:` / `next steps:`) lives in `skills/plate/summary-template.md`. Refinements (length cap, section ordering) are iterate-after-soak.
 
-Plate logs live at `<repo>/.plate/plate-log.txt` (per-repo) and the path is exported as `PLATE_LOG_FILE` so the spawned summary agent's hooks log to the same file. The plugin-level UserPromptSubmit/SessionEnd dispatcher was renamed to `scripts/jot-plugin-orchestrator.sh` so multi-plugin `/hooks` UIs can identify it. The Claude Code plugin cache dir at `~/.claude/plugins/cache/matkatmusic-jot/jot/1.1.5` is now a symlink to the working tree (was a stale 1.1.5 snapshot).
+## Stage 2 dead-code purge (separate commit)
 
-## Roadmap (in execution order)
-
-1. **`convo-summary` format spec polish** — current 5-section template (`what:`, `why:`, `how:`, `open questions:`, `next steps:`) lives in `skills/plate/summary-template.md`. Live validation across real conversations may surface refinements (length cap, ordering, missing fields). Treat as iterate-after-soak rather than block-before-ship.
-
-## Dead-code purge (Stage 2 follow-up commit)
-
-Old stash-ref + JSON-instance code paths still exist on disk but are unreferenced by `/plate`. Separate commit recommended for clean revertability:
+Old stash-ref + JSON-instance code paths still on disk but unreferenced by `/plate`. Hold for clean revertability after live-validation completes:
 
 - `skills/plate/scripts/`: `push.sh`, `done.sh`, `drop.sh`, `next.sh`, `list-paused-plates.sh`, `register-parent.sh`, `snapshot-stash.sh`, `branch-snapshot.sh`, `branch-snapshot.v2.sh` (~10 files)
 - `common/scripts/plate/`: `instance_rw.py`, `append_plate_to_stack.py`, `cascade_parent_chain.py`, `check_drift_alert.py`, `check_live_children.py`, `check_rolling_intent_refresh.py`, `clear_drift_alert.py`, `list_paused_plates.py`, `next_resume_point.py`, `print_resume_pointer.py`, `register_parent.py`, `verify_stash_refs.py`, `build_settings_json.py` (~13 files)
-- KEEP: `transcript_parse.py` (used by future summary work), `render_tree.sh` / `render_tree.py` (kept around since `--show` design is deferred)
-
-## Known polish items
-
-- **Cosmetic**: `plate_drop` prints `warning: no plate branch...` to stderr; `2>&1` in plate.sh leaks it into the user-visible `reason`. Suppress in plate_drop or filter in cli.py.
-- **`--show` variant** currently returns literal `"TODO"`; design deferred.
-
-## Bottom line
-
-`/plate` is functional today, including auto-fire on SessionEnd and async summary generation. Remaining work to v1.0: dead-code purge (~30 min), live-validate the summary agent against real conversations (~30 min), polish items (~1 h). Core capability is complete.
-
-## Live validation needed (before declaring shipped)
-
-- Open a real Claude conversation in a git repo.
-- Make a code change, run `/plate`. Assert `git log <branch>-plate -1` shows convo-id/convo-name/parent-branch trailers immediately, and the convo-summary trailer materializes ~30s later (when the spawned tmux agent finishes).
-- Run `/plate` again with another change. Assert ONLY the new tip has `convo-summary`; the prior tip's summary has been stripped.
-- Close the conversation (no `/plate`). Assert SessionEnd auto-fire creates a plate with the WIP captured.
+- KEEP: `transcript_parse.py` (used by future summary work), `render_tree.sh` / `render_tree.py` (kept around because `--show` design is deferred)
