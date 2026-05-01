@@ -17,6 +17,7 @@ plate_main() {
 
   . "${CLAUDE_PLUGIN_ROOT}/common/scripts/silencers.sh"
   . "${CLAUDE_PLUGIN_ROOT}/common/scripts/hook-json.sh"
+  . "${CLAUDE_PLUGIN_ROOT}/common/scripts/git.sh"
 
   # Provisional log path (used until we resolve REPO_ROOT). Per-repo
   # path is preferred so multi-worktree work each has its own log.
@@ -60,6 +61,12 @@ plate_main() {
   if [ -z "${PLATE_LOG_FILE:-}" ]; then
     LOG_FILE="$REPO_ROOT/.plate/plate-log.txt"
     hide_errors mkdir -p "$(dirname "$LOG_FILE")"
+    # Ensure the log file is gitignored. If it weren't, every /plate
+    # write to it would mark the WT dirty, and the next plate_push (e.g.
+    # the SessionEnd auto-/plate fired on conversation reload) would see
+    # a different WT-tree than the prior plate's tree and create a
+    # spurious second plate commit + spawn a second summary agent.
+    hide_errors git_ensure_gitignore_entry "$REPO_ROOT" ".plate/plate-log.txt"
   fi
   # Export so the spawned summary agent's per-invocation SessionEnd
   # hook writes to the same file.

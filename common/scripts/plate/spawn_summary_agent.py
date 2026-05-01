@@ -33,7 +33,7 @@ _PLATE_SKILL = _REPO_ROOT / "skills" / "plate"
 _PROMPT_FILE = _PLATE_SKILL / "scripts" / "prompts" / "summary-agent.md"
 _TEMPLATE_FILE = _PLATE_SKILL / "summary-template.md"
 _STOP_HOOK = _PLATE_SKILL / "scripts" / "plate-summary-stop.sh"
-_EXIT_WHEN_DONE_HOOK = _PLATE_SKILL / "scripts" / "plate-summary-exit-when-done.sh"
+_WATCH_SCRIPT = _PLATE_SKILL / "scripts" / "plate-summary-watch.sh"
 _PLATFORM_SH = _REPO_ROOT / "common" / "scripts" / "platform.sh"
 
 # Read-only git verbs the agent legitimately needs. NO destructive verbs
@@ -86,16 +86,14 @@ def spawn(
     if not shutil.which("tmux") or not shutil.which("claude"):
         return None
 
-    # Per-invocation tmpdir holds settings.json + input.txt only. The
-    # actual summary `output_file` lives under <repo>/.plate/summaries/
-    # so it (a) sits under a path the user already gitignores, (b) is
-    # easy to grant Read/Write/Edit on (one repo-relative dir, no
-    # /var/folders surface), and (c) leaves a debuggable trail next to
-    # the plate log.
+    # Per-invocation tmpdir holds settings.json + input.txt + the agent's
+    # `output_file` (summary.txt). Keeping the output OUTSIDE the repo is
+    # essential: any path under <repo>/ that isn't gitignored marks the
+    # WT dirty, and the SessionEnd auto-/plate fired on conversation
+    # reload would see the new WT-tree, treat it as real work, and
+    # spawn a second summary agent. /var/folders/ side-steps that.
     tmpdir = Path(tempfile.mkdtemp(prefix="plate-summary-"))
-    summaries_dir = repo / ".plate" / "summaries"
-    summaries_dir.mkdir(parents=True, exist_ok=True)
-    output_file = summaries_dir / f"{tip_sha[:12]}.txt"
+    output_file = tmpdir / "summary.txt"
 
     # Per-invocation settings.json with inlined hooks block. Claude Code
     # expects `hooks` to be an OBJECT mapping event names → matcher
@@ -109,10 +107,6 @@ def spawn(
     stop_command = (
         f"bash {shlex.quote(str(_STOP_HOOK))} "
         f"{shlex.quote(str(repo))} {shlex.quote(branch)} "
-        f"{shlex.quote(str(output_file))}"
-    )
-    exit_when_done_command = (
-        f"bash {shlex.quote(str(_EXIT_WHEN_DONE_HOOK))} "
         f"{shlex.quote(str(output_file))}"
     )
 
@@ -158,12 +152,14 @@ def spawn(
             "allow": permissions_allow,
         },
         "hooks": {
-            "Stop": [{
-                "hooks": [{
-                    "type": "command",
-                    "command": exit_when_done_command,
-                }],
-            }],
+            # No Stop hook: Claude Code's `decision:"block"` for Stop
+            # means "BLOCK the stop, force agent to continue" (opposite
+            # of PreToolUse). The earlier exit-when-done hook had this
+            # backwards — emitting block on file-written kept the agent
+            # alive, producing an infinite "Exiting." → Stop → block →
+            # "Exiting." loop. The agent's prompt instruction to exit
+            # after writing the file is enough on its own; SessionEnd
+            # below picks up after the natural stop.
             "SessionEnd": [{
                 "hooks": [{
                     "type": "command",
@@ -214,6 +210,27 @@ def spawn(
         ["tmux", "new-session", "-d", "-s", session_name,
          "-n", window_name, "-c", str(repo), claude_cmd],
         env=spawn_env,
+    )
+
+    # Fire-and-forget watcher. Polls the agent's output_file; once it's
+    # non-empty (Claude's Write tool is atomic temp-then-rename, so a
+    # non-empty read means the write completed), sends `/exit\n` into
+    # the pane to trigger graceful shutdown. The SessionEnd hook fires
+    # after the shutdown and runs the trailer-rewrite. Mirrors the
+    # `/debate` orchestrator's `wait_for_outputs` → `tmux_kill_pane`
+    # pattern, but uses `/exit` instead of kill-pane so SessionEnd has
+    # a chance to fire normally.
+    pane_target = f"{session_name}:{window_name}"
+    watcher_cmd = (
+        f"bash {shlex.quote(str(_WATCH_SCRIPT))} "
+        f"{shlex.quote(pane_target)} {shlex.quote(str(output_file))}"
+    )
+    subprocess.Popen(
+        ["bash", "-c", watcher_cmd],
+        env=spawn_env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
     # Open a Terminal.app window attached to this session (parity with
