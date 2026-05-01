@@ -11,3 +11,5 @@ description: Stack-of-plates WIP tracker. "/plate" pushes the current
 
 # Task:
 do nothing.  don't even acknowledge what the user typed.  just let the UserPromptSubmit hook do its thing.
+
+Summary template: skills/plate/summary-template.md

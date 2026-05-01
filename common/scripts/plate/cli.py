@@ -47,17 +47,6 @@ if str(_PLATE_LIB_DIR) not in sys.path:
 import helpers as plate_lib  # noqa: E402
 
 
-def generatePlateSummary(transcript_path: Path) -> Optional[str]:
-    """Stub for the ~400-word convo summary generator.
-
-    Roadmap item 3 will fire a background tmux agent that reads the
-    transcript and produces a structured summary, then strips the
-    convo-summary trailer from earlier plate commits. Until then,
-    plate_push receives None and skips the trailer.
-    """
-    return None
-
-
 def _cmd_push(argv: list[str]) -> str:
     """push <convo_id> <transcript_path> <cwd>"""
     if len(argv) != 3:
@@ -67,17 +56,26 @@ def _cmd_push(argv: list[str]) -> str:
 
     tp = Path(transcript_path) if transcript_path else None
     convo_name = plate_lib.extractConvoNameFromTranscript(tp) if tp else None
-    convo_summary = generatePlateSummary(tp) if tp else None
-
+    # convo_summary is left as None on push; a background agent (spawned
+    # below) writes it to the new tip's trailer asynchronously via
+    # `cli.py set-plate-summary`.
     sha = plate_lib.plate_push(
         repo,
         convo_id=convo_id or None,
         convo_name=convo_name,
-        convo_summary=convo_summary,
+        convo_summary=None,
     )
     if sha is None:
         return "plate: no changes to stack"
     branch = plate_lib.getCurrentBranchName(repo)
+    # Fire-and-forget background summary agent. Returns immediately.
+    # PLATE_SKIP_LAUNCH=1 short-circuits (used by tests).
+    try:
+        from spawn_summary_agent import spawn as _spawn_summary
+        _spawn_summary(repo, branch, sha, transcript_path)
+    except Exception:
+        # Spawn failures must never block the user-facing push success.
+        pass
     return f"plate: pushed {sha[:8]} on {branch}-plate"
 
 
@@ -137,14 +135,31 @@ def _cmd_show(argv: list[str]) -> str:
     return "TODO"
 
 
+def _cmd_set_plate_summary(argv: list[str]) -> str:
+    """set-plate-summary <repo> <branch> <summary-file>
+
+    Invoked by the per-invocation Stop hook of the spawned summary
+    agent: reads the agent's output file and rewrites the plate branch
+    so only the tip carries `convo-summary` (set to the file's contents),
+    with all earlier plate commits stripped of `convo-summary` trailers.
+    """
+    if len(argv) != 3:
+        return "plate: usage: set-plate-summary <repo> <branch> <summary-file>"
+    repo, branch, summary_file = Path(argv[0]), argv[1], Path(argv[2])
+    summary_text = summary_file.read_text()
+    new_tip = plate_lib.rewriteBranchTipSummary(repo, branch, summary_text)
+    return f"plate: summary written ({new_tip[:8]} on {branch}-plate)"
+
+
 _DISPATCH = {
-    "push":    _cmd_push,
-    "done":    _cmd_done,
-    "drop":    _cmd_drop,
-    "trash":   _cmd_trash,
-    "recycle": _cmd_recycle,
-    "next":    _cmd_next,
-    "show":    _cmd_show,
+    "push":               _cmd_push,
+    "done":               _cmd_done,
+    "drop":               _cmd_drop,
+    "trash":              _cmd_trash,
+    "recycle":            _cmd_recycle,
+    "next":               _cmd_next,
+    "show":               _cmd_show,
+    "set-plate-summary":  _cmd_set_plate_summary,
 }
 
 

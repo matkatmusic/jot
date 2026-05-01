@@ -31,6 +31,7 @@ import os
 import random
 import shutil
 import string
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -3463,3 +3464,192 @@ def test_plate_next_list_no_marker_when_head_has_no_plate(tmp_path: Path):
     """Per-function: list mode marks no entries when HEAD has no plate."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_next_list_no_marker_when_head_has_no_plate(repo, tmp_path)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# rewriteBranchTipSummary — strip convo-summary trailer from older plate
+# commits and add (or replace) it on the new tip. Uses `git rebase -i
+# --reword` driven by the dual-role editor at
+# common/scripts/plate/_rebase_reword_summary.py.
+# ──────────────────────────────────────────────────────────────────────
+
+_REBASE_EDITOR_SCRIPT = (
+    Path(__file__).resolve().parents[4]
+    / "common" / "scripts" / "plate" / "_rebase_reword_summary.py"
+)
+
+
+def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
+    """Rebase the <branch>-plate ref so only the tip carries a
+    convo-summary trailer (set to summary_text). Earlier commits with a
+    convo-summary trailer get it stripped. Returns the new tip SHA.
+
+    Implementation: spin up a detached worktree on <branch>-plate, run
+    `git rebase -i <merge-base-with-branch>` with custom editors that
+    (a) mark every commit `reword` and (b) per-commit, strip any existing
+    convo-summary line and append the new one only when the commit is
+    the original tip. Then update-ref the original branch and remove
+    the worktree.
+    """
+    plate_branch = f"{branch}-plate"
+    if not branchExists(repo, plate_branch):
+        raise RuntimeError(f"plate branch does not exist: {plate_branch}")
+
+    parent_sha = run(["git", "merge-base", plate_branch, branch], cwd=repo)
+    tip_sha = getSHAForRefViaRevParse(repo, plate_branch)
+    if parent_sha == tip_sha:
+        # Nothing to rebase; just amend the tip directly via the editor
+        # script's logic. But there's no commit between parent and tip
+        # to rebase. Skip — caller shouldn't hit this since plate_push
+        # always advances the ref.
+        return tip_sha
+
+    # Worktree + summary file in a single tempdir for easy cleanup.
+    with tempfile.TemporaryDirectory(prefix="plate-summary-") as td:
+        td_path = Path(td)
+        wt_dir = td_path / "wt"
+        summary_file = td_path / "summary.txt"
+        summary_file.write_text(summary_text)
+
+        run(["git", "worktree", "add", "--detach", str(wt_dir), plate_branch],
+            cwd=repo)
+        try:
+            wt_git_dir = wt_dir / ".git"
+            # Worktrees use a `.git` file pointing at the real gitdir.
+            # `git rev-parse --git-dir` resolves it.
+            git_dir = Path(run(
+                ["git", "rev-parse", "--git-dir"], cwd=wt_dir
+            ))
+            if not git_dir.is_absolute():
+                git_dir = (wt_dir / git_dir).resolve()
+
+            seq_editor = f"python3 {shlex.quote(str(_REBASE_EDITOR_SCRIPT))} sequence"
+            msg_editor = (
+                f"python3 {shlex.quote(str(_REBASE_EDITOR_SCRIPT))} message "
+                f"--tip-sha {tip_sha} "
+                f"--new-summary-file {shlex.quote(str(summary_file))} "
+                f"--git-dir {shlex.quote(str(git_dir))}"
+            )
+
+            run(
+                ["git", "rebase", "-i", parent_sha],
+                cwd=wt_dir,
+                env={
+                    "GIT_SEQUENCE_EDITOR": seq_editor,
+                    "GIT_EDITOR": msg_editor,
+                },
+            )
+
+            new_tip_sha = run(["git", "rev-parse", "HEAD"], cwd=wt_dir)
+            run(["git", "update-ref", f"refs/heads/{plate_branch}", new_tip_sha],
+                cwd=repo)
+        finally:
+            run(["git", "worktree", "remove", "--force", str(wt_dir)], cwd=repo,
+                check=False)
+
+        return new_tip_sha
+
+
+def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
+    repo: Path,
+) -> None:
+    """Realistic mainline case for rewriteBranchTipSummary.
+
+    Setup: a plate branch with two commits.
+      commit-1 (parent of tip) carries convo-summary: "old summary" plus
+        the standard convo-id / convo-name / parent-branch trailers
+        (because the previous push fired the agent and wrote a summary).
+      commit-2 (tip) has convo-id / convo-name / parent-branch but NO
+        convo-summary (the new push just landed; agent hasn't written
+        the new summary yet).
+
+    After running rewriteBranchTipSummary(repo, branch, "<new text>"):
+      - commit-1 has NO convo-summary trailer.
+      - commit-2 (new tip) has convo-summary == "<new text>".
+      - All other trailers (convo-id, convo-name, parent-branch) are
+        preserved on both commits.
+      - The branch ref points at the new tip.
+    """
+    branch = getCurrentBranchName(repo)
+    plate_branch = f"{branch}-plate"
+
+    parent_sha = getSHAForRefViaRevParse(repo, "HEAD")
+
+    # Build commit-1: tree of HEAD plus a synthetic file path; commit
+    # carries convo-summary + the standard trailers.
+    addFileToGit(repo, makeTestFile(repo, "plate-1.txt"))
+    stageAllChanges(repo)
+    commit1_msg = (
+        "plate-1\n\n"
+        "convo-id: convo-aaa\n"
+        "convo-name: my conversation\n"
+        f"parent-branch: {branch}\n"
+        "convo-summary: old summary"
+    )
+    run(["git", "commit", "-q", "-m", commit1_msg], cwd=repo)
+    commit1_sha = getSHAForRefViaRevParse(repo, "HEAD")
+    # Move the plate ref to commit-1, then reset HEAD so we can build commit-2 on top.
+    run(["git", "branch", "-f", plate_branch, commit1_sha], cwd=repo)
+    run(["git", "reset", "--hard", parent_sha], cwd=repo)
+
+    # Build commit-2 (the new tip — no convo-summary yet).
+    addFileToGit(repo, makeTestFile(repo, "plate-2.txt"))
+    stageAllChanges(repo)
+    commit2_msg = (
+        "plate-2\n\n"
+        "convo-id: convo-bbb\n"
+        "convo-name: my conversation\n"
+        f"parent-branch: {branch}"
+    )
+    # We need commit-2 to have commit-1 as parent to mirror the real
+    # plate stack. Easiest: checkout the plate branch, commit there.
+    run(["git", "checkout", "-q", plate_branch], cwd=repo)
+    addFileToGit(repo, makeTestFile(repo, "plate-2.txt"))
+    stageAllChanges(repo)
+    run(["git", "commit", "-q", "-m", commit2_msg], cwd=repo)
+    commit2_sha = getSHAForRefViaRevParse(repo, "HEAD")
+    # Return HEAD to the original branch so the rewrite happens via worktree.
+    run(["git", "checkout", "-q", branch], cwd=repo)
+
+    # Sanity: plate ref points at commit-2, with commit-1 as its parent.
+    assert getSHAForRefViaRevParse(repo, plate_branch) == commit2_sha
+    pre_trailers_1 = getCommitTrailers(repo, commit1_sha)
+    pre_trailers_2 = getCommitTrailers(repo, commit2_sha)
+    assert pre_trailers_1.get("convo-summary") == "old summary"
+    assert "convo-summary" not in pre_trailers_2
+
+    # Run.
+    new_tip_sha = rewriteBranchTipSummary(repo, branch, "the new summary text")
+
+    # The branch ref must have advanced (or at least changed SHA).
+    assert getSHAForRefViaRevParse(repo, plate_branch) == new_tip_sha
+    # The two plate commits got rewritten — SHAs differ from before.
+    # Walk only commits above the merge-base with the parent branch.
+    new_log_shas = run(
+        ["git", "log", "--format=%H", f"{parent_sha}..{plate_branch}"],
+        cwd=repo,
+    ).splitlines()
+    assert len(new_log_shas) == 2, f"expected 2 plate commits; got {new_log_shas}"
+    new_tip, new_parent = new_log_shas
+
+    # Tip trailers: new convo-summary present + standard trailers preserved.
+    tip_trailers = getCommitTrailers(repo, new_tip)
+    assert tip_trailers.get("convo-summary") == "the new summary text", tip_trailers
+    assert tip_trailers.get("convo-id") == "convo-bbb", (
+        f"new_tip={new_tip} trailers={tip_trailers}"
+    )
+    assert tip_trailers.get("convo-name") == "my conversation"
+    assert tip_trailers.get("parent-branch") == branch
+
+    # Parent trailers: convo-summary stripped; other trailers preserved.
+    parent_trailers = getCommitTrailers(repo, new_parent)
+    assert "convo-summary" not in parent_trailers, parent_trailers
+    assert parent_trailers.get("convo-id") == "convo-aaa"
+    assert parent_trailers.get("convo-name") == "my conversation"
+    assert parent_trailers.get("parent-branch") == branch
+
+
+def test_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(tmp_path: Path) -> None:
+    """Per-function: rebase-reword strips old summary, writes new on tip."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(repo)

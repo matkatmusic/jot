@@ -1,6 +1,6 @@
 # /plate Skill — Current State and Gap to Shippable v1.0
 
-_Snapshot: 2026-05-01 (late evening — auto-`/plate` on SessionEnd landed)_
+_Snapshot: 2026-05-01 (overnight — generatePlateSummary tmux agent wired)_
 
 ## What the harness actually has (verified)
 
@@ -17,14 +17,15 @@ _Snapshot: 2026-05-01 (late evening — auto-`/plate` on SessionEnd landed)_
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ explicit chained-delegation only (the sibling auto-detection model was replaced by shared-branch + extraction) |
 | `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**138 passing tests, 0 failures.**
+**140 passing tests, 0 failures.**
 
-Auto-`/plate` on session end is wired: `hooks/hooks.json`'s `SessionEnd` entry pipes the hook payload through `jq '. + {prompt: "/plate"}'` into `scripts/orchestrator.sh`, which routes through the standard `/plate` pipeline. Behaviorally identical to the user typing `/plate` themselves at session close.
+Auto-`/plate` on session end is wired: `hooks/hooks.json`'s `SessionEnd` entry pipes the hook payload through `jq '. + {prompt: "/plate"}'` into `scripts/orchestrator.sh`. Belt-and-suspenders `[ "$PLATE_SKIP_AUTO" = "1" ] && exit 0` guard prevents re-entrant fires from the spawned summary agent.
+
+generatePlateSummary is wired: after each successful `cli.py push`, `common/scripts/plate/spawn_summary_agent.py` fires a tmux pane running a claude agent with `skills/plate/scripts/prompts/summary-agent.md` as its first message. The agent reads the plate branch + transcript, writes a 5-section summary (per `skills/plate/summary-template.md`) to a tempdir output file. The pane's per-invocation SessionEnd hook (`plate-summary-stop.sh`) calls `cli.py set-plate-summary` which runs `plate_lib.rewriteBranchTipSummary` — a `git rebase -i` reword (in a detached worktree) driven by `_rebase_reword_summary.py` that strips `convo-summary` trailers from older commits and adds the new one to the tip.
 
 ## Roadmap (in execution order)
 
-1. **`generatePlateSummary` (background tmux agent)** — fired post-plate-commit. Reads the repo and the convo's `transcript_path` (passed as context), produces the structured ~400-word summary, writes it to the new plate's `convo-summary` trailer, AND strips `convo-summary` trailers from earlier plate commits (only the latest plate carries a summary). `cli.py` currently calls a stub returning `None`; replace the stub when the agent ships.
-2. **`convo-summary` format spec** — exact sections, ordering, and fields for the ~400-word block. Goal: a reader can pick up the work productively in under a minute.
+1. **`convo-summary` format spec polish** — current 5-section template (`what:`, `why:`, `how:`, `open questions:`, `next steps:`) lives in `skills/plate/summary-template.md`. Live validation across real conversations may surface refinements (length cap, ordering, missing fields). Treat as iterate-after-soak rather than block-before-ship.
 
 ## Dead-code purge (Stage 2 follow-up commit)
 
@@ -42,4 +43,11 @@ Old stash-ref + JSON-instance code paths still exist on disk but are unreference
 
 ## Bottom line
 
-`/plate` is functional today. Remaining work to v1.0: ~5–8 hours across the roadmap items + dead-code purge + polish. Core capability is complete.
+`/plate` is functional today, including auto-fire on SessionEnd and async summary generation. Remaining work to v1.0: dead-code purge (~30 min), live-validate the summary agent against real conversations (~30 min), polish items (~1 h). Core capability is complete.
+
+## Live validation needed (before declaring shipped)
+
+- Open a real Claude conversation in a git repo.
+- Make a code change, run `/plate`. Assert `git log <branch>-plate -1` shows convo-id/convo-name/parent-branch trailers immediately, and the convo-summary trailer materializes ~30s later (when the spawned tmux agent finishes).
+- Run `/plate` again with another change. Assert ONLY the new tip has `convo-summary`; the prior tip's summary has been stripped.
+- Close the conversation (no `/plate`). Assert SessionEnd auto-fire creates a plate with the WIP captured.

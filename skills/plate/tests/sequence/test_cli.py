@@ -7,6 +7,7 @@ plate_* logic is already covered by helpers.py's 112 tests.
 from __future__ import annotations
 
 import io
+import os
 import sys
 from pathlib import Path
 from unittest import mock
@@ -39,11 +40,15 @@ def _run(argv: list[str]) -> tuple[str, int]:
 # ──────────────────────────────────────────────────────────────────────
 
 def test_routes_push_to_plate_push() -> None:
-    """push <convo_id> <transcript_path> <cwd> → plate_lib.plate_push(repo, convo_id=..., convo_name=..., convo_summary=...)."""
+    """push <convo_id> <transcript_path> <cwd> → plate_lib.plate_push(repo, convo_id=..., convo_name=..., convo_summary=None).
+
+    convo_summary is always None at push time — the background summary
+    agent fills in the trailer asynchronously via set-plate-summary.
+    """
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="abc123def456") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value="my-convo") as mn, \
-         mock.patch.object(cli, "generatePlateSummary", return_value=None) as ms, \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="feature-x"):
+         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="feature-x"), \
+         mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         out, rc = _run(["push", "sid-123", "/tmp/transcript.jsonl", "/repos/myproj"])
     assert rc == 0
     assert mp.call_count == 1
@@ -54,9 +59,8 @@ def test_routes_push_to_plate_push() -> None:
         "convo_name": "my-convo",
         "convo_summary": None,
     }
-    # extract* helpers called with the transcript path.
+    # extract* helper called with the transcript path.
     assert mn.call_args.args == (Path("/tmp/transcript.jsonl"),)
-    assert ms.call_args.args == (Path("/tmp/transcript.jsonl"),)
     # User-facing return text uses short SHA + branch.
     assert out == "plate: pushed abc123de on feature-x-plate"
 
@@ -150,6 +154,18 @@ def test_routes_show_returns_todo_stub() -> None:
     assert out == "TODO"
 
 
+def test_set_plate_summary_cli_routing(tmp_path: Path) -> None:
+    """set-plate-summary <repo> <branch> <summary-file> reads the file
+    and forwards the contents to plate_lib.rewriteBranchTipSummary."""
+    summary_file = tmp_path / "summary.txt"
+    summary_file.write_text("what:\nthing\n\nwhy:\nreason\n\nhow:\napproach\n\nnext steps:\n- foo\n")
+    with mock.patch.object(cli.plate_lib, "rewriteBranchTipSummary", return_value="abc12345deadbeef") as mr:
+        out, rc = _run(["set-plate-summary", "/repos/myproj", "feature-x", str(summary_file)])
+    assert rc == 0
+    assert mr.call_args.args == (Path("/repos/myproj"), "feature-x", summary_file.read_text())
+    assert "abc12345" in out and "feature-x-plate" in out
+
+
 # ──────────────────────────────────────────────────────────────────────
 # 2. Trailer kwarg propagation — push correctly threads transcript-derived
 #    metadata into plate_push's kwargs (covered partly by test_routes_push
@@ -161,8 +177,8 @@ def test_push_propagates_none_when_extract_returns_none() -> None:
     plate_push must receive convo_name=None — not a stringified None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value=None), \
-         mock.patch.object(cli, "generatePlateSummary", return_value=None), \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"):
+         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"), \
+         mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "/tmp/tp.jsonl", "/repo"])
     assert mp.call_args.kwargs == {
         "convo_id": "sid",
@@ -176,11 +192,10 @@ def test_push_with_empty_transcript_path_skips_extractors() -> None:
     NOT called and convo_name/convo_summary are None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript") as mn, \
-         mock.patch.object(cli, "generatePlateSummary") as ms, \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"):
+         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"), \
+         mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "", "/repo"])
     assert mn.call_count == 0
-    assert ms.call_count == 0
     assert mp.call_args.kwargs == {
         "convo_id": "sid",
         "convo_name": None,
@@ -193,7 +208,7 @@ def test_push_no_changes_returns_no_op_message() -> None:
     surfaces 'no changes to stack' instead of crashing on .[ :8] slicing of None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value=None), \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value=None), \
-         mock.patch.object(cli, "generatePlateSummary", return_value=None):
+         mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         out, rc = _run(["push", "sid", "", "/repo"])
     assert rc == 0
     assert out == "plate: no changes to stack"
