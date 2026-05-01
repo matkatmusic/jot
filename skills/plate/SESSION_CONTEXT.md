@@ -88,7 +88,7 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 
 ### 2026-05-01 late evening — auto-`/plate` on SessionEnd
 - `hooks/hooks.json` `SessionEnd` entry pipes payload through
-  `jq '. + {prompt: "/plate"}'` into `scripts/orchestrator.sh`. Routes
+  `jq '. + {prompt: "/plate"}'` into `scripts/jot-plugin-orchestrator.sh`. Routes
   through the standard `/plate` pipeline. No new scripts.
 - Removed dead `SessionStart` entry that pointed at
   `plate-session-start.sh` (all four operations the script performed —
@@ -186,7 +186,7 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 | `common/scripts/plate/cli.py` | Single Python entry point — production dispatcher |
 | `skills/plate/scripts/plate.sh` | UserPromptSubmit hook → cli.py wiring |
 | `hooks/hooks.json` | UserPromptSubmit + SessionEnd hook entries |
-| `scripts/orchestrator.sh` | Central UserPromptSubmit dispatcher (jot/plate/debate/todo) |
+| `scripts/jot-plugin-orchestrator.sh` | Central UserPromptSubmit dispatcher (jot/plate/debate/todo) |
 | `skills/plate/SKILL.md` | Slash-command stub (collapsed to /jot-style) |
 | `skills/plate/PLATE STATE.md` | Forward roadmap + dead-code purge list |
 | `skills/plate/DESIGN.md` | Pre-refactor design spec (HISTORICAL — see banner) |

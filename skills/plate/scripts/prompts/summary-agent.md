@@ -10,14 +10,19 @@ summary from `git log` to pick up where the previous work left off.
 - `branch`: the current git branch (the plate branch is `<branch>-plate`)
 - `tip_sha`: the new tip commit just created on `<branch>-plate`
 - `transcript_path`: this conversation's transcript file
-- `output_file`: write your final summary HERE as plain text
+- `output_file`: write your final summary HERE as plain text. After you
+  exit, a SessionEnd hook (`plate-summary-stop.sh`) reads this file and
+  rewrites `<branch>-plate` so the tip commit carries the summary as the
+  `convo-summary:` trailer. Earlier plate commits get their stale
+  `convo-summary` trailers stripped. The temp file is purely the IPC
+  channel — your real output destination is the commit trailer.
 - `template_path`: absolute path to the template that defines the section structure
 
 ## Steps
 
 1. Read the template at `template_path` for the required structure.
 2. Read every commit on `<branch>-plate`:
-     git -C <repo> log <branch>-plate --format='%H%n%(trailers)%n---' --name-only
+     git log <branch>-plate --format='%H%n%(trailers)%n---' --name-only
 3. Read the transcript at `transcript_path` to understand the user's goal and
    the reasoning behind the work captured in the plate.
 4. Write a SINGLE plain-text summary to `output_file` following the template
@@ -29,4 +34,6 @@ summary from `git log` to pick up where the previous work left off.
 
 - NEVER ask questions. Zero interaction.
 - Use Read, Write, Bash (read-only git commands). Do NOT modify the repo.
+- All git commands run in the repo cwd — do NOT pass `-C <repo>`; the working
+  directory is already the repo root.
 - Self-contained: a reader knows nothing except what's in this summary.

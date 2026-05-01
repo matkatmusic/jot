@@ -1,5 +1,5 @@
 #!/bin/bash
-# orchestrator-dispatch-todo-test.sh — verify orchestrator.sh routes prompts
+# orchestrator-dispatch-todo-test.sh — verify jot-plugin-orchestrator.sh routes prompts
 # to the correct sub-orchestrator, and in particular that /todo does NOT
 # match /todo-clean (which should fall through so claude's skill dispatcher
 # can resolve it to the todo-clean SKILL.md).
@@ -9,7 +9,7 @@ set -euo pipefail
 
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$THIS_DIR/.." && pwd)"
-ORCH="$REPO/scripts/orchestrator.sh"
+ORCH="$REPO/scripts/jot-plugin-orchestrator.sh"
 
 TMP=$(mktemp -d /tmp/orch-dispatch-test.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT

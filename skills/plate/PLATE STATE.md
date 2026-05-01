@@ -1,6 +1,6 @@
 # /plate Skill — Current State and Gap to Shippable v1.0
 
-_Snapshot: 2026-05-01 (overnight — generatePlateSummary tmux agent wired)_
+_Snapshot: 2026-05-01 (live-test polish — Items 0/2/3/5/6/7/8 of `plans/review-skills-plate-plate-state-md-and-functional-neumann.md` shipped)_
 
 ## What the harness actually has (verified)
 
@@ -17,11 +17,15 @@ _Snapshot: 2026-05-01 (overnight — generatePlateSummary tmux agent wired)_
 | `simulate_derived_agent` | helpers.py + test_sequence_12, 13 | ✅ explicit chained-delegation only (the sibling auto-detection model was replaced by shared-branch + extraction) |
 | `apply_patch` | helpers.py + test_sequence_07, 19 | ✅ implemented + round-trip + cross-repo |
 
-**140 passing tests, 0 failures.**
+**141 passing tests, 0 failures.**
 
-Auto-`/plate` on session end is wired: `hooks/hooks.json`'s `SessionEnd` entry pipes the hook payload through `jq '. + {prompt: "/plate"}'` into `scripts/orchestrator.sh`. Belt-and-suspenders `[ "$PLATE_SKIP_AUTO" = "1" ] && exit 0` guard prevents re-entrant fires from the spawned summary agent.
+Drop/trash storage was unified into `<repo>/.plate/trash/<branch>/<ts>_<action>_<short-sha>/{info.json, plate_NNN.patch}` (action = `dropped` for `--drop`, `trashed` for `--trash`). `plate_recycle` re-parents the restored plate at `info.json`'s `parent_sha_at_save` and aborts cleanly if that SHA is no longer in the repo. New variants: `/plate --recycle --list` (read-only enumeration) and `/plate --recycle <session-dir-name>` (restore an explicit session).
 
-generatePlateSummary is wired: after each successful `cli.py push`, `common/scripts/plate/spawn_summary_agent.py` fires a tmux pane running a claude agent with `skills/plate/scripts/prompts/summary-agent.md` as its first message. The agent reads the plate branch + transcript, writes a 5-section summary (per `skills/plate/summary-template.md`) to a tempdir output file. The pane's per-invocation SessionEnd hook (`plate-summary-stop.sh`) calls `cli.py set-plate-summary` which runs `plate_lib.rewriteBranchTipSummary` — a `git rebase -i` reword (in a detached worktree) driven by `_rebase_reword_summary.py` that strips `convo-summary` trailers from older commits and adds the new one to the tip.
+Auto-`/plate` on session end is wired: `hooks/hooks.json`'s `SessionEnd` entry pipes the hook payload through `jq '. + {prompt: "/plate"}'` into `scripts/jot-plugin-orchestrator.sh`. Belt-and-suspenders `[ "$PLATE_SKIP_AUTO" = "1" ] && exit 0` guard prevents re-entrant fires from the spawned summary agent.
+
+generatePlateSummary is wired: after each successful `cli.py push`, `common/scripts/plate/spawn_summary_agent.py` fires a tmux pane running a claude agent with `skills/plate/scripts/prompts/summary-agent.md` as its first message. The pane name uses a counter-based session naming (`plate-summary-<N>`) so concurrent `/plate` invocations across worktrees never collide. The agent's per-invocation `settings.json` carries a narrow read-only `permissions.allow` block (Read on the prompt/template/transcript/output paths + 11 read-only git verbs in both `git` and `rtk git` form, no destructive verbs) plus two hooks: a `Stop` matcher (`plate-summary-exit-when-done.sh`) that emits a `decision:"block"` when the output file exists and is non-empty (forces self-termination), and a `SessionEnd` matcher (`plate-summary-stop.sh`) that calls `cli.py set-plate-summary` which runs `plate_lib.rewriteBranchTipSummary` — a `git rebase -i` reword (in a detached worktree) driven by `_rebase_reword_summary.py` that strips `convo-summary` trailers from older commits and adds the new one to the tip. After spawning, `spawn_summary_agent.py` invokes `spawn_terminal_if_needed` (parity with `/debate`) so the agent's pane auto-attaches in a Terminal.app window.
+
+Plate logs live at `<repo>/.plate/plate-log.txt` (per-repo) and the path is exported as `PLATE_LOG_FILE` so the spawned summary agent's hooks log to the same file. The plugin-level UserPromptSubmit/SessionEnd dispatcher was renamed to `scripts/jot-plugin-orchestrator.sh` so multi-plugin `/hooks` UIs can identify it. The Claude Code plugin cache dir at `~/.claude/plugins/cache/matkatmusic-jot/jot/1.1.5` is now a symlink to the working tree (was a stale 1.1.5 snapshot).
 
 ## Roadmap (in execution order)
 

@@ -2,7 +2,7 @@
 
 Structured four-way AI debate: Claude + Gemini + Codex independently analyze a topic (R1), cross-critique each other's responses (R2), then a fourth Claude invocation synthesizes the debate.
 
-Triggered by the user typing `/debate <topic>` in Claude Code. `scripts/orchestrator.sh` (plugin-level dispatcher) routes the hook to `skills/debate/scripts/debate-orchestrator.sh`.
+Triggered by the user typing `/debate <topic>` in Claude Code. `scripts/jot-plugin-orchestrator.sh` (plugin-level dispatcher) routes the hook to `skills/debate/scripts/debate-orchestrator.sh`.
 
 ## Flow
 

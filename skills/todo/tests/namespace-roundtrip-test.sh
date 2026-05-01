@@ -9,7 +9,7 @@ set -euo pipefail
 
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$THIS_DIR/../../.." && pwd)"
-ORCH="$REPO/scripts/orchestrator.sh"
+ORCH="$REPO/scripts/jot-plugin-orchestrator.sh"
 
 TMP=$(mktemp -d /tmp/todo-ns-test.XXXXXX)
 trap 'rm -rf "$TMP"' EXIT

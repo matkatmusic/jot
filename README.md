@@ -8,7 +8,7 @@ Capture a mid-development idea without losing focus. Writes the idea plus surrou
 
 ### How it works
 
-- **Phase 1 (durable write)** — `scripts/orchestrator.sh` dispatches `/jot` prompts to `skills/jot/scripts/jot-orchestrator.sh`, which writes the idea and context to `Todos/<timestamp>_input.txt` **before** any enrichment can fail, then blocks the prompt so it never reaches the foreground Claude.
+- **Phase 1 (durable write)** — `scripts/jot-plugin-orchestrator.sh` dispatches `/jot` prompts to `skills/jot/scripts/jot-orchestrator.sh`, which writes the idea and context to `Todos/<timestamp>_input.txt` **before** any enrichment can fail, then blocks the prompt so it never reaches the foreground Claude.
 - **Phase 2 (background processing)** — Each `/jot` spawns a dedicated background `claude` instance in its own tmux pane inside the shared `jot:jots` window. The worker reads `input.txt`, follows embedded instructions, writes `Todos/<slug>.md`, overwrites `input.txt` with a `PROCESSED:` success marker, and its `Stop` hook kills the pane. One worker per invocation — no shared queue, no cross-invocation contamination. Multiple `/jot` calls can run concurrently.
 
 ## `/todo <idea>`
@@ -49,7 +49,7 @@ Stack-of-plates WIP tracker for when you notice uncommitted work that belongs to
 
 ## Architecture
 
-- `scripts/orchestrator.sh` — single dispatcher wired into `hooks/hooks.json:UserPromptSubmit`; routes `/jot`, `/plate`, `/debate`, `/todo`, `/todo-list` to their per-skill orchestrators. `/todo-clean` falls through and is resolved by Claude's skill dispatcher.
+- `scripts/jot-plugin-orchestrator.sh` — single dispatcher wired into `hooks/hooks.json:UserPromptSubmit`; routes `/jot`, `/plate`, `/debate`, `/todo`, `/todo-list` to their per-skill orchestrators. `/todo-clean` falls through and is resolved by Claude's skill dispatcher.
 - `skills/jot/scripts/`, `skills/plate/scripts/`, `skills/todo/scripts/`, `skills/todo-list/scripts/` — per-skill orchestrators, lifecycle hooks, assets, prompts. `skills/todo-clean/` is SKILL.md-only (no hook).
 - `common/scripts/` — shared helpers (`tmux.sh`, `invoke_command.sh`, `silencers.sh`, `git.sh`, `lock.sh`, `platform.sh`, `hook-json.sh`, `claude-launcher.sh`, `permissions-seed.sh`) + namespaced python helpers (`common/scripts/jot/`, `common/scripts/plate/`)
 - Lifecycle-safe hook scripts are copied into a per-invocation tmpdir at launch, so `claude plugin update` can't yank them mid-run

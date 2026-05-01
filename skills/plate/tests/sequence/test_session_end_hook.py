@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_ORCHESTRATOR = _REPO_ROOT / "scripts" / "orchestrator.sh"
+_ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot-plugin-orchestrator.sh"
 
 
 def _run_session_end(payload: dict, repo_path: Path) -> tuple[str, str, int]:

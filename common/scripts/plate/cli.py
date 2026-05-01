@@ -73,7 +73,10 @@ def _cmd_push(argv: list[str]) -> str:
         pass
     msg = f"plate: pushed {sha[:8]} on {branch}-plate"
     if attach_hint:
-        msg += f"\nobserve the background agent at {attach_hint}"
+        # Keep the bare attach command on its own line, no prefix, so the
+        # whole command is one selectable token in the user's terminal
+        # (renderers wrap on whitespace; an inline prefix splits the cmd).
+        msg += f"\n{attach_hint}"
     return msg
 
 
@@ -108,13 +111,19 @@ def _cmd_trash(argv: list[str]) -> str:
 
 
 def _cmd_recycle(argv: list[str]) -> str:
-    """recycle <repo>"""
-    if len(argv) != 1:
-        return "plate: usage: recycle <repo>"
-    result = plate_lib.plate_recycle(Path(argv[0]))
+    """recycle <repo> [--list] [<session-dir-name>]"""
+    if len(argv) < 1 or len(argv) > 2:
+        return "plate: usage: recycle <repo> [--list|<session-dir-name>]"
+    repo = Path(argv[0])
+    if len(argv) == 2:
+        if argv[1] == "--list":
+            return plate_lib.plate_recycle_list(repo)
+        result = plate_lib.plate_recycle(repo, session=argv[1])
+    else:
+        result = plate_lib.plate_recycle(repo)
     if result is None:
         return "plate: nothing to recycle"
-    return f"plate: recycled session {result}"
+    return f"plate: recycled tip {result[:8]}"
 
 
 def _cmd_next(argv: list[str]) -> str:

@@ -1246,11 +1246,16 @@ def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
     assert getSHAForRefViaRevParse(repo, plateBranchName) == p2_sha
 
     # 3. plate_drop — should rewind, NOT delete (multi-plate stack).
-    patch_path = plate_drop(repo)
+    session_dir = plate_drop(repo)
 
-    # 4a. Patch file written under .plate/dropped/.
+    # 4a. Session dir written under .plate/trash/<branch>/<ts>_dropped_<sha>/.
+    assert session_dir is not None
+    assert session_dir.is_dir()
+    assert session_dir.parent.name == branch
+    assert session_dir.parent.parent.name == "trash"
+    assert "_dropped_" in session_dir.name
+    patch_path = session_dir / "plate_001.patch"
     assert patch_path.exists()
-    assert patch_path.parent.name == "dropped"
     # 4b. <branch>-plate rewinds to P1 (still exists, not deleted).
     assert branchExists(repo, plateBranchName)
     assert getSHAForRefViaRevParse(repo, plateBranchName) == p1_sha

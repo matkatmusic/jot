@@ -22,7 +22,13 @@ OUTPUT_FILE="${3:-}"
 REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 CLI_PATH="$REPO_ROOT/common/scripts/plate/cli.py"
 
-LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/plate-jot-dev}/plate-log.txt}"
+if [ -n "${PLATE_LOG_FILE:-}" ]; then
+  LOG_FILE="$PLATE_LOG_FILE"
+elif [ -d "$REPO" ]; then
+  LOG_FILE="$REPO/.plate/plate-log.txt"
+else
+  LOG_FILE="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/plate-jot-dev}/plate-log.txt"
+fi
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 OUT=$(python3 "$CLI_PATH" set-plate-summary "$REPO" "$BRANCH" "$OUTPUT_FILE" 2>&1) || true

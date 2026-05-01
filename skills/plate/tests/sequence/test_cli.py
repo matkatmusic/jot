@@ -69,11 +69,12 @@ def test_routes_done_to_plate_done() -> None:
 
 
 def test_routes_drop_to_plate_drop() -> None:
-    with mock.patch.object(cli.plate_lib, "plate_drop", return_value=Path("/repos/.plate/dropped/x.patch")) as md:
+    session = Path("/repos/myproj/.plate/trash/main/20260501T120000Z_dropped_a3f9c1d")
+    with mock.patch.object(cli.plate_lib, "plate_drop", return_value=session) as md:
         out, rc = _run(["drop", "/repos/myproj"])
     assert rc == 0
     assert md.call_args.args == (Path("/repos/myproj"),)
-    assert "dropped" in out and "x.patch" in out
+    assert "dropped" in out and "20260501T120000Z_dropped_a3f9c1d" in out
 
 
 def test_routes_drop_no_plate() -> None:
@@ -103,11 +104,35 @@ def test_routes_trash_with_clean_wt_flag() -> None:
 
 
 def test_routes_recycle_to_plate_recycle() -> None:
-    with mock.patch.object(cli.plate_lib, "plate_recycle", return_value="2026-04-30T12:00:00Z") as mr:
+    sha = "deadbeef" + "0" * 32
+    with mock.patch.object(cli.plate_lib, "plate_recycle", return_value=sha) as mr:
         out, rc = _run(["recycle", "/repos/myproj"])
     assert rc == 0
     assert mr.call_args.args == (Path("/repos/myproj"),)
-    assert "recycled" in out and "2026-04-30" in out
+    assert "recycled" in out and "deadbeef" in out
+
+
+def test_routes_recycle_list() -> None:
+    """recycle <repo> --list → plate_recycle_list(repo)."""
+    with mock.patch.object(
+        cli.plate_lib, "plate_recycle_list",
+        return_value="trash sessions for 'main' (newest last):\n  20260501T120000Z_dropped_a3f9c1d  (dropped, ...)",
+    ) as ml:
+        out, rc = _run(["recycle", "/repos/myproj", "--list"])
+    assert rc == 0
+    assert ml.call_args.args == (Path("/repos/myproj"),)
+    assert "trash sessions" in out
+
+
+def test_routes_recycle_named_session() -> None:
+    """recycle <repo> <session> → plate_recycle(repo, session=<name>)."""
+    sha = "deadbeef" + "0" * 32
+    with mock.patch.object(cli.plate_lib, "plate_recycle", return_value=sha) as mr:
+        out, rc = _run(["recycle", "/repos/myproj", "20260501T120000Z_dropped_a3f9c1d"])
+    assert rc == 0
+    assert mr.call_args.args == (Path("/repos/myproj"),)
+    assert mr.call_args.kwargs == {"session": "20260501T120000Z_dropped_a3f9c1d"}
+    assert "recycled" in out
 
 
 def test_routes_next_list_mode() -> None:

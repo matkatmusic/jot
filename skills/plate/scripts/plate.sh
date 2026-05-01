@@ -18,6 +18,8 @@ plate_main() {
   . "${CLAUDE_PLUGIN_ROOT}/common/scripts/silencers.sh"
   . "${CLAUDE_PLUGIN_ROOT}/common/scripts/hook-json.sh"
 
+  # Provisional log path (used until we resolve REPO_ROOT). Per-repo
+  # path is preferred so multi-worktree work each has its own log.
   LOG_FILE="${PLATE_LOG_FILE:-${CLAUDE_PLUGIN_DATA}/plate-log.txt}"
   hide_errors mkdir -p "$(dirname "$LOG_FILE")"
 
@@ -36,11 +38,9 @@ plate_main() {
   PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // ""')
   PROMPT="${PROMPT#"${PROMPT%%[![:space:]]*}"}"   # lstrip whitespace
   if ! printf '%s' "$PROMPT" \
-       | grep -qE '^/plate(\s+(--done|--drop|--trash|--recycle|--show|--next( +[0-9A-Za-z._@#$+-]+)?))?$'; then
+       | grep -qE '^/plate(\s+(--done|--drop|--trash|--recycle(\s+--list|\s+\S+)?|--show|--next( +[0-9A-Za-z._@#$+-]+)?))?$'; then
     exit 0
   fi
-
-  hide_errors printf '%s plate prompt="%s"\n' "$(date -Iseconds)" "$PROMPT" >> "$LOG_FILE"
 
   SESSION_ID=$(printf '%s' "$INPUT" | hide_errors jq -r '.session_id // "?"') || SESSION_ID="?"
   TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | hide_errors jq -r '.transcript_path // empty')
@@ -55,20 +55,34 @@ plate_main() {
     exit 0
   fi
 
+  # Promote LOG_FILE to per-repo path now that REPO_ROOT is known. Honour
+  # an explicit PLATE_LOG_FILE env override (e.g. tests pinning a path).
+  if [ -z "${PLATE_LOG_FILE:-}" ]; then
+    LOG_FILE="$REPO_ROOT/.plate/plate-log.txt"
+    hide_errors mkdir -p "$(dirname "$LOG_FILE")"
+  fi
+  # Export so the spawned summary agent's per-invocation SessionEnd
+  # hook writes to the same file.
+  export PLATE_LOG_FILE="$LOG_FILE"
+
+  hide_errors printf '%s plate prompt="%s"\n' "$(date -Iseconds)" "$PROMPT" >> "$LOG_FILE"
+
   # ── ERR trap: any failure becomes a single user-visible block ────────
   trap 'rc=$?; emit_block "plate crashed at line $LINENO (rc=$rc)"; hide_errors printf "%s FAIL line=%s rc=%s cmd=%s\n" "$(date -Iseconds)" "$LINENO" "$rc" "$BASH_COMMAND" >> "$LOG_FILE"; exit 0' ERR
 
   # ── Map prompt → cli.py argv ─────────────────────────────────────────
   CLI_PATH="${CLAUDE_PLUGIN_ROOT}/common/scripts/plate/cli.py"
   case "$PROMPT" in
-    "/plate")              ARGS=(push "$SESSION_ID" "$TRANSCRIPT_PATH" "$REPO_ROOT") ;;
-    "/plate --done")       ARGS=(done    "$REPO_ROOT") ;;
-    "/plate --drop")       ARGS=(drop    "$REPO_ROOT") ;;
-    "/plate --trash")      ARGS=(trash   "$REPO_ROOT") ;;
-    "/plate --recycle")    ARGS=(recycle "$REPO_ROOT") ;;
-    "/plate --show")       ARGS=(show    "$REPO_ROOT") ;;
-    "/plate --next")       ARGS=(next    "$REPO_ROOT") ;;
-    "/plate --next "*)     ARGS=(next    "$REPO_ROOT" "${PROMPT#/plate --next }") ;;
+    "/plate")                        ARGS=(push "$SESSION_ID" "$TRANSCRIPT_PATH" "$REPO_ROOT") ;;
+    "/plate --done")                 ARGS=(done    "$REPO_ROOT") ;;
+    "/plate --drop")                 ARGS=(drop    "$REPO_ROOT") ;;
+    "/plate --trash")                ARGS=(trash   "$REPO_ROOT") ;;
+    "/plate --recycle")              ARGS=(recycle "$REPO_ROOT") ;;
+    "/plate --recycle --list")       ARGS=(recycle "$REPO_ROOT" --list) ;;
+    "/plate --recycle "*)            ARGS=(recycle "$REPO_ROOT" "${PROMPT#/plate --recycle }") ;;
+    "/plate --show")                 ARGS=(show    "$REPO_ROOT") ;;
+    "/plate --next")                 ARGS=(next    "$REPO_ROOT") ;;
+    "/plate --next "*)               ARGS=(next    "$REPO_ROOT" "${PROMPT#/plate --next }") ;;
     *) emit_block "plate: unrecognized variant '$PROMPT'"; exit 0 ;;
   esac
 

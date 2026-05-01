@@ -425,6 +425,14 @@ def currentTimestampMs() -> str:
     """Millisecond-resolution timestamp for patch-file naming."""
     return str(int(time.time() * 1000))
 
+def currentTimestampUtcCompact() -> str:
+    """UTC ISO8601-compact timestamp for trash session-dir naming.
+
+    Format: YYYYMMDDTHHMMSSZ (lex-sortable → chronological).
+    Example: 20260501T194912Z.
+    """
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
 def formatPlateAge(seconds: int) -> str:
     """Format an age in seconds as the listing-style age string.
 
@@ -1042,20 +1050,80 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     # Step 3: delete the plate branch.
     deleteBranchForce(repo, plateBranchName)
 
+def _trashBranchDir(repo: Path, branch: str) -> Path:
+    """Per-branch container under .plate/trash/ that holds session dirs."""
+    return repo / ".plate" / "trash" / branch
+
+def _writeTrashSession(
+    repo: Path,
+    branch: str,
+    action: str,
+    tip_sha: str,
+    parent_sha: str,
+    patches: list[tuple[str, str]],
+    extra_trailers: Optional[list[dict]] = None,
+) -> Path:
+    """Materialise a unified-layout trash session directory.
+
+    Layout:
+        <repo>/.plate/trash/<branch>/<ts>_<action>_<short-sha>/
+            info.json
+            plate_001.patch
+            plate_002.patch
+            ...
+
+    Args:
+        action:   "dropped" or "trashed".
+        tip_sha:  The plate tip commit SHA at the moment of save (drives
+                  the short-sha in the dir name and ``info.json``).
+        parent_sha: SHA the recycle path will re-parent the fresh
+                  ``<branch>-plate`` at.
+        patches:  ``[(filename, patch_text), ...]`` in apply order.
+                  Filenames must already include any ``plate_NNN.patch``
+                  numbering the caller wants on disk.
+        extra_trailers: Optional list of trailer dicts to record in
+                  ``info.json`` (one entry per saved commit).
+
+    Returns:
+        Absolute path to the new session directory.
+    """
+    ts = currentTimestampUtcCompact()
+    short_sha = tip_sha[:7] if tip_sha else "0000000"
+    session_dir = _trashBranchDir(repo, branch) / f"{ts}_{action}_{short_sha}"
+    session_dir.mkdir(parents=True, exist_ok=False)
+
+    for filename, patch_text in patches:
+        # `git apply` requires a trailing newline; run() stripped it.
+        (session_dir / filename).write_text(patch_text + "\n")
+
+    info = {
+        "branch": branch,
+        "action": action,
+        "saved_at": ts,
+        "tip_sha_at_save": tip_sha,
+        "parent_sha_at_save": parent_sha,
+        "trailers": extra_trailers or [],
+    }
+    (session_dir / "info.json").write_text(json.dumps(info, indent=2))
+    return session_dir
+
 def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
-    """Pop the top plate from <branch>-plate, save as patch.
+    """Pop the top plate from ``<branch>-plate``, save as a unified trash session.
 
     Sequence:
-        - Build WT-tree via temp-index (capture tracked + untracked).
-        - Write .plate/dropped/<branch>-plate_<ts>.patch as
-          `git diff --binary <branch> <WT-tree>`.
-        - Rewind <branch>-plate to <branch>-plate~1 (or `git branch -D`
-          if last plate).
+        - Capture the popped tip's per-commit diff
+          (``git diff --binary <tip>~1 <tip>``) as ``plate_001.patch``
+          inside ``<repo>/.plate/trash/<branch>/<ts>_dropped_<sha>/``.
+        - Write an ``info.json`` recording the tip and parent SHAs plus
+          the tip's commit trailers, so ``plate_recycle`` can re-parent
+          the restored plate at the original parent.
+        - Rewind ``<branch>-plate`` to ``<branch>-plate~1`` (or
+          ``git branch -D`` if the last plate).
         - WT untouched.
 
     Returns:
-        Path to the generated .patch file, or None when no plate branch
-        exists (warning printed to stderr).
+        Path to the new session directory, or ``None`` when no plate
+        branch exists (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
@@ -1068,10 +1136,24 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
         )
         return None
 
-    # Capture the entire WT (tracked + untracked) as a binary patch under
-    # .plate/dropped/<plateBranchName>_<ts>.patch. The "." pathspec stages
-    # everything in the temp index without touching the real index.
-    patch_path = saveChangesToPatch(repo, ["."], name=plateBranchName)
+    tip_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+    parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
+
+    # Per-commit diff of the popped tip — replayable onto parent_sha.
+    patch_text = run(
+        ["git", "diff", "--binary", parent_sha, tip_sha],
+        cwd=repo,
+    )
+
+    session_dir = _writeTrashSession(
+        repo=repo,
+        branch=branch,
+        action="dropped",
+        tip_sha=tip_sha,
+        parent_sha=parent_sha,
+        patches=[("plate_001.patch", patch_text)],
+        extra_trailers=[getCommitTrailers(repo, tip_sha)],
+    )
 
     # Rewind the plate branch by one commit, or delete it if it was the last.
     plateCount = int(run(
@@ -1081,29 +1163,26 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
     if plateCount == 1:
         deleteBranchForce(repo, plateBranchName)
     else:
-        parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
         run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
 
-    return patch_path
+    return session_dir
 
 def plate_trash(
     repo: Path,
     branch: Optional[str] = None,
     clean_wt: bool = False,
 ) -> Optional[Path]:
-    """Delete <branch>-plate entirely, save per-plate patches under .plate/trashed/.
+    """Delete ``<branch>-plate`` entirely, save the whole stack as a unified trash session.
 
     Args:
         branch: working branch name; defaults to current.
-        clean_wt: if True, run git reset --hard + git clean -fd after
-                  writing the patches (mode b — destructive of post-plate
-                  WT edits not in the patch). If False, leave WT alone
-                  (mode a — patch redundant with WT).
+        clean_wt: if True, run ``git reset --hard`` + ``git clean -fd``
+                  after writing the patches.
 
     Returns:
-        Path to the directory containing per-plate .patch files
-        (e.g. .plate/trashed/<branch>-plate_<ts>/), or None when no plate
-        branch exists (warning printed to stderr).
+        Path to the unified trash session directory
+        (``<repo>/.plate/trash/<branch>/<ts>_trashed_<sha>/``), or
+        ``None`` when no plate branch exists (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
@@ -1116,23 +1195,34 @@ def plate_trash(
         )
         return None
 
-    # Walk plate commits oldest-first.
+    # Walk plate commits oldest-first so plate_001.patch is the bottom of the stack.
     plates = run(
         ["git", "rev-list", "--reverse", f"{branch}..{plateBranchName}"],
         cwd=repo,
     ).splitlines()
 
-    # Per-plate patches go into a single dated session directory.
-    trash_dir = repo / ".plate" / "trashed" / f"{plateBranchName}_{currentTimestampMs()}"
-    trash_dir.mkdir(parents=True)
+    tip_sha = plates[-1]
+    bottom_parent = run(["git", "rev-parse", f"{plates[0]}~1"], cwd=repo)
 
-    for i, plate_sha in enumerate(plates):
+    patches: list[tuple[str, str]] = []
+    trailer_records: list[dict] = []
+    for i, plate_sha in enumerate(plates, start=1):
         patch_text = run(
             ["git", "diff", "--binary", f"{plate_sha}~1", plate_sha],
             cwd=repo,
         )
-        # `git apply` requires a trailing newline; run() stripped it.
-        (trash_dir / f"plate_{i:03d}.patch").write_text(patch_text + "\n")
+        patches.append((f"plate_{i:03d}.patch", patch_text))
+        trailer_records.append(getCommitTrailers(repo, plate_sha))
+
+    session_dir = _writeTrashSession(
+        repo=repo,
+        branch=branch,
+        action="trashed",
+        tip_sha=tip_sha,
+        parent_sha=bottom_parent,
+        patches=patches,
+        extra_trailers=trailer_records,
+    )
 
     deleteBranchForce(repo, plateBranchName)
 
@@ -1140,39 +1230,70 @@ def plate_trash(
         resetHardToHead(repo)
         cleanWorkTree(repo)
 
-    return trash_dir
+    return session_dir
+
+def _listTrashSessions(repo: Path, branch: str) -> list[Path]:
+    """Lex-sorted list of session dirs under ``.plate/trash/<branch>/``."""
+    branch_dir = _trashBranchDir(repo, branch)
+    if not branch_dir.is_dir():
+        return []
+    return sorted(d for d in branch_dir.iterdir() if d.is_dir())
+
+def plate_recycle_list(repo: Path, branch: Optional[str] = None) -> str:
+    """Human-readable enumeration of recyclable trash sessions.
+
+    Read-only — no mutation. Returns the string the CLI emits via
+    ``emit_block``. Empty result yields a friendly empty-list message
+    rather than an error.
+    """
+    if branch is None:
+        branch = getCurrentBranchName(repo)
+    sessions = _listTrashSessions(repo, branch)
+    if not sessions:
+        return f"plate: no trash sessions for '{branch}'"
+    lines = [f"trash sessions for '{branch}' (newest last):"]
+    for d in sessions:
+        info_path = d / "info.json"
+        try:
+            info = json.loads(info_path.read_text())
+            action = info.get("action", "?")
+            saved_at = info.get("saved_at", "?")
+            tip = (info.get("tip_sha_at_save") or "")[:8]
+            lines.append(f"  {d.name}  ({action}, saved {saved_at}, tip {tip})")
+        except (OSError, ValueError):
+            lines.append(f"  {d.name}  (info.json unreadable)")
+    return "\n".join(lines)
 
 def plate_recycle(
     repo: Path,
     branch: Optional[str] = None,
+    session: Optional[str] = None,
     timestamp: Optional[str] = None,
 ) -> Optional[str]:
-    """Replay a trashed stack into a fresh <branch>-plate.
+    """Replay a unified trash session into a fresh ``<branch>-plate``.
 
-    Implementation uses Path 2 — per-plate patches replayed
-    sequentially. Path 1 (single-patch single-recovered-plate) was
-    rejected because it loses commit boundaries.
+    Re-parents the restored plate at ``info.json``'s
+    ``parent_sha_at_save``, NOT whatever HEAD happens to be at recycle
+    time. Errors out (without mutating) when the saved parent SHA is
+    no longer in the object DB.
 
     Args:
-        branch: working branch name; defaults to current.
-        timestamp: pick a specific trash session by timestamp; defaults
-                   to most recent.
+        branch:    working branch name; defaults to current.
+        session:   exact session-dir name (e.g.
+                   ``20260501T103000Z_dropped_a3f9c1d``); defaults to
+                   the newest session.
+        timestamp: legacy alias accepted for back-compat with older
+                   callers; treated as a session-dir suffix match.
 
     Returns:
-        SHA of the recycled <branch>-plate tip, or None when no trashed
-        session exists for the branch (warning printed to stderr).
+        SHA of the recycled ``<branch>-plate`` tip, or ``None`` when no
+        trash session exists for the branch (warning printed to stderr).
     """
     if branch is None:
         branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    trash_root = repo / ".plate" / "trashed"
-    if not trash_root.is_dir():
-        sessions: list[Path] = []
-    else:
-        sessions = sorted(
-            d for d in trash_root.iterdir() if d.name.startswith(f"{plateBranchName}_")
-        )
+    sessions = _listTrashSessions(repo, branch)
     if not sessions:
         print(
             f"warning: no trashed plate '{plateBranchName}' — nothing to recycle",
@@ -1180,13 +1301,64 @@ def plate_recycle(
         )
         return None
 
-    if timestamp is not None:
-        chosen = next(d for d in sessions if d.name.endswith(f"_{timestamp}"))
+    if session is not None:
+        chosen = next((d for d in sessions if d.name == session), None)
+        if chosen is None:
+            print(
+                f"warning: session '{session}' not found under '{branch}'",
+                file=sys.stderr,
+            )
+            return None
+    elif timestamp is not None:
+        chosen = next((d for d in sessions if d.name.endswith(f"_{timestamp}")), None)
+        if chosen is None:
+            print(
+                f"warning: no session with timestamp '{timestamp}' for '{branch}'",
+                file=sys.stderr,
+            )
+            return None
     else:
         chosen = sessions[-1]
 
-    # Apply each per-plate patch, then push it as its own plate commit.
-    for patch in sorted(chosen.iterdir()):
+    info_path = chosen / "info.json"
+    try:
+        info = json.loads(info_path.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"warning: cannot read {info_path} ({exc}); refusing to recycle",
+            file=sys.stderr,
+        )
+        return None
+
+    parent_sha = info.get("parent_sha_at_save")
+    if not parent_sha:
+        print(
+            f"warning: {info_path} missing parent_sha_at_save; refusing to recycle",
+            file=sys.stderr,
+        )
+        return None
+
+    # Verify the saved parent SHA still exists BEFORE mutating anything.
+    try:
+        run(["git", "cat-file", "-e", parent_sha], cwd=repo)
+    except Exception:
+        print(
+            f"warning: parent SHA {parent_sha[:8]} no longer in repo; "
+            f"cannot recycle '{chosen.name}'",
+            file=sys.stderr,
+        )
+        return None
+
+    # Re-parent the plate ref at the saved parent SHA (deleting any stale
+    # plate branch first, since callers may have an unrelated plate now).
+    if branchExists(repo, plateBranchName):
+        deleteBranchForce(repo, plateBranchName)
+    run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
+
+    # Apply each saved patch in order; plate_push commits the resulting WT
+    # state onto the plate ref (parented at the just-applied tip).
+    patches = sorted(p for p in chosen.iterdir() if p.suffix == ".patch")
+    for patch in patches:
         apply_patch(repo, patch)
         plate_push(repo)
 
@@ -1433,8 +1605,9 @@ def _check_plate_done_replays_stack(repo: Path) -> None:
     assert u2 in tracked
 
 def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
-    """Scenario: single plate → plate_drop saves a patch under .plate/dropped/,
-    deletes the plate ref, leaves WT untouched."""
+    """Scenario: single plate → plate_drop saves a session under
+    ``.plate/trash/<branch>/<ts>_dropped_<sha>/``, deletes the plate
+    ref, leaves WT untouched."""
     branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
@@ -1442,11 +1615,20 @@ def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
     plate_push(repo)
     assert branchExists(repo, plateBranchName)
 
-    patch_path = plate_drop(repo)
+    session_dir = plate_drop(repo)
 
-    assert patch_path.exists()
-    assert patch_path.parent.name == "dropped"
-    assert untracked in patch_path.read_text()
+    assert session_dir is not None
+    assert session_dir.is_dir()
+    assert session_dir.parent.name == branch
+    assert session_dir.parent.parent.name == "trash"
+    assert "_dropped_" in session_dir.name
+    patch = session_dir / "plate_001.patch"
+    assert patch.exists()
+    assert untracked in patch.read_text()
+    info = json.loads((session_dir / "info.json").read_text())
+    assert info["action"] == "dropped"
+    assert info["branch"] == branch
+    assert info["parent_sha_at_save"]
     assert not branchExists(repo, plateBranchName)
     assert untracked in getGitUntrackedFilesList(repo)
 
@@ -1457,21 +1639,23 @@ def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
     untracked_content = (repo / untracked).read_text()
     plate_push(repo)
 
-    patch_path = plate_drop(repo)
+    session_dir = plate_drop(repo)
+    patch = session_dir / "plate_001.patch"
 
     # Reset WT to clean state (drop's contract leaves the file in WT;
     # delete it explicitly so apply_patch's restoration is visible).
     (repo / untracked).unlink()
     assert not (repo / untracked).exists()
 
-    apply_patch(repo, patch_path)
+    apply_patch(repo, patch)
 
     assert (repo / untracked).exists()
     assert (repo / untracked).read_text() == untracked_content
 
 def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     """Scenario: 2-plate stack → plate_trash (default clean_wt=False) saves
-    per-plate patches, deletes plate ref, leaves WT untouched."""
+    per-plate patches into the unified trash session, deletes plate ref,
+    leaves WT untouched."""
     branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
@@ -1481,13 +1665,17 @@ def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
 
-    trash_dir = plate_trash(repo)
+    session_dir = plate_trash(repo)
 
-    assert trash_dir.is_dir()
-    assert trash_dir.parent.name == "trashed"
-    patches = sorted(trash_dir.iterdir())
+    assert session_dir.is_dir()
+    assert session_dir.parent.name == branch
+    assert session_dir.parent.parent.name == "trash"
+    assert "_trashed_" in session_dir.name
+    patches = sorted(p for p in session_dir.iterdir() if p.suffix == ".patch")
     assert len(patches) == 2
-    assert all(p.suffix == ".patch" for p in patches)
+    info = json.loads((session_dir / "info.json").read_text())
+    assert info["action"] == "trashed"
+    assert info["branch"] == branch
     assert not branchExists(repo, plateBranchName)
     untracked = getGitUntrackedFilesList(repo)
     assert u1 in untracked
@@ -1509,10 +1697,10 @@ def _check_plate_trash_clean_resets_wt(repo: Path) -> None:
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
 
-    trash_dir = plate_trash(repo, clean_wt=True)
+    session_dir = plate_trash(repo, clean_wt=True)
 
-    assert trash_dir.is_dir()
-    patches = sorted(trash_dir.iterdir())
+    assert session_dir.is_dir()
+    patches = sorted(p for p in session_dir.iterdir() if p.suffix == ".patch")
     assert len(patches) == 2
     assert not branchExists(repo, plateBranchName)
     # WT wiped.
@@ -1607,7 +1795,8 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
 
 def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_drop returns None, prints
-    warning to stderr, creates no .plate/dropped/ directory, leaves WT clean."""
+    warning to stderr, creates no trash session for this branch, leaves
+    WT clean."""
     branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
     assert not branchExists(repo, plateBranchName)
@@ -1621,15 +1810,16 @@ def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert result is None
     assert "no plate branch" in captured.err
     assert plateBranchName in captured.err
-    # No patch directory created.
-    assert not (repo / ".plate" / "dropped").exists()
+    # No session dir created for this branch.
+    assert not (repo / ".plate" / "trash" / branch).exists()
     # Repo state unchanged.
     assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
     assert checkForCleanWorkTree(repo) == wt_clean_before
 
 def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_trash returns None, prints
-    warning to stderr, creates no .plate/trashed/ directory, leaves WT clean."""
+    warning to stderr, creates no trash session for this branch, leaves
+    WT clean."""
     branch = getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
     assert not branchExists(repo, plateBranchName)
@@ -1642,7 +1832,7 @@ def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert result is None
     assert "no plate branch" in captured.err
     assert plateBranchName in captured.err
-    assert not (repo / ".plate" / "trashed").exists()
+    assert not (repo / ".plate" / "trash" / branch).exists()
     assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
 
 def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
@@ -1735,8 +1925,10 @@ def _check_drop_patch_applies_in_fresh_repo(repoA: Path, repoB: Path) -> None:
     untracked_content = (repoA / untracked_name).read_text()
 
     plate_push(repoA)
-    patch_path = plate_drop(repoA)
-    assert patch_path is not None
+    session_dir = plate_drop(repoA)
+    assert session_dir is not None
+    assert session_dir.is_dir()
+    patch_path = session_dir / "plate_001.patch"
     assert patch_path.exists()
 
     # Copy patch into repoB (mirrors emailing/Slacking the file).
