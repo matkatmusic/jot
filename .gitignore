@@ -16,3 +16,5 @@ Todos/
 *.swp
 node-compile-cache
 __pycache__
+plate-log.txt
+.plate/plate-log.txt

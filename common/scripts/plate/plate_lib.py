@@ -39,37 +39,24 @@ import time
 from pathlib import Path
 from typing import Optional
 
-# -- git command flags used by helpers below --
-
-QUIET_OUTPUT = "-q"
-COMMIT_MESSAGE_FLAG = "-m"
-CREATE_BRANCH_AND_CHECKOUT_FLAG = "-b"
-
-# ── Subprocess wrapper ────────────────────────────────────────────────
-
-def run(
-    cmd: list[str],
-    cwd: Path,
-    env: Optional[dict[str, str]] = None,
-    check: bool = True,
-    capture: bool = True,
-) -> str:
-    """Run cmd in cwd. Return stripped stdout when capture=True."""
-    full_env: Optional[dict[str, str]] = None
-    if env is not None:
-        full_env = os.environ.copy()
-        full_env.update(env)
-    completed = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=full_env,
-        text=True,
-        capture_output=capture,
-        check=check,
-    )
-    if not capture:
-        return ""
-    return (completed.stdout or "").strip()
+# git_lib lives one level up at common/scripts/git_lib.py. Inject that
+# directory on sys.path so `from git_lib import *` resolves whether
+# plate_lib is imported via its package path or via direct sys.path
+# injection by conftest.py / cli.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from git_lib import *  # noqa: E402,F401,F403  (re-export for tests + callers)
+from git_lib import (  # noqa: E402  (explicit pulls so static checkers see them)
+    QUIET_OUTPUT,
+    COMMIT_MESSAGE_FLAG,
+    CREATE_BRANCH_AND_CHECKOUT_FLAG,
+    USER_EMAIL_KEY,
+    USER_EMAIL_VALUE,
+    USER_NAME_KEY,
+    USER_NAME_VALUE,
+    GITIGNORE_CONTENTS,
+    run,
+    currentTimestampMs,
+)
 
 # ── Implemented: repo setup ───────────────────────────────────────────
 
@@ -90,9 +77,6 @@ def createRandomBranchName() -> str:
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
     return prefix + suffix
 
-COMMIT_MESSAGE_FLAG = "-m"
-CREATE_BRANCH_AND_CHECKOUT_FLAG = "-b"
-
 def makeEmptyRepo(path: Path) -> Path:
     """Create a new, empty repo with a single main branch."""
     repo = path / "repo"
@@ -104,44 +88,15 @@ cwd=repo)
 # def getGitStatus(repo: Path) -> dict[str, str]:
 #     return run(["git", "status", "--porcelain"], cwd=repo).splitlines()
 
-def isGitRepo(path: Path) -> bool:
-    completed = subprocess.run(
-        ["git", "-C", str(path), "rev-parse",
-"--is-inside-work-tree"],                                  
-        capture_output=True,
-        check=False,                                       
-    )                         
-    return completed.returncode == 0   
-
-def setUserConfigValue(repo: Path, config_key: str, config_value: str) -> None:
-    run(["git", "config", config_key, config_value], cwd=repo)
-
-def getUserConfigValue(repo: Path, config_key: str) -> str:
-    return run(["git", "config", config_key], cwd=repo)
-
 def makeTestRepo(base: Path) -> Path:
     repo = makeEmptyRepo(path=base)
-    createUserConfig(repo)
+    createGitUserConfig(repo)
     return repo
 
-USER_EMAIL_KEY = "user.email"
-USER_EMAIL_VALUE = "test@example.com"
-USER_NAME_KEY = "user.name"
-USER_NAME_VALUE = "Test User"
 TEST_COMMIT_MESSAGE = "test commit"
 TEST_FILENAME = "a.txt"
-GITIGNORE_CONTENTS = ".plate/\n"
 
-def writeGitIgnore(repo: Path, contents: str = GITIGNORE_CONTENTS) -> Path:
-    """Write a .gitignore file at repo root and return its path.
 
-    Default contents ignore the /plate skill's local stash directory
-    (.plate/) so it is treated as ignored rather than untracked, which
-    means `git clean -fd` won't blow it away (that requires `-x`).
-    """
-    path = repo / ".gitignore"
-    path.write_text(contents)
-    return path
 
 def makeTestRepoWithSingleCommit(base: Path) -> Path:
     repo = makeTestRepo(base=base)
@@ -151,40 +106,9 @@ def makeTestRepoWithSingleCommit(base: Path) -> Path:
     # add the test file
     addFileToGit(repo, makeTestFile(repo, TEST_FILENAME))
     # commit both files together as the initial commit
-    createCommit(repo, TEST_COMMIT_MESSAGE)
+    createGitCommit(repo, TEST_COMMIT_MESSAGE)
     return repo
 
-def createUserConfig(repo: Path) -> None:
-    setUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
-    setUserConfigValue(repo, USER_NAME_KEY, USER_NAME_VALUE)
-
-def getGitBranchList(repo: Path) -> list[str]:
-    # git branch --list
-    result = run(["git", "branch", "--list"], cwd=repo).splitlines()
-    # remove the leading characters (* , +)
-    cleanedBranchNames = []
-    for line in result:
-        print( "branch: " + line)
-        cleaned = line.replace("*", "").replace("+", "").strip()
-        print( "cleaned: " + cleaned )
-        cleanedBranchNames.append(cleaned)
-    return cleanedBranchNames
-
-def createBranch(repo: Path, branch_name: str) -> None:
-    # git branch -q <branch-name>
-    run(["git", "branch", QUIET_OUTPUT, branch_name], cwd=repo)
-
-def checkOutBranch(repo: Path, branch_name: str) -> None:
-    # git checkout -q <branch-name>
-    run(["git", "checkout", QUIET_OUTPUT, branch_name], cwd=repo)
-
-def createAndCheckoutBranch(repo: Path, branch_name: str) -> None:
-    run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, branch_name], cwd=repo)
-
-def getCurrentBranchName(repo: Path) -> str:
-    """Return the current branch name (e.g. 'fix')."""
-    # git branch --show-current
-    return run(["git", "branch", "--show-current"], cwd=repo)
 
 TEST_FILE_CONTENTS = "A\n"
 
@@ -192,47 +116,6 @@ def makeTestFile(repo: Path, fileName: str) -> Path:
     file = repo / fileName
     file.write_text(TEST_FILE_CONTENTS)
     return file
-
-def getGitUntrackedFilesList(repo: Path) -> list[str]:
-    # git ls-files --others --exclude-standard
-    return run(["git", "ls-files", "--others", "--exclude-standard"], cwd=repo).splitlines()
-
-def getGitUnstagedFilesList(repo: Path) -> list[str]:
-    # git ls-files --modified
-    return run(["git", "ls-files", "--modified"], cwd=repo).splitlines()
-
-def getGitStagedFilesList(repo: Path) -> list[str]:
-    # git diff --name-only --cached
-    return run(["git", "diff", "--name-only", "--cached"], cwd=repo).splitlines()
-
-def getGitTrackedFilesList(repo: Path) -> list[str]:
-    return run(["git", "ls-files"], cwd=repo).splitlines()
-
-def addFileToGit(repo: Path, file: str) -> None:
-    run(["git", "add", file], cwd=repo)
-
-def stageAllChanges(repo: Path, env: dict[str, str] | None = None) -> None:
-    run(["git", "add", "-A"], cwd=repo, env=env)
-
-def stashFiles(repo: Path, files: list[str]) -> None:
-    """Stash the named files (tracked or untracked) and remove them from WT.
-
-    Uses `git stash push -u --` so that untracked files in <files> are
-    included in the stash. After the call, the named files are gone from
-    the WT and saved on the top of the stash stack (stash@{0}). Use
-    unstashFiles() to restore them.
-    """
-    run(["git", "stash", "push", "-u", QUIET_OUTPUT, "--"] + files, cwd=repo)
-
-def unstashFiles(repo: Path) -> None:
-    """Pop the top of the stash stack back into the WT (stash@{0})."""
-    run(["git", "stash", "pop", QUIET_OUTPUT], cwd=repo)
-
-def addMultipleFilesToGit(repo: Path, files: list[str]) -> None:
-    run(["git", "add"] + files, cwd=repo)
-
-def createCommit(repo: Path, message: str) -> None:
-    run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE_FLAG, message], cwd=repo)
 
 def random_string(length: int = 8, rng: random.Random = random) -> str:
     return "".join(rng.choices(string.ascii_lowercase, k=length))
@@ -264,7 +147,7 @@ B_FILE_CONTENTS = "B\n"
 F1_FILENAME = "fix.txt"
 F1_FILE_CONTENTS = "F1\n"
 
-def setup_repo(base: Path) -> Path:
+def setup_git_plate_test_repo(base: Path) -> Path:
     """Create a fresh git repo at base/repo and return its path.
 
     Topology:
@@ -282,7 +165,7 @@ def setup_repo(base: Path) -> Path:
         fix.txt on <random branch>, content "F1"
     """
     repo = makeEmptyRepo(path=base)
-    createUserConfig(repo)
+    createGitUserConfig(repo)
 
     # main: commit A — also stages .gitignore so .plate/ is ignored
     # and survives `git clean -fd` during plate_trash(clean_wt=True).
@@ -290,20 +173,20 @@ def setup_repo(base: Path) -> Path:
     addFileToGit(repo, ".gitignore")
     (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
     addFileToGit(repo, TEST_FILENAME)
-    createCommit(repo=repo, message="A")
+    createGitCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
     branch_name = createRandomBranchName()
-    createBranch(repo, branch_name)
-    checkOutBranch(repo=repo, branch_name=branch_name)
+    createGitBranch(repo, branch_name)
+    checkOutGitBranch(repo=repo, branch_name=branch_name)
     
     (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
     addFileToGit(repo, B_FILENAME)
-    createCommit(repo=repo, message="B")
+    createGitCommit(repo=repo, message="B")
 
     (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
     addFileToGit(repo, F1_FILENAME)
-    createCommit(repo=repo, message="F1")
+    createGitCommit(repo=repo, message="F1")
 
     return repo
 
@@ -335,95 +218,7 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
 
 # ── Implemented: assertion utilities ──────────────────────────────────
 
-def branchExists(repo: Path, branchName: str) -> bool:
-    """True iff refs/heads/<branchName> exists."""
-    # git branch --list <branchName>
-    list_output = run(["git", "branch", "--list"], cwd=repo)
-    # strip out any * in the branch names
-    list_output = list_output.replace("*", "")
-    # the branch exists if its name appears in the list of branches
-    return branchName in list_output
-
-def countCommitsReachableFromRef(repo: Path, ref: str) -> int:
-    """Number of commits reachable from <ref>."""
-    return int(run(["git", "rev-list", "--count", ref], cwd=repo))
-
-def setGitIndexFileForEnv(env: dict[str, str], gitIndexFile: str) -> dict[str, str]:
-    env["GIT_INDEX_FILE"] = gitIndexFile
-    return env
-
-def getSHAForRefViaRevParse(repo: Path, ref: str) -> str:
-    return run(["git", "rev-parse", ref], cwd=repo)
-
-def readGitTreeAt(repo: Path, ref: str, env: dict[str, str]) -> str:
-    return run(["git", "read-tree", ref], cwd=repo, env=env)
-
-def writeGitTree(repo: Path, env: dict[str, str]) -> str:
-    return run(["git", "write-tree"], cwd=repo, env=env)
-
-def getTreeRevOf(commit: str) -> str:                      
-    """Return the git rev-spec that peels <commit> to its tree.
-    The returned string is a rev-spec (e.g. 'abc1234^{tree}'), NOT a SHA. 
-    Pass it to git rev-parse — or any command taking a <rev> — to resolve it to the SHA of the commit's tree.
-    """
-    return f"{commit}^{{tree}}"   
-
-def getTreeSHA(repo: Path, ref: str) -> str:
-    """SHA of the tree pointed to by <ref>."""
-    return getSHAForRefViaRevParse(repo, getTreeRevOf(ref))
-
-def getGitStatus(repo: Path) -> str:
-    """Output of `git status --porcelain` (empty string when clean)."""
-    return run(["git", "status", "--porcelain"], cwd=repo)
-
-def checkForCleanWorkTree(repo: Path) -> bool:
-    """True iff WT and index match HEAD with no untracked files."""
-    return getGitStatus(repo) == ""
-
-def getCommitSubject(repo: Path, ref: str) -> str:
-    """Subject line of the commit at <ref>."""
-    return run(["git", "log", "-1", "--format=%s", ref], cwd=repo)
-
-def getCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
-    """Commit message trailers at <ref> as a key→value dict.
-
-    Trailers are git's RFC822-style key/value lines at the end of the
-    commit message body, e.g. `parent-convo: 123`. Used by /plate to
-    encode parent_ref / plate_id / convo_id without polluting the
-    user-visible commit subject.
-    """
-    raw = run(
-        ["git", "log", "-1", "--format=%(trailers:only,unfold=true)", ref],
-        cwd=repo,
-    )
-    trailers: dict[str, str] = {}
-    for line in raw.splitlines():
-        if ":" in line:
-            key, _, value = line.partition(":")
-            trailers[key.strip()] = value.strip()
-    return trailers
-
 # ── Helpers used by the plate operations ─────────────────────────────
-
-def resetHardToHead(repo: Path) -> None:
-    """git reset --hard — restore tracked files to HEAD's state."""
-    run(["git", "reset", QUIET_OUTPUT, "--hard"], cwd=repo)
-
-def cleanWorkTree(repo: Path) -> None:
-    """git clean -fd — delete untracked files and untracked directories.
-
-    Ignored paths (e.g. anything matching .gitignore) are preserved
-    because `git clean -fd` does NOT touch them without the `-x` flag.
-    """
-    run(["git", "clean", "-fd", QUIET_OUTPUT], cwd=repo)
-
-def deleteBranchForce(repo: Path, branchName: str) -> None:
-    """git branch -D <name> — delete branch even if not merged."""
-    run(["git", "branch", "-D", QUIET_OUTPUT, branchName], cwd=repo)
-
-def currentTimestampMs() -> str:
-    """Millisecond-resolution timestamp for patch-file naming."""
-    return str(int(time.time() * 1000))
 
 def formatPlateAge(seconds: int) -> str:
     """Format an age in seconds as the listing-style age string.
@@ -676,66 +471,16 @@ def listPlateBranches(repo: Path) -> list[dict]:
             continue
         plates.append({
             "ref": name,
-            "tip_sha": getSHAForRefViaRevParse(repo, name),
+            "tip_sha": getSHAForGitRefViaRevParse(repo, name),
             "committer_unix": int(ts),
-            "trailers": getCommitTrailers(repo, name),
+            "trailers": getGitCommitTrailers(repo, name),
         })
     plates.sort(key=lambda p: p["committer_unix"], reverse=True)
     return plates
 
-def saveChangesToPatch(
-    repo: Path,
-    files: list[str],
-    name: str = "changes",
-) -> Path:
-    """Save WT changes to <files> as a binary patch under .plate/dropped/.
-
-    Snapshots the named files (both tracked modifications and untracked
-    additions) into a temp index, diffs that snapshot against HEAD with
-    `git diff --binary`, and writes the result to
-    .plate/dropped/<name>_<ts>.patch. The real index, HEAD, and WT
-    are never touched.
-
-    Args:
-        repo: repository root.
-        files: relative paths of files to include in the patch (pathspecs
-               like "." are also accepted).
-        name: prefix for the patch filename; defaults to "changes".
-
-    Returns:
-        Path to the newly written .patch file (ends with trailing newline,
-        as `git apply` requires).
-    """
-    # Temp-index snapshot lets us stage untracked files without polluting
-    # the real index.
-    tmp_index_path = makeTempGitIndexPath()
-    try:
-        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
-        readGitTreeAt(repo=repo, ref="HEAD", env=env)
-        run(["git", "add"] + files, cwd=repo, env=env)
-        snapshot_tree = writeGitTree(repo=repo, env=env)
-    finally:
-        Path(tmp_index_path).unlink(missing_ok=True)
-
-    patch_text = run(
-        ["git", "diff", "--binary", "HEAD", snapshot_tree], cwd=repo
-    )
-
-    patch_dir = repo / ".plate" / "dropped"
-    patch_dir.mkdir(parents=True, exist_ok=True)
-    patch_path = patch_dir / f"{name}_{currentTimestampMs()}.patch"
-    # `git apply` requires a trailing newline; run() stripped it.
-    patch_path.write_text(patch_text + "\n")
-    return patch_path
-
 # ── Stubs: plate operations ───────────────────────────────────────────
 # Each stub raises NotImplementedError. Implementations should follow
 # the canonical sequences locked in plate-walkthrough-log-2026-04-28.md.
-def makeTempGitIndexPath() -> str:
-        fd, tmp_index_path = tempfile.mkstemp(prefix="plate-index-")
-        os.close(fd)
-        return tmp_index_path
-
 def findMyLastPlate(
     repo: Path,
     plate_branch: str,
@@ -753,7 +498,7 @@ def findMyLastPlate(
     cutoff time when scanning the transcript for files this agent has
     edited or deleted since their last plate.
     """
-    if not branchExists(repo, plate_branch):
+    if not checkIfGitBranchExists(repo, plate_branch):
         return (None, None)
 
     raw = run(
@@ -794,9 +539,9 @@ def _resolveTargetPlate(
     The chained-derived workflow (explicit delegation via
     `simulate_derived_agent`) is unrelated and remains in the codebase.
     """
-    if not branchExists(repo, base_plate_name):
-        return base_plate_name, getSHAForRefViaRevParse(repo, "HEAD")
-    return base_plate_name, getSHAForRefViaRevParse(repo, base_plate_name)
+    if not checkIfGitBranchExists(repo, base_plate_name):
+        return base_plate_name, getSHAForGitRefViaRevParse(repo, "HEAD")
+    return base_plate_name, getSHAForGitRefViaRevParse(repo, base_plate_name)
 
 def _buildFullWtTree(repo: Path) -> str:
     """Snapshot the working tree via a temp index and return its tree SHA.
@@ -809,7 +554,7 @@ def _buildFullWtTree(repo: Path) -> str:
     try:
         env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
         _ = readGitTreeAt(repo=repo, ref="HEAD", env=env)
-        stageAllChanges(repo=repo, env=env)
+        stageAllGitChanges(repo=repo, env=env)
         return writeGitTree(repo=repo, env=env)
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
@@ -925,7 +670,7 @@ def plate_push(
         SHA of the new <branch>-plate tip commit on push, or None when the
         WT tree already matches the would-be parent's tree.
     """
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     base_plate_name = f"{branch}-plate"
 
     # Always-shared plate branch; parent is HEAD if no plate exists, else
@@ -940,8 +685,8 @@ def plate_push(
     #   - Same-author / first-time path: snapshot full WT (existing logic).
     use_extraction = (
         convo_id is not None
-        and branchExists(repo, base_plate_name)
-        and getCommitTrailers(repo, base_plate_name).get("convo-id") not in (None, convo_id)
+        and checkIfGitBranchExists(repo, base_plate_name)
+        and getGitCommitTrailers(repo, base_plate_name).get("convo-id") not in (None, convo_id)
     )
 
     if use_extraction:
@@ -949,7 +694,7 @@ def plate_push(
     else:
         commit_tree = _buildFullWtTree(repo)
 
-    parent_tree = getSHAForRefViaRevParse(repo=repo, ref=getTreeRevOf(parent))
+    parent_tree = getSHAForGitRefViaRevParse(repo=repo, ref=getGitTreeRevOf(parent))
     if commit_tree == parent_tree:
         return None
     wt_tree = commit_tree
@@ -992,7 +737,7 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
         branch: working branch name; defaults to current.
     """
     if branch is None:
-        branch = getCurrentBranchName(repo)
+        branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     # Step 0: implicit pre-push (no-op when WT already matches plate tip).
@@ -1000,15 +745,15 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     plate_push(repo)
 
     # No plate branch means there was nothing to push and nothing to merge.
-    if not branchExists(repo, plateBranchName):
+    if not checkIfGitBranchExists(repo, plateBranchName):
         return
 
     # Snapshot pre-call state so we can roll back on cherry-pick conflict.
-    preHeadSha = getSHAForRefViaRevParse(repo, "HEAD")
+    preHeadSha = getSHAForGitRefViaRevParse(repo, "HEAD")
 
     # Step 1: clean WT.
-    resetHardToHead(repo)
-    cleanWorkTree(repo)
+    gitResetHardToHead(repo)
+    gitCleanWorkTree(repo)
 
     # Step 2: cherry-pick HEAD..<branch>-plate (oldest first).
     completed = subprocess.run(
@@ -1030,7 +775,7 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
             check=False,
         )
         run(["git", "reset", QUIET_OUTPUT, "--hard", preHeadSha], cwd=repo)
-        cleanWorkTree(repo)
+        gitCleanWorkTree(repo)
         print(
             f"warning: cherry-pick conflict during plate_done; "
             f"aborted and restored HEAD to {preHeadSha}. "
@@ -1040,7 +785,7 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
         return
 
     # Step 3: delete the plate branch.
-    deleteBranchForce(repo, plateBranchName)
+    deleteGitBranchByForce(repo, plateBranchName)
 
 def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
     """Pop the top plate from <branch>-plate, save as patch.
@@ -1058,10 +803,10 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
         exists (warning printed to stderr).
     """
     if branch is None:
-        branch = getCurrentBranchName(repo)
+        branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    if not branchExists(repo, plateBranchName):
+    if not checkIfGitBranchExists(repo, plateBranchName):
         print(
             f"warning: no plate branch '{plateBranchName}' — nothing to drop",
             file=sys.stderr,
@@ -1071,7 +816,7 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
     # Capture the entire WT (tracked + untracked) as a binary patch under
     # .plate/dropped/<plateBranchName>_<ts>.patch. The "." pathspec stages
     # everything in the temp index without touching the real index.
-    patch_path = saveChangesToPatch(repo, ["."], name=plateBranchName)
+    patch_path = saveChangesToGitPatch(repo, ["."], name=plateBranchName)
 
     # Rewind the plate branch by one commit, or delete it if it was the last.
     plateCount = int(run(
@@ -1079,7 +824,7 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
         cwd=repo,
     ))
     if plateCount == 1:
-        deleteBranchForce(repo, plateBranchName)
+        deleteGitBranchByForce(repo, plateBranchName)
     else:
         parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
         run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
@@ -1106,10 +851,10 @@ def plate_trash(
         branch exists (warning printed to stderr).
     """
     if branch is None:
-        branch = getCurrentBranchName(repo)
+        branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    if not branchExists(repo, plateBranchName):
+    if not checkIfGitBranchExists(repo, plateBranchName):
         print(
             f"warning: no plate branch '{plateBranchName}' — nothing to trash",
             file=sys.stderr,
@@ -1134,11 +879,11 @@ def plate_trash(
         # `git apply` requires a trailing newline; run() stripped it.
         (trash_dir / f"plate_{i:03d}.patch").write_text(patch_text + "\n")
 
-    deleteBranchForce(repo, plateBranchName)
+    deleteGitBranchByForce(repo, plateBranchName)
 
     if clean_wt:
-        resetHardToHead(repo)
-        cleanWorkTree(repo)
+        gitResetHardToHead(repo)
+        gitCleanWorkTree(repo)
 
     return trash_dir
 
@@ -1163,7 +908,7 @@ def plate_recycle(
         session exists for the branch (warning printed to stderr).
     """
     if branch is None:
-        branch = getCurrentBranchName(repo)
+        branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     trash_root = repo / ".plate" / "trashed"
@@ -1187,10 +932,10 @@ def plate_recycle(
 
     # Apply each per-plate patch, then push it as its own plate commit.
     for patch in sorted(chosen.iterdir()):
-        apply_patch(repo, patch)
+        applyGitPatch(repo, patch)
         plate_push(repo)
 
-    return getSHAForRefViaRevParse(repo, plateBranchName)
+    return getSHAForGitRefViaRevParse(repo, plateBranchName)
 
 def plate_next(repo: Path, index: Optional[str] = None) -> str:
     """List or jump to a parked plate.
@@ -1249,7 +994,7 @@ def _plate_next_list(repo: Path, plates: list[dict]) -> str:
     """Format the plate list per the canonical example in the plan."""
     if not plates:
         return PLATE_NEXT_EMPTY_LIST_MESSAGE
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     currentPlateRef = f"{branch}-plate"
     now = int(time.time())
     lines = []
@@ -1276,7 +1021,7 @@ def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
     if idx_int < 1 or idx_int > len(plates):
         return PLATE_NEXT_INVALID_INDEX_MESSAGE
     target = plates[idx_int - 1]
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     currentPlateRef = f"{branch}-plate"
     if target["ref"] == currentPlateRef:
         title = _resolvePlateTitle(target)
@@ -1285,13 +1030,13 @@ def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
     # 1. Capture current WIP into the current-branch plate (no-op when clean).
     plate_push(repo)
     # 2. Clear WIP so the upcoming checkout doesn't conflict.
-    resetHardToHead(repo)
-    cleanWorkTree(repo)
+    gitResetHardToHead(repo)
+    gitCleanWorkTree(repo)
     # 3. Check out the target's parent branch.
     parent_branch = target["trailers"].get("parent-branch")
-    if not parent_branch or not branchExists(repo, parent_branch):
+    if not parent_branch or not checkIfGitBranchExists(repo, parent_branch):
         return PLATE_NEXT_LOST_MESSAGE
-    checkOutBranch(repo, parent_branch)
+    checkOutGitBranch(repo, parent_branch)
     # 4. Restore the plate's tree onto WT; leave HEAD on parent_branch with
     #    plate's accumulated work showing as unstaged changes.
     run(["git", "checkout", target["tip_sha"], "--", "."], cwd=repo)
@@ -1346,11 +1091,11 @@ def simulate_derived_agent(
     else:
         existing.sort(key=lambda b: int(b[len(derivedPattern):]))
         baseBranch = existing[-1]
-        parentConvo = getCommitTrailers(repo, baseBranch)["convo-id"]
+        parentConvo = getGitCommitTrailers(repo, baseBranch)["convo-id"]
 
     newBranchName = f"{parent_plate}-derived{N+1}"
-    parentSHA = getSHAForRefViaRevParse(repo, baseBranch)
-    parentTree = getTreeSHA(repo, baseBranch)
+    parentSHA = getSHAForGitRefViaRevParse(repo, baseBranch)
+    parentTree = getGitTreeSHA(repo, baseBranch)
 
     msg = (
         f"derived agent {N+1}\n\n"
@@ -1365,10 +1110,6 @@ def simulate_derived_agent(
     run(["git", "update-ref", f"refs/heads/{newBranchName}", new_commit], cwd=repo)
     return newBranchName
 
-def apply_patch(repo: Path, patch: Path) -> None:
-    """Apply a saved .patch file via `git apply --3way <patch>`."""
-    run(["git", "apply", "--3way", str(patch)], cwd=repo)
-
 # ── Cross-fixture scenario helpers ────────────────────────────────────
 # Each `_check_*` function asserts a single workflow contract. Both the
 # per-function tests above (against makeTestRepoWithSingleCommit) and the
@@ -1381,10 +1122,10 @@ def _check_plate_push_creates_branch_capturing_wip(repo: Path) -> None:
     """Scenario: tracked edit + untracked file → plate_push creates the plate
     branch parented to HEAD, captures both edits, and leaves WT/HEAD/branch
     untouched."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
-    assert not branchExists(repo, plateBranchName)
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
+    assert not checkIfGitBranchExists(repo, plateBranchName)
 
     (repo / TEST_FILENAME).write_text("modified\n")
     untracked = createUntrackedFile(repo, random.Random())["file"]
@@ -1393,8 +1134,8 @@ def _check_plate_push_creates_branch_capturing_wip(repo: Path) -> None:
 
     # Plate branch created and parented to HEAD.
     assert sha is not None
-    assert branchExists(repo, plateBranchName)
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == sha
+    assert checkIfGitBranchExists(repo, plateBranchName)
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == sha
     assert run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo) == head_before
     # Both edits captured in the plate tree.
     plate_files = run(
@@ -1403,31 +1144,31 @@ def _check_plate_push_creates_branch_capturing_wip(repo: Path) -> None:
     assert TEST_FILENAME in plate_files
     assert untracked in plate_files
     # WT, HEAD, and current branch unchanged.
-    assert getCurrentBranchName(repo) == branch
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert getCurrentGitBranchName(repo) == branch
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
     assert (repo / TEST_FILENAME).read_text() == "modified\n"
     assert untracked in getGitUntrackedFilesList(repo)
 
 def _check_plate_done_replays_stack(repo: Path) -> None:
     """Scenario: 2-plate stack → plate_done cherry-picks both onto branch
     oldest-first, deletes plate ref, leaves WT clean and tree == former plate tip."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    branch_count_before = countCommitsReachableFromRef(repo, branch)
+    branch_count_before = countGitCommitsReachableFromRef(repo, branch)
 
     rng = random.Random()
     u1 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
-    plate_tip_tree = getTreeSHA(repo, plateBranchName)
+    plate_tip_tree = getGitTreeSHA(repo, plateBranchName)
 
     plate_done(repo)
 
-    assert not branchExists(repo, plateBranchName)
-    assert countCommitsReachableFromRef(repo, branch) == branch_count_before + 2
-    assert checkForCleanWorkTree(repo)
-    assert getTreeSHA(repo, branch) == plate_tip_tree
+    assert not checkIfGitBranchExists(repo, plateBranchName)
+    assert countGitCommitsReachableFromRef(repo, branch) == branch_count_before + 2
+    assert checkGitForCleanWorkTree(repo)
+    assert getGitTreeSHA(repo, branch) == plate_tip_tree
     tracked = getGitTrackedFilesList(repo)
     assert u1 in tracked
     assert u2 in tracked
@@ -1435,19 +1176,19 @@ def _check_plate_done_replays_stack(repo: Path) -> None:
 def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
     """Scenario: single plate → plate_drop saves a patch under .plate/dropped/,
     deletes the plate ref, leaves WT untouched."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     untracked = createUntrackedFile(repo, random.Random())["file"]
     plate_push(repo)
-    assert branchExists(repo, plateBranchName)
+    assert checkIfGitBranchExists(repo, plateBranchName)
 
     patch_path = plate_drop(repo)
 
     assert patch_path.exists()
     assert patch_path.parent.name == "dropped"
     assert untracked in patch_path.read_text()
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
     assert untracked in getGitUntrackedFilesList(repo)
 
 def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
@@ -1464,7 +1205,7 @@ def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
     (repo / untracked).unlink()
     assert not (repo / untracked).exists()
 
-    apply_patch(repo, patch_path)
+    applyGitPatch(repo, patch_path)
 
     assert (repo / untracked).exists()
     assert (repo / untracked).read_text() == untracked_content
@@ -1472,7 +1213,7 @@ def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
 def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     """Scenario: 2-plate stack → plate_trash (default clean_wt=False) saves
     per-plate patches, deletes plate ref, leaves WT untouched."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     rng = random.Random()
@@ -1488,7 +1229,7 @@ def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     patches = sorted(trash_dir.iterdir())
     assert len(patches) == 2
     assert all(p.suffix == ".patch" for p in patches)
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
     untracked = getGitUntrackedFilesList(repo)
     assert u1 in untracked
     assert u2 in untracked
@@ -1497,9 +1238,9 @@ def _check_plate_trash_clean_resets_wt(repo: Path) -> None:
     """Scenario: dirty 2-plate stack → plate_trash(clean_wt=True) saves
     patches, deletes plate ref, AND wipes WT (tracked restored, untracked
     removed)."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    branch_tip_before = getSHAForRefViaRevParse(repo, branch)
+    branch_tip_before = getSHAForGitRefViaRevParse(repo, branch)
     tracked_before = (repo / TEST_FILENAME).read_text()
 
     rng = random.Random()
@@ -1514,28 +1255,28 @@ def _check_plate_trash_clean_resets_wt(repo: Path) -> None:
     assert trash_dir.is_dir()
     patches = sorted(trash_dir.iterdir())
     assert len(patches) == 2
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
     # WT wiped.
     assert (repo / TEST_FILENAME).read_text() == tracked_before
     assert not (repo / u1).exists()
     assert not (repo / u2).exists()
     # Branch HEAD untouched.
-    assert getSHAForRefViaRevParse(repo, branch) == branch_tip_before
+    assert getSHAForGitRefViaRevParse(repo, branch) == branch_tip_before
 
 def _check_plate_recycle_restores_stack(repo: Path) -> None:
     """Scenario: 2-plate stack → trash → recycle restores plate branch with
     same commit count and same tip tree SHA; branch HEAD unchanged."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    branch_tip_before = getSHAForRefViaRevParse(repo, branch)
+    branch_tip_before = getSHAForGitRefViaRevParse(repo, branch)
 
     rng = random.Random()
     u1 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
-    plate_count_before = countCommitsReachableFromRef(repo, plateBranchName)
-    plate_tip_tree_before = getTreeSHA(repo, plateBranchName)
+    plate_count_before = countGitCommitsReachableFromRef(repo, plateBranchName)
+    plate_tip_tree_before = getGitTreeSHA(repo, plateBranchName)
 
     plate_trash(repo)
     # Clean WT before recycle so apply_patch doesn't conflict on existing files.
@@ -1544,29 +1285,29 @@ def _check_plate_recycle_restores_stack(repo: Path) -> None:
 
     recycled_sha = plate_recycle(repo)
 
-    assert branchExists(repo, plateBranchName)
-    assert countCommitsReachableFromRef(repo, plateBranchName) == plate_count_before
-    assert getTreeSHA(repo, plateBranchName) == plate_tip_tree_before
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == recycled_sha
-    assert getSHAForRefViaRevParse(repo, branch) == branch_tip_before
+    assert checkIfGitBranchExists(repo, plateBranchName)
+    assert countGitCommitsReachableFromRef(repo, plateBranchName) == plate_count_before
+    assert getGitTreeSHA(repo, plateBranchName) == plate_tip_tree_before
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == recycled_sha
+    assert getSHAForGitRefViaRevParse(repo, branch) == branch_tip_before
 
 def _check_first_derived_agent_records_trailers(repo: Path) -> None:
     """Scenario: parent plate exists → simulate_derived_agent creates
     `<parent_plate>-derived1` parented to plate tip with trailers
     parent-plate=<plate tip SHA> and convo-id=<convo_id>."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     (repo / TEST_FILENAME).write_text("modified\n")
     plate_push(repo)
-    parent_plate_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+    parent_plate_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
     derived = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
 
     assert derived == f"{plateBranchName}-derived1"
-    assert branchExists(repo, derived)
+    assert checkIfGitBranchExists(repo, derived)
     assert run(["git", "rev-parse", f"{derived}~1"], cwd=repo) == parent_plate_sha
-    trailers = getCommitTrailers(repo, derived)
+    trailers = getGitCommitTrailers(repo, derived)
     assert trailers["parent-plate"] == parent_plate_sha
     assert trailers["convo-id"] == "CONVO-A"
 
@@ -1574,25 +1315,25 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
     """Scenario: parent plate + derived1 exist → simulate_derived_agent
     creates `<parent_plate>-derived2` parented to derived1's tip, with
     parent-convo trailer = derived1's convo-id."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     (repo / TEST_FILENAME).write_text("modified\n")
     plate_push(repo)
 
     derived1 = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
-    derived1_tip = getSHAForRefViaRevParse(repo, derived1)
+    derived1_tip = getSHAForGitRefViaRevParse(repo, derived1)
 
     derived2 = simulate_derived_agent(repo, plateBranchName, "CONVO-B")
 
     assert derived2 == f"{plateBranchName}-derived2"
-    assert branchExists(repo, derived2)
+    assert checkIfGitBranchExists(repo, derived2)
     assert run(["git", "rev-parse", f"{derived2}~1"], cwd=repo) == derived1_tip
-    trailers = getCommitTrailers(repo, derived2)
+    trailers = getGitCommitTrailers(repo, derived2)
     assert trailers["parent-convo"] == "CONVO-A"
     assert trailers["convo-id"] == "CONVO-B"
     # derived1 untouched.
-    assert getSHAForRefViaRevParse(repo, derived1) == derived1_tip
+    assert getSHAForGitRefViaRevParse(repo, derived1) == derived1_tip
 
 # ── Error-path scenarios ─────────────────────────────────────────────
 # Scenarios for the 5 untested error paths from PLATE STATE.md §C:
@@ -1608,12 +1349,12 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
 def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_drop returns None, prints
     warning to stderr, creates no .plate/dropped/ directory, leaves WT clean."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
 
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
-    wt_clean_before = checkForCleanWorkTree(repo)
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
+    wt_clean_before = checkGitForCleanWorkTree(repo)
 
     result = plate_drop(repo)
 
@@ -1624,17 +1365,17 @@ def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     # No patch directory created.
     assert not (repo / ".plate" / "dropped").exists()
     # Repo state unchanged.
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
-    assert checkForCleanWorkTree(repo) == wt_clean_before
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
+    assert checkGitForCleanWorkTree(repo) == wt_clean_before
 
 def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_trash returns None, prints
     warning to stderr, creates no .plate/trashed/ directory, leaves WT clean."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
 
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
 
     result = plate_trash(repo)
 
@@ -1643,16 +1384,16 @@ def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert "no plate branch" in captured.err
     assert plateBranchName in captured.err
     assert not (repo / ".plate" / "trashed").exists()
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
 
 def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no trashed plate session exists → plate_recycle returns None,
     prints warning to stderr, creates no plate branch, leaves repo unchanged."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
 
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
 
     result = plate_recycle(repo)
 
@@ -1660,8 +1401,8 @@ def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert result is None
     assert "nothing to recycle" in captured.err
     assert plateBranchName in captured.err
-    assert not branchExists(repo, plateBranchName)
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert not checkIfGitBranchExists(repo, plateBranchName)
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
 
 def _check_plate_done_conflict_aborts_and_restores(repo: Path, capsys) -> None:
     """Scenario: plate_done's cherry-pick conflicts because the working
@@ -1683,21 +1424,21 @@ def _check_plate_done_conflict_aborts_and_restores(repo: Path, capsys) -> None:
       - No .git/CHERRY_PICK_HEAD marker (clean abort).
       - stderr contains a conflict warning naming the plate branch.
     """
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     # 1. Plate edit replaces file contents entirely.
     (repo / TEST_FILENAME).write_text("plate version\n")
     plate_push(repo)
-    plate_tip_before = getSHAForRefViaRevParse(repo, plateBranchName)
+    plate_tip_before = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
     # 2. Reset, then a conflicting commit replaces same line with different text.
-    resetHardToHead(repo)
+    gitResetHardToHead(repo)
     (repo / TEST_FILENAME).write_text("branch version\n")
     addFileToGit(repo, TEST_FILENAME)
-    createCommit(repo, "branch advance — will conflict with plate")
+    createGitCommit(repo, "branch advance — will conflict with plate")
 
-    head_before_done = getSHAForRefViaRevParse(repo, "HEAD")
+    head_before_done = getSHAForGitRefViaRevParse(repo, "HEAD")
     wt_before_done = (repo / TEST_FILENAME).read_text()
 
     # 3. plate_done — cherry-pick should conflict, abort, restore.
@@ -1705,11 +1446,11 @@ def _check_plate_done_conflict_aborts_and_restores(repo: Path, capsys) -> None:
 
     captured = capsys.readouterr()
     # Restored state.
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before_done
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before_done
     assert (repo / TEST_FILENAME).read_text() == wt_before_done
-    assert checkForCleanWorkTree(repo)
+    assert checkGitForCleanWorkTree(repo)
     # Plate branch preserved; original plate tip still reachable from it.
-    assert branchExists(repo, plateBranchName)
+    assert checkIfGitBranchExists(repo, plateBranchName)
     plate_history = run(["git", "rev-list", plateBranchName], cwd=repo).splitlines()
     assert plate_tip_before in plate_history
     # Cherry-pick state cleaned.
@@ -1744,7 +1485,7 @@ def _check_drop_patch_applies_in_fresh_repo(repoA: Path, repoB: Path) -> None:
     shutil.copyfile(patch_path, repoB_patch)
 
     # Apply in repoB.
-    apply_patch(repoB, repoB_patch)
+    applyGitPatch(repoB, repoB_patch)
 
     # Tracked edit applied byte-for-byte.
     assert (repoB / TEST_FILENAME).read_text() == edited_content
@@ -1760,20 +1501,20 @@ def _check_plate_done_leaves_sha_recoverable(repo: Path) -> None:
     the recoverability invariant — would catch a future regression that
     introduces an immediate `git gc --prune=now` or equivalent.
     """
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     rng = random.Random()
     createUntrackedFile(repo, rng)
     plate_push(repo)
-    plate_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+    plate_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
     plate_done(repo)
 
     # Plate branch ref is gone.
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
     # But the commit object is still in the repo (recoverable until gc).
-    assert getSHAForRefViaRevParse(repo, f"{plate_sha}^{{commit}}") == plate_sha
+    assert getSHAForGitRefViaRevParse(repo, f"{plate_sha}^{{commit}}") == plate_sha
 
 
 def extractFilesDeletedSinceTimestamp(
@@ -1856,10 +1597,10 @@ def _check_plate_next_list_shows_plates_sorted_with_current_marker(repo: Path) -
         HEAD: feature-y, clean WT.
     """
     # Start from main, regardless of which branch the fixture left HEAD on.
-    if getCurrentBranchName(repo) != "main":
-        resetHardToHead(repo)
-        cleanWorkTree(repo)
-        checkOutBranch(repo, "main")
+    if getCurrentGitBranchName(repo) != "main":
+        gitResetHardToHead(repo)
+        gitCleanWorkTree(repo)
+        checkOutGitBranch(repo, "main")
 
     # First plate on main with fake transcript path (so list-mode falls back
     # to the convo-name trailer).
@@ -1870,13 +1611,13 @@ def _check_plate_next_list_shows_plates_sorted_with_current_marker(repo: Path) -
         convo_name="alpha work",
         convo_summary="summary A",
     )
-    resetHardToHead(repo)
+    gitResetHardToHead(repo)
 
     # Force a measurable timestamp gap so listPlateBranches sort is deterministic.
     time.sleep(1)
 
     # Second plate on a new feature-y branch off main.
-    createAndCheckoutBranch(repo, "feature-y")
+    createAndCheckoutGitBranch(repo, "feature-y")
     (repo / TEST_FILENAME).write_text("edit on feature-y\n")
     plate_push(
         repo,
@@ -1884,8 +1625,8 @@ def _check_plate_next_list_shows_plates_sorted_with_current_marker(repo: Path) -
         convo_name="beta work",
         convo_summary="summary B",
     )
-    resetHardToHead(repo)
-    assert getCurrentBranchName(repo) == "feature-y"
+    gitResetHardToHead(repo)
+    assert getCurrentGitBranchName(repo) == "feature-y"
 
     # Act: list mode (no index).
     result = plate_next(repo)
@@ -1955,29 +1696,29 @@ def _buildTwoBranchPlateTopology(
     Returns a dict of recorded SHAs and ref names for the test to assert against.
     """
     # The fixture leaves us on main with one commit (A). Add B and C.
-    sha_A = getSHAForRefViaRevParse(repo, "main")
+    sha_A = getSHAForGitRefViaRevParse(repo, "main")
     (repo / TEST_FILENAME).write_text("A\nB-line\n")
     addFileToGit(repo, TEST_FILENAME)
-    createCommit(repo, "B")
-    sha_B = getSHAForRefViaRevParse(repo, "main")
+    createGitCommit(repo, "B")
+    sha_B = getSHAForGitRefViaRevParse(repo, "main")
     (repo / TEST_FILENAME).write_text("A\nB-line\nC-line\n")
     addFileToGit(repo, TEST_FILENAME)
-    createCommit(repo, "C")
-    sha_C = getSHAForRefViaRevParse(repo, "main")
+    createGitCommit(repo, "C")
+    sha_C = getSHAForGitRefViaRevParse(repo, "main")
 
     # fix-y branches off main at B with three working commits B1, B2, B3.
     run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "fix-y", sha_B], cwd=repo)
     (repo / "fix.txt").write_text("B1 fix\n")
     addFileToGit(repo, "fix.txt")
-    createCommit(repo, "B1")
-    sha_B1 = getSHAForRefViaRevParse(repo, "fix-y")
+    createGitCommit(repo, "B1")
+    sha_B1 = getSHAForGitRefViaRevParse(repo, "fix-y")
     (repo / "fix.txt").write_text("B1 fix\nB2 polish\n")
     addFileToGit(repo, "fix.txt")
-    createCommit(repo, "B2")
+    createGitCommit(repo, "B2")
     (repo / "fix.txt").write_text("B1 fix\nB2 polish\nB3 cleanup\n")
     addFileToGit(repo, "fix.txt")
-    createCommit(repo, "B3")
-    sha_B3 = getSHAForRefViaRevParse(repo, "fix-y")
+    createGitCommit(repo, "B3")
+    sha_B3 = getSHAForGitRefViaRevParse(repo, "fix-y")
 
     # Rewind fix-y to B1 so plate_push parents off B1, then push 3 plates.
     run(["git", "reset", QUIET_OUTPUT, "--hard", sha_B1], cwd=repo)
@@ -2002,25 +1743,25 @@ def _buildTwoBranchPlateTopology(
         convo_name="bug-fix work",
         convo_summary=("Investigating bisect-flagged regression in B1" if include_summary else None),
     )
-    sha_Pb3 = getSHAForRefViaRevParse(repo, "fix-y-plate")
+    sha_Pb3 = getSHAForGitRefViaRevParse(repo, "fix-y-plate")
 
     # Restore fix-y's working tip back to B3 (its real, post-investigation state).
     # `git reset --hard` preserves untracked files, so investigation.txt would
     # otherwise leak across branch switches. Clean it out so subsequent
     # plate_push calls don't accidentally capture it.
     run(["git", "reset", QUIET_OUTPUT, "--hard", sha_B3], cwd=repo)
-    cleanWorkTree(repo)
+    gitCleanWorkTree(repo)
 
     # feature-x branches off main at C with two working commits.
-    checkOutBranch(repo, "main")
+    checkOutGitBranch(repo, "main")
     run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "feature-x", sha_C], cwd=repo)
     (repo / "feature.txt").write_text("C1 work\n")
     addFileToGit(repo, "feature.txt")
-    createCommit(repo, "C1")
+    createGitCommit(repo, "C1")
     (repo / "feature.txt").write_text("C1 work\nC2 polish\n")
     addFileToGit(repo, "feature.txt")
-    createCommit(repo, "C2")
-    sha_C2 = getSHAForRefViaRevParse(repo, "feature-x")
+    createGitCommit(repo, "C2")
+    sha_C2 = getSHAForGitRefViaRevParse(repo, "feature-x")
 
     # Push 2 plates on feature-x with a fake transcript path.
     (repo / "feature.txt").write_text("C1 work\nC2 polish\nPa1 wip\n")
@@ -2037,10 +1778,10 @@ def _buildTwoBranchPlateTopology(
         convo_name="feature work",
         convo_summary="building the new feature on top of C2",
     )
-    sha_Pa2 = getSHAForRefViaRevParse(repo, "feature-x-plate")
+    sha_Pa2 = getSHAForGitRefViaRevParse(repo, "feature-x-plate")
 
     # Reset WT clean on feature-x.
-    resetHardToHead(repo)
+    gitResetHardToHead(repo)
 
     return {
         "sha_A": sha_A,
@@ -2065,13 +1806,13 @@ def _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes
     _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
 
     shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
-    assert getCurrentBranchName(repo) == "feature-x"
+    assert getCurrentGitBranchName(repo) == "feature-x"
 
     # Add dirty WIP on feature-x so jump-mode's implicit pre-push has work to capture.
     (repo / "feature.txt").write_text(
         "C1 work\nC2 polish\nPa1 wip\nPa2 more\nPa3 in-flight WIP\n"
     )
-    feature_plate_count_before = countCommitsReachableFromRef(repo, "feature-x-plate")
+    feature_plate_count_before = countGitCommitsReachableFromRef(repo, "feature-x-plate")
 
     # Find the index of fix-y-plate via listPlateBranches (same source the
     # listing uses, so indices match deterministically).
@@ -2084,12 +1825,12 @@ def _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes
     result = plate_next(repo, index=str(fixy_index))
 
     # 1. WIP captured: feature-x-plate gained a commit.
-    feature_plate_count_after = countCommitsReachableFromRef(repo, "feature-x-plate")
+    feature_plate_count_after = countGitCommitsReachableFromRef(repo, "feature-x-plate")
     assert feature_plate_count_after == feature_plate_count_before + 1
 
     # 2. HEAD now on fix-y at B3.
-    assert getCurrentBranchName(repo) == "fix-y"
-    assert getSHAForRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
+    assert getCurrentGitBranchName(repo) == "fix-y"
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
 
     # 3. WT contains fix-y-plate's tree (Pb3's content).
     assert (repo / "investigation.txt").read_text() == "Pb1 notes\nPb2 fix attempt\nPb3 final\n"
@@ -2140,7 +1881,7 @@ def _check_plate_next_jump_lost_message_when_transcript_unreadable(base: Path) -
             transcript_for_fixy=fake_transcript_path,
             include_summary=include_summary,
         )
-        assert getCurrentBranchName(repo) == "feature-x"
+        assert getCurrentGitBranchName(repo) == "feature-x"
 
         plates = listPlateBranches(repo)
         fixy_index = next(
@@ -2152,15 +1893,15 @@ def _check_plate_next_jump_lost_message_when_transcript_unreadable(base: Path) -
         # Lost message returned (identical in both cases).
         assert result == PLATE_NEXT_LOST_MESSAGE
         # Branch switch still happens.
-        assert getCurrentBranchName(repo) == "fix-y"
-        assert getSHAForRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
+        assert getCurrentGitBranchName(repo) == "fix-y"
+        assert getSHAForGitRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
         # Tree restoration still happens — fix-y-plate's tree (B1-based) is in WT.
         assert (repo / "fix.txt").read_text() == "B1 fix\n"
 
         # Summary trailer presence in git matches the parameter — proves the
         # next agent can find the summary when it's there, and that absence
         # of summary doesn't change the return string.
-        trailers = getCommitTrailers(repo, "fix-y-plate")
+        trailers = getGitCommitTrailers(repo, "fix-y-plate")
         if include_summary:
             assert "convo-summary" in trailers
             assert trailers["convo-summary"]
@@ -2177,15 +1918,15 @@ def _check_plate_next_jump_self_index_is_noop(repo: Path, tmp_path: Path) -> Non
     _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
 
     shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
-    assert getCurrentBranchName(repo) == "feature-x"
+    assert getCurrentGitBranchName(repo) == "feature-x"
 
     # Snapshot pre-call state so we can prove nothing changed.
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
-    feature_plate_sha_before = getSHAForRefViaRevParse(repo, "feature-x-plate")
-    feature_plate_count_before = countCommitsReachableFromRef(repo, "feature-x-plate")
-    fixy_plate_sha_before = getSHAForRefViaRevParse(repo, "fix-y-plate")
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
+    feature_plate_sha_before = getSHAForGitRefViaRevParse(repo, "feature-x-plate")
+    feature_plate_count_before = countGitCommitsReachableFromRef(repo, "feature-x-plate")
+    fixy_plate_sha_before = getSHAForGitRefViaRevParse(repo, "fix-y-plate")
     feature_txt_before = (repo / "feature.txt").read_text()
-    wt_clean_before = checkForCleanWorkTree(repo)
+    wt_clean_before = checkGitForCleanWorkTree(repo)
 
     plates = listPlateBranches(repo)
     self_index = next(
@@ -2200,13 +1941,13 @@ def _check_plate_next_jump_self_index_is_noop(repo: Path, tmp_path: Path) -> Non
     assert result == "already on plate 'feature work'; worktree unchanged"
 
     # Nothing about the repo changed.
-    assert getCurrentBranchName(repo) == "feature-x"
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
-    assert getSHAForRefViaRevParse(repo, "feature-x-plate") == feature_plate_sha_before
-    assert countCommitsReachableFromRef(repo, "feature-x-plate") == feature_plate_count_before
-    assert getSHAForRefViaRevParse(repo, "fix-y-plate") == fixy_plate_sha_before
+    assert getCurrentGitBranchName(repo) == "feature-x"
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
+    assert getSHAForGitRefViaRevParse(repo, "feature-x-plate") == feature_plate_sha_before
+    assert countGitCommitsReachableFromRef(repo, "feature-x-plate") == feature_plate_count_before
+    assert getSHAForGitRefViaRevParse(repo, "fix-y-plate") == fixy_plate_sha_before
     assert (repo / "feature.txt").read_text() == feature_txt_before
-    assert checkForCleanWorkTree(repo) == wt_clean_before
+    assert checkGitForCleanWorkTree(repo) == wt_clean_before
 
 def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
     repo: Path, tmp_path: Path
@@ -2227,11 +1968,11 @@ def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
 
     # 2. Move HEAD to a brand-new branch `explore` off `main` that has NO
     #    associated `<branch>-plate` ref. WT is clean after the checkout.
-    checkOutBranch(repo, "main")
+    checkOutGitBranch(repo, "main")
     run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "explore"], cwd=repo)
-    assert getCurrentBranchName(repo) == "explore"
-    assert not branchExists(repo, "explore-plate")
-    assert checkForCleanWorkTree(repo)
+    assert getCurrentGitBranchName(repo) == "explore"
+    assert not checkIfGitBranchExists(repo, "explore-plate")
+    assert checkGitForCleanWorkTree(repo)
 
     # 3. Resolve the index of fix-y-plate so we have a deterministic target.
     #    fix-y-plate has the readable transcript, so a successful jump should
@@ -2256,15 +1997,15 @@ def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
     #    fix-y-plate's tree restored to WT (fix.txt = "B1 fix\n", with
     #    B2/B3 changes absent — same property as test 2).
     assert result == "resume with: cd /Users/me/jot && claude --resume fix-y bug investigation"
-    assert getCurrentBranchName(repo) == "fix-y"
-    assert getSHAForRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
+    assert getCurrentGitBranchName(repo) == "fix-y"
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == shas["sha_B3"]
     assert (repo / "fix.txt").read_text() == "B1 fix\n"
 
     # 7. Assert no spurious `explore-plate` ref was created. The implicit
     #    pre-push (step 1 of jump-mode) ran while on `explore` with a clean
     #    WT, so plate_push's empty-WIP guard returned None and no commit
     #    was made.
-    assert not branchExists(repo, "explore-plate")
+    assert not checkIfGitBranchExists(repo, "explore-plate")
 
 def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: Path) -> None:
     """Scenario: user passes a bad index value. plate_next returns the
@@ -2286,16 +2027,16 @@ def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: P
     transcript = tmp_path / "fixy-transcript.jsonl"
     _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
     shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
-    assert getCurrentBranchName(repo) == "feature-x"
+    assert getCurrentGitBranchName(repo) == "feature-x"
     assert len(listPlateBranches(repo)) == 2
 
     # 2. Snapshot pre-call state so we can prove the rejected call had no
     #    side effects.
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
-    feature_plate_sha_before = getSHAForRefViaRevParse(repo, "feature-x-plate")
-    fixy_plate_sha_before = getSHAForRefViaRevParse(repo, "fix-y-plate")
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
+    feature_plate_sha_before = getSHAForGitRefViaRevParse(repo, "feature-x-plate")
+    fixy_plate_sha_before = getSHAForGitRefViaRevParse(repo, "fix-y-plate")
     feature_txt_before = (repo / "feature.txt").read_text()
-    wt_clean_before = checkForCleanWorkTree(repo)
+    wt_clean_before = checkGitForCleanWorkTree(repo)
 
     # 3. Build (input, expected_message) pairs covering both buckets.
     cases = [
@@ -2320,12 +2061,12 @@ def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: P
             f"index {invalid_index!r}: expected {expected_message!r}, got {result!r}"
         )
         # No side effects.
-        assert getCurrentBranchName(repo) == "feature-x"
-        assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
-        assert getSHAForRefViaRevParse(repo, "feature-x-plate") == feature_plate_sha_before
-        assert getSHAForRefViaRevParse(repo, "fix-y-plate") == fixy_plate_sha_before
+        assert getCurrentGitBranchName(repo) == "feature-x"
+        assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
+        assert getSHAForGitRefViaRevParse(repo, "feature-x-plate") == feature_plate_sha_before
+        assert getSHAForGitRefViaRevParse(repo, "fix-y-plate") == fixy_plate_sha_before
         assert (repo / "feature.txt").read_text() == feature_txt_before
-        assert checkForCleanWorkTree(repo) == wt_clean_before
+        assert checkGitForCleanWorkTree(repo) == wt_clean_before
 
 def _check_plate_next_list_empty_when_no_plates(repo: Path) -> None:
     """Scenario: a fresh repo has no plate refs. plate_next list-mode
@@ -2362,15 +2103,15 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
 
     # 2. Switch HEAD to a fresh `explore` branch off `main` that has no
     #    associated plate ref.
-    checkOutBranch(repo, "main")
+    checkOutGitBranch(repo, "main")
     run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "explore"], cwd=repo)
-    assert getCurrentBranchName(repo) == "explore"
+    assert getCurrentGitBranchName(repo) == "explore"
 
     # 3. Confirm precondition: no `explore-plate` ref exists, but the two
     #    pre-existing plates DO exist.
-    assert not branchExists(repo, "explore-plate")
-    assert branchExists(repo, "feature-x-plate")
-    assert branchExists(repo, "fix-y-plate")
+    assert not checkIfGitBranchExists(repo, "explore-plate")
+    assert checkIfGitBranchExists(repo, "feature-x-plate")
+    assert checkIfGitBranchExists(repo, "fix-y-plate")
 
     # 4. Call list mode.
     result = plate_next(repo)
@@ -2415,11 +2156,11 @@ def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
     the worktree.
     """
     plate_branch = f"{branch}-plate"
-    if not branchExists(repo, plate_branch):
+    if not checkIfGitBranchExists(repo, plate_branch):
         raise RuntimeError(f"plate branch does not exist: {plate_branch}")
 
     parent_sha = run(["git", "merge-base", plate_branch, branch], cwd=repo)
-    tip_sha = getSHAForRefViaRevParse(repo, plate_branch)
+    tip_sha = getSHAForGitRefViaRevParse(repo, plate_branch)
     if parent_sha == tip_sha:
         # Nothing to rebase; just amend the tip directly via the editor
         # script's logic. But there's no commit between parent and tip
@@ -2492,15 +2233,15 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
         preserved on both commits.
       - The branch ref points at the new tip.
     """
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plate_branch = f"{branch}-plate"
 
-    parent_sha = getSHAForRefViaRevParse(repo, "HEAD")
+    parent_sha = getSHAForGitRefViaRevParse(repo, "HEAD")
 
     # Build commit-1: tree of HEAD plus a synthetic file path; commit
     # carries convo-summary + the standard trailers.
     addFileToGit(repo, makeTestFile(repo, "plate-1.txt"))
-    stageAllChanges(repo)
+    stageAllGitChanges(repo)
     commit1_msg = (
         "plate-1\n\n"
         "convo-id: convo-aaa\n"
@@ -2509,14 +2250,14 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
         "convo-summary: old summary"
     )
     run(["git", "commit", "-q", "-m", commit1_msg], cwd=repo)
-    commit1_sha = getSHAForRefViaRevParse(repo, "HEAD")
+    commit1_sha = getSHAForGitRefViaRevParse(repo, "HEAD")
     # Move the plate ref to commit-1, then reset HEAD so we can build commit-2 on top.
     run(["git", "branch", "-f", plate_branch, commit1_sha], cwd=repo)
     run(["git", "reset", "--hard", parent_sha], cwd=repo)
 
     # Build commit-2 (the new tip — no convo-summary yet).
     addFileToGit(repo, makeTestFile(repo, "plate-2.txt"))
-    stageAllChanges(repo)
+    stageAllGitChanges(repo)
     commit2_msg = (
         "plate-2\n\n"
         "convo-id: convo-bbb\n"
@@ -2527,16 +2268,16 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     # plate stack. Easiest: checkout the plate branch, commit there.
     run(["git", "checkout", "-q", plate_branch], cwd=repo)
     addFileToGit(repo, makeTestFile(repo, "plate-2.txt"))
-    stageAllChanges(repo)
+    stageAllGitChanges(repo)
     run(["git", "commit", "-q", "-m", commit2_msg], cwd=repo)
-    commit2_sha = getSHAForRefViaRevParse(repo, "HEAD")
+    commit2_sha = getSHAForGitRefViaRevParse(repo, "HEAD")
     # Return HEAD to the original branch so the rewrite happens via worktree.
     run(["git", "checkout", "-q", branch], cwd=repo)
 
     # Sanity: plate ref points at commit-2, with commit-1 as its parent.
-    assert getSHAForRefViaRevParse(repo, plate_branch) == commit2_sha
-    pre_trailers_1 = getCommitTrailers(repo, commit1_sha)
-    pre_trailers_2 = getCommitTrailers(repo, commit2_sha)
+    assert getSHAForGitRefViaRevParse(repo, plate_branch) == commit2_sha
+    pre_trailers_1 = getGitCommitTrailers(repo, commit1_sha)
+    pre_trailers_2 = getGitCommitTrailers(repo, commit2_sha)
     assert pre_trailers_1.get("convo-summary") == "old summary"
     assert "convo-summary" not in pre_trailers_2
 
@@ -2544,7 +2285,7 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     new_tip_sha = rewriteBranchTipSummary(repo, branch, "the new summary text")
 
     # The branch ref must have advanced (or at least changed SHA).
-    assert getSHAForRefViaRevParse(repo, plate_branch) == new_tip_sha
+    assert getSHAForGitRefViaRevParse(repo, plate_branch) == new_tip_sha
     # The two plate commits got rewritten — SHAs differ from before.
     # Walk only commits above the merge-base with the parent branch.
     new_log_shas = run(
@@ -2555,7 +2296,7 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     new_tip, new_parent = new_log_shas
 
     # Tip trailers: new convo-summary present + standard trailers preserved.
-    tip_trailers = getCommitTrailers(repo, new_tip)
+    tip_trailers = getGitCommitTrailers(repo, new_tip)
     assert tip_trailers.get("convo-summary") == "the new summary text", tip_trailers
     assert tip_trailers.get("convo-id") == "convo-bbb", (
         f"new_tip={new_tip} trailers={tip_trailers}"
@@ -2564,7 +2305,7 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     assert tip_trailers.get("parent-branch") == branch
 
     # Parent trailers: convo-summary stripped; other trailers preserved.
-    parent_trailers = getCommitTrailers(repo, new_parent)
+    parent_trailers = getGitCommitTrailers(repo, new_parent)
     assert "convo-summary" not in parent_trailers, parent_trailers
     assert parent_trailers.get("convo-id") == "convo-aaa"
     assert parent_trailers.get("convo-name") == "my conversation"

@@ -42,7 +42,7 @@ def test_routes_push_to_plate_push() -> None:
     """
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="abc123def456") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value="my-convo") as mn, \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="feature-x"), \
+         mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="feature-x"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         out, rc = _run(["push", "sid-123", "/tmp/transcript.jsonl", "/repos/myproj"])
     assert rc == 0
@@ -172,7 +172,7 @@ def test_push_propagates_none_when_extract_returns_none() -> None:
     plate_push must receive convo_name=None — not a stringified None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value=None), \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"), \
+         mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="main"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "/tmp/tp.jsonl", "/repo"])
     assert mp.call_args.kwargs == {
@@ -187,7 +187,7 @@ def test_push_with_empty_transcript_path_skips_extractors() -> None:
     NOT called and convo_name/convo_summary are None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
          mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript") as mn, \
-         mock.patch.object(cli.plate_lib, "getCurrentBranchName", return_value="main"), \
+         mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="main"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "", "/repo"])
     assert mn.call_count == 0

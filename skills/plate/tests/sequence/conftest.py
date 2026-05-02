@@ -12,7 +12,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" / "plate"))
 
-from plate_lib import setup_repo  # noqa: E402
+from plate_lib import setup_git_plate_test_repo  # noqa: E402
 
 
 @pytest.fixture
@@ -24,4 +24,4 @@ def repo(tmp_path: Path) -> Path:
               \\
         fix:   B - F1 (HEAD, clean WT)
     """
-    return setup_repo(tmp_path)
+    return setup_git_plate_test_repo(tmp_path)

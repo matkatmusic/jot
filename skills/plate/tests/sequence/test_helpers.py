@@ -1,6 +1,6 @@
 """Smoke tests and sequence specs for the /plate test helpers.
 
-The setup_repo() and performRandomEdit() tests verify implemented helpers.
+The setup_git_plate_test_repo() and performRandomEdit() tests verify implemented helpers.
 The test_sequence_* functions are failing workflow stubs for the plate
 operation helpers; each one describes the user sequence it must cover.
 """
@@ -27,10 +27,6 @@ globals().update({
     if not name.startswith("__")
 })
 
-def test_run():
-    result = run(["ls", "-l"], cwd=Path("."))
-    assert result is not None
-
 def test_makeEmptyRepo(tmp_path: Path):
     # no repo should exist yet at tmp_path
     assert not isGitRepo(tmp_path)
@@ -52,69 +48,14 @@ check=True,
     )                             
     assert int(result.stdout.strip()) == 0 
 
-def test_writeGitIgnore(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    path = writeGitIgnore(repo)
-    assert path == repo / ".gitignore"
-    assert path.read_text() == GITIGNORE_CONTENTS
-    # Before staging, .gitignore is itself untracked.
-    assert ".gitignore" in getGitUntrackedFilesList(repo)
-    # The .plate/ pattern is now active: .plate/foo.txt is ignored.
-    (repo / ".plate").mkdir()
-    (repo / ".plate" / "foo.txt").write_text("ignored\n")
-    assert ".plate/foo.txt" not in getGitUntrackedFilesList(repo)
-
 def test_makeTestRepoWithSingleCommit(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     assert isGitRepo(repo)
-    assert countCommitsReachableFromRef(repo, "main") == 1
-    assert getCurrentBranchName(repo) == "main"
+    assert countGitCommitsReachableFromRef(repo, "main") == 1
+    assert getCurrentGitBranchName(repo) == "main"
     assert getGitUntrackedFilesList(repo) == []
     assert getGitStagedFilesList(repo) == []
     assert getGitUnstagedFilesList(repo) == []
-
-def test_setUserConfigValue(tmp_path: Path):
-    repo = makeEmptyRepo(path=tmp_path)
-    setUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
-    assert getUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
-
-def test_createUserConfig(tmp_path: Path): 
-    repo = makeTestRepo(base=tmp_path)
-    assert getUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
-    assert getUserConfigValue(repo, USER_NAME_KEY) == USER_NAME_VALUE
-
-def test_createBranch(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(base=tmp_path)
-    original_head = getCurrentBranchName(repo)
-    branch_name = createRandomBranchName()
-    createBranch(repo, branch_name)
-    branches = getGitBranchList(repo)
-    print(branch_name)
-    print(branches)
-    assert branch_name in getGitBranchList(repo)
-    # make sure HEAD hasn't moved
-    assert getCurrentBranchName(repo) == original_head  
-
-def test_checkOutBranch(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(base=tmp_path)
-    branch_name = createRandomBranchName()
-    createBranch(repo, branch_name)
-    checkOutBranch(repo=repo, branch_name=branch_name)
-    assert getCurrentBranchName(repo) == branch_name
-
-def test_createAndCheckoutBranch(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(base=tmp_path)
-    branch_name = createRandomBranchName()
-    createAndCheckoutBranch(repo, branch_name)
-    branches = getGitBranchList(repo)
-    print(branch_name)
-    print(branches)
-    assert branch_name in getGitBranchList(repo)
-    assert getCurrentBranchName(repo) == branch_name
-
-def test_getCurrentBranchName(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    assert getCurrentBranchName(repo) == "main"
 
 def test_makeTestFile(tmp_path: Path):
     repo = makeTestRepo(base=tmp_path)
@@ -124,73 +65,6 @@ def test_makeTestFile(tmp_path: Path):
     assert file.exists()
     assert file.read_text() == TEST_FILE_CONTENTS
 
-def test_stashFiles(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    untrackedName = createUntrackedFile(repo, random.Random())["file"]
-    assert untrackedName in getGitUntrackedFilesList(repo)
-    assert (repo / untrackedName).exists()
-
-    stashFiles(repo, [untrackedName])
-
-    # File is gone from WT and from the untracked list.
-    assert not (repo / untrackedName).exists()
-    assert getGitUntrackedFilesList(repo) == []
-    # A stash entry was created.
-    assert run(["git", "stash", "list"], cwd=repo) != ""
-
-def test_unstashFiles(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    untrackedName = createUntrackedFile(repo, random.Random())["file"]
-    originalContent = (repo / untrackedName).read_text()
-    stashFiles(repo, [untrackedName])
-    assert not (repo / untrackedName).exists()
-
-    unstashFiles(repo)
-
-    # File is restored byte-for-byte and stash stack is empty.
-    assert (repo / untrackedName).exists()
-    assert (repo / untrackedName).read_text() == originalContent
-    assert getGitUntrackedFilesList(repo) == [untrackedName]
-    assert run(["git", "stash", "list"], cwd=repo) == ""
-
-def test_addFileToGit(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    fileName = TEST_FILENAME
-    file = makeTestFile(repo, fileName)
-    # assert file is in unstaged changes
-    assert getGitUntrackedFilesList(repo) == [fileName]
-    addFileToGit(repo=repo, file=file)
-    # assert file is not in unstaged changes
-    assert getGitUntrackedFilesList(repo) == []
-    # assert file is staged now
-    assert getGitStagedFilesList(repo) == [fileName]
-
-def test_stageFiles(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    fileNames = [TEST_FILENAME, "b.txt"]  
-    files = []
-    for fileName in fileNames:
-        files.append(makeTestFile(repo, fileName))
-    addMultipleFilesToGit(repo=repo, files=files)
-    assert getGitStagedFilesList(repo) == fileNames
-    assert getGitUntrackedFilesList(repo) == []
-
-def test_createCommit(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    fileName = TEST_FILENAME
-    file = makeTestFile(repo, fileName)
-    addFileToGit(repo, file)
-    message = "test commit"
-    createCommit(repo=repo, message=message)
-    # assert commit count is == 1
-    assert countCommitsReachableFromRef(repo, "main") == 1
-    # assert file is not staged
-    assert getGitStagedFilesList(repo) == []
-    # assert file is not untracked
-    assert getGitUntrackedFilesList(repo) == []
-    # assert file is tracked
-    assert getGitTrackedFilesList(repo) == [fileName]
-
 def test_modifyTrackedFile(tmp_path: Path):
     repo = makeTestRepo(base=tmp_path)
     # make a test file
@@ -198,7 +72,7 @@ def test_modifyTrackedFile(tmp_path: Path):
     file = makeTestFile(repo, fileName)
     # add it to git
     addFileToGit(repo, file)
-    createCommit(repo, "commit message")
+    createGitCommit(repo, "commit message")
     # now modify the tracked file
     before = (repo / fileName).read_text()
     action = modifyTrackedFile(repo, fileName, rng=random.Random())
@@ -224,7 +98,7 @@ def test_modifyRandomlyChosenTrackedFile(tmp_path: Path):
         files.append(makeTestFile(repo, fileName))
     addMultipleFilesToGit(repo, files)
     # commit the 3 files
-    createCommit(repo=repo, message="commit message")
+    createGitCommit(repo=repo, message="commit message")
     # modify one of them
     action = modifyRandomlyChosenTrackedFile(repo, files)
     # assert that the file is the only one showing up as unstaged
@@ -238,12 +112,12 @@ def test_createUntrackedFile(tmp_path: Path):
     # assert it is untracked
     assert getGitUntrackedFilesList(repo) == [file["file"]]
 
-def test_setup_repo(tmp_path: Path):                     
-    repo = setup_repo(tmp_path)                            
-    assert checkForCleanWorkTree(repo)
-    assert getCurrentBranchName(repo) != "main"            
-    assert countCommitsReachableFromRef(repo, "main") == 1 
-    assert countCommitsReachableFromRef(repo, "HEAD") == 3
+def test_setup_git_plate_test_repo(tmp_path: Path):                     
+    repo = setup_git_plate_test_repo(tmp_path)                            
+    assert checkGitForCleanWorkTree(repo)
+    assert getCurrentGitBranchName(repo) != "main"            
+    assert countGitCommitsReachableFromRef(repo, "main") == 1 
+    assert countGitCommitsReachableFromRef(repo, "HEAD") == 3
     assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS           
     assert (repo / B_FILENAME).read_text() == B_FILE_CONTENTS          
     assert (repo / F1_FILENAME).read_text() == F1_FILE_CONTENTS
@@ -306,159 +180,6 @@ def test_performRandomEdit_seeded_is_deterministic_simple(tmp_path: Path):
     b = performRandomEdit(repo, seed=42)
     # expect the same results from two deterministic (same seed) calls
     assert a == b
-
-def test_branchExists(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    # a repo with no commits won't show a branch list when running git branch.
-    branch_name = getCurrentBranchName(repo) 
-    # assert that branch_name == "main"
-    assert branch_name == "main"
-    assert branchExists(repo, branch_name) == False
-    # if we make a commit, then the branch will exist
-    # make a test file
-    fileName = TEST_FILENAME
-    file = makeTestFile(repo, fileName)
-    # commit the test file
-    addFileToGit(repo, file)
-    createCommit(repo=repo, message="test commit")
-    # now check that the branch exists
-    assert branchExists(repo, branch_name) == True
-
-def test_countCommitsReachableFromRef(tmp_path: Path):
-    repo = makeTestRepo(base=tmp_path)
-    # make a test file
-    fileName = TEST_FILENAME
-    file = makeTestFile(repo, fileName)
-    # add the test file
-    addFileToGit(repo, file)
-    # commit the test file
-    createCommit(repo=repo, message="test commit")
-    # assert that main has 1 commit
-    assert countCommitsReachableFromRef(repo, "main") == 1
-
-def test_getSHAForRefViaRevParse(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    # 1. assert the function Returns 40-char lowercase hex for HEAD
-    head_sha = getSHAForRefViaRevParse(repo, "HEAD")
-    assert len(head_sha) == 40
-    assert all(c in "0123456789abcdef" for c in head_sha)
-
-    # 2. assert HEAD SHA == current branch tip SHA when HEAD is on that branch
-    branch_name = getCurrentBranchName(repo)
-    assert head_sha == getSHAForRefViaRevParse(repo, branch_name)
-
-    # 3. assert HEAD^{tree} resolves to the tree SHA, which differs from commit SHA
-    tree_sha = getSHAForRefViaRevParse(repo, "HEAD^{tree}")
-    assert len(tree_sha) == 40
-    assert tree_sha != head_sha
-
-    # 4. assert same result when we call the function with HEAD again (Idempotent)
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_sha
-
-def test_readWriteGitTree(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    head_tree = getSHAForRefViaRevParse(repo, "HEAD^{tree}")
-    # snapshot the real index by writing it (no env override) — pure read,
-    # produces a deterministic SHA without mutating anything.
-    real_index_before = run(["git", "write-tree"], cwd=repo)
-    wt_clean_before = checkForCleanWorkTree(repo)
-
-    # 1. assert a round-trip on clean WT reproduces HEAD's tree SHA
-    tmp = makeTempGitIndexPath()
-    try:
-        env = setGitIndexFileForEnv({}, tmp)
-        readGitTreeAt(repo, "HEAD", env)
-        roundtrip_tree = writeGitTree(repo, env)
-        assert roundtrip_tree == head_tree
-    finally:
-        Path(tmp).unlink(missing_ok=True)
-
-    # 2. assert the Real index is untouched
-    assert run(["git", "write-tree"], cwd=repo) == real_index_before
-
-    # 3. assert the Working tree is untouched
-    assert checkForCleanWorkTree(repo) == wt_clean_before
-
-    # 4. assert that WT edits get captured via temp-index `git add -A`
-    tmp2 = makeTempGitIndexPath()
-    try:
-        env = setGitIndexFileForEnv({}, tmp2)
-        readGitTreeAt(repo=repo, ref="HEAD", env=env)
-        # modify a file in the working tree
-        fileName = TEST_FILENAME
-        (repo / fileName).write_text("A-modified\n")
-        # add the file to the index
-        stageAllChanges(repo=repo, env=env)
-        modified_tree = writeGitTree(repo=repo, env=env)
-        # assert that the modified tree is different from the original tree
-        assert modified_tree != head_tree
-        # assert that the Real index is STILL untouched even after temp-index add
-        assert run(["git", "write-tree"], cwd=repo) == real_index_before
-    finally:
-        Path(tmp2).unlink(missing_ok=True)
-
-def test_getTreeRevOf():      
-    assert getTreeRevOf("abc123") == "abc123^{tree}"   
-
-def test_getGitStatus(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    # assert that the repo status is clean
-    assert getGitStatus(repo) == ""
-    # Untracked
-    newFileName = "new.txt"
-    makeTestFile(repo, newFileName)
-    status = getGitStatus(repo)
-    # assert that there is a 'new.txt' file in the repo status
-    assert newFileName in status
-    # modify a tracked file
-    rng = random.Random()
-    modifyTrackedFile(repo, TEST_FILENAME, rng)
-    status = getGitStatus(repo)
-    # assert that the modified file shows up in the repo status with ' M' before it
-    assert ("M " + TEST_FILENAME) in status
-
-def test_checkForCleanWorkTree(tmp_path: Path):
-    # make a test repo
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    # assert that worktree has no changes 
-    assert checkForCleanWorkTree(repo)
-
-def test_getCommitSubject(tmp_path: Path):
-    # make a test repo
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    # assert that main has 1 commit
-    assert getCommitSubject(repo, "main") == TEST_COMMIT_MESSAGE
-
-def test_getCommitTrailers(tmp_path: Path):
-    repo = makeTestRepo(tmp_path)
-    addFileToGit(repo, makeTestFile(repo, "a.txt"))        
-    run(["git", "commit", "-q", "-m", "subject\n\nbody line\n\nparent-convo: abc\nplate-id: 42"], cwd=repo)                             
-    trailers = getCommitTrailers(repo, "HEAD")             
-    assert trailers == {"parent-convo": "abc", "plate-id": 
-"42"}          
-
-def test_resetHardToHead(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    (repo / TEST_FILENAME).write_text("dirty\n")
-    assert (repo / TEST_FILENAME).read_text() == "dirty\n"
-    resetHardToHead(repo)
-    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
-
-def test_cleanWorkTree(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    untrackedName = createUntrackedFile(repo, random.Random())["file"]
-    assert (repo / untrackedName).exists()
-    cleanWorkTree(repo)
-    assert not (repo / untrackedName).exists()
-    assert getGitUntrackedFilesList(repo) == []
-
-def test_deleteBranchForce(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    name = createRandomBranchName()
-    createBranch(repo, name)
-    assert branchExists(repo, name)
-    deleteBranchForce(repo, name)
-    assert not branchExists(repo, name)
 
 def test_formatPlateAge():
     assert formatPlateAge(0) == "0m"
@@ -611,8 +332,8 @@ def test_listPlateBranches(tmp_path: Path):
     time.sleep(1)
 
     # Second plate on a new branch `feature-x`.
-    resetHardToHead(repo)
-    createAndCheckoutBranch(repo, "feature-x")
+    gitResetHardToHead(repo)
+    createAndCheckoutGitBranch(repo, "feature-x")
     (repo / TEST_FILENAME).write_text("edit on feature\n")
     plate_push(repo, convo_id="t2.jsonl", convo_name="convo-on-feature")
 
@@ -632,45 +353,14 @@ def test_listPlateBranches(tmp_path: Path):
 def test_listPlateBranches_excludes_non_plate_refs(tmp_path: Path):
     """Plain working branches and unrelated refs are not returned."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    createAndCheckoutBranch(repo, "feature-y")
+    createAndCheckoutGitBranch(repo, "feature-y")
     # No plate pushed; `feature-y` and `main` are plain branches.
     assert listPlateBranches(repo) == []
-
-def test_saveChangesToPatch(tmp_path: Path):
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    modifiedContent = "modified content\n"
-
-    # Modify a tracked file and create an untracked one.
-    (repo / TEST_FILENAME).write_text(modifiedContent)
-    untrackedName = createUntrackedFile(repo, random.Random())["file"]
-    untrackedContent = (repo / untrackedName).read_text()
-
-    patch = saveChangesToPatch(repo, [TEST_FILENAME, untrackedName])
-
-    # Patch file lands in .plate/dropped/ and ends with a trailing newline.
-    assert patch.exists()
-    assert patch.parent.name == "dropped"
-    text = patch.read_text()
-    assert text.endswith("\n")
-    assert TEST_FILENAME in text
-    assert untrackedName in text
-
-    # WT untouched.
-    assert (repo / TEST_FILENAME).read_text() == modifiedContent
-    assert (repo / untrackedName).exists()
-
-    # Round-trip: reset WT to clean, apply patch, original changes return.
-    resetHardToHead(repo)
-    (repo / untrackedName).unlink()
-    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
-    apply_patch(repo, patch)
-    assert (repo / TEST_FILENAME).read_text() == modifiedContent
-    assert (repo / untrackedName).read_text() == untrackedContent
 
 def test_findMyLastPlate(tmp_path: Path):
     """findMyLastPlate walks the branch and returns most recent matching trailer."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plate_branch = f"{branch}-plate"
 
     # No branch yet → (None, None).
@@ -712,24 +402,24 @@ def test_plate_push_1x(tmp_path: Path):
     # Fixture-specific extras: clear the tracked modification (so checkout
     # doesn't conflict on it), stash the untracked, then verify the plate
     # branch's exact tracked-file list via checkout.
-    originalBranch = getCurrentBranchName(repo)
+    originalBranch = getCurrentGitBranchName(repo)
     plateBranchName = f"{originalBranch}-plate"
     untrackedFileName = next(
         f for f in getGitUntrackedFilesList(repo) if f.startswith("new-")
     )
 
-    resetHardToHead(repo)
-    stashFiles(repo, [untrackedFileName])
+    gitResetHardToHead(repo)
+    gitStashFiles(repo, [untrackedFileName])
     assert getGitUntrackedFilesList(repo) == []
 
-    checkOutBranch(repo, plateBranchName)
+    checkOutGitBranch(repo, plateBranchName)
     assert sorted(getGitTrackedFilesList(repo)) == sorted(
         [".gitignore", TEST_FILENAME, untrackedFileName]
     )
 
-    checkOutBranch(repo, originalBranch)
-    unstashFiles(repo)
-    assert getCurrentBranchName(repo) == originalBranch
+    checkOutGitBranch(repo, originalBranch)
+    gitUnstashFiles(repo)
+    assert getCurrentGitBranchName(repo) == originalBranch
     assert untrackedFileName in getGitUntrackedFilesList(repo)
 
 def test_plate_push_with_convo_id(tmp_path: Path):
@@ -745,9 +435,9 @@ def test_plate_push_with_convo_id(tmp_path: Path):
     )
     assert sha is not None
 
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    trailers = getCommitTrailers(repo, plateBranchName)
+    trailers = getGitCommitTrailers(repo, plateBranchName)
 
     assert trailers["parent-branch"] == branch
     assert trailers["convo-id"] == "/Users/me/.claude/projects/proj/abc-123.jsonl"
@@ -767,12 +457,12 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     repo = tmp_path / "repo"
     repo.mkdir()
     run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
-    createUserConfig(repo)
+    createGitUserConfig(repo)
     writeGitIgnore(repo)
     addFileToGit(repo, ".gitignore")
     (repo / "a.txt").write_text("base\n")
     addFileToGit(repo, "a.txt")
-    createCommit(repo, "initial")
+    createGitCommit(repo, "initial")
 
     # 1 & 2: Agent A's transcript with one Edit-on-a.txt entry (timestamps far
     # in the future so the cutoff filter never excludes them in this test).
@@ -823,7 +513,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     assert "A2-not-yet-plated" not in pb1_a_content
     pb1_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
     assert pb1_b_content == "B"
-    pb1_trailers = getCommitTrailers(repo, "main-plate")
+    pb1_trailers = getGitCommitTrailers(repo, "main-plate")
     assert pb1_trailers["convo-id"] == str(transcript_B)
     # Pb1 parents to Pa1 (linear history on the shared branch).
     assert run(["git", "rev-parse", "main-plate~1"], cwd=repo) == pa1_sha
@@ -837,7 +527,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     assert pa2_a_content == "base\nA1\nA2-not-yet-plated"
     pa2_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
     assert pa2_b_content == "B"
-    pa2_trailers = getCommitTrailers(repo, "main-plate")
+    pa2_trailers = getGitCommitTrailers(repo, "main-plate")
     assert pa2_trailers["convo-id"] == str(transcript_A)
 
     # 12: Agent B "deletes" b.txt — append a Bash rm entry to Agent B's
@@ -874,8 +564,8 @@ def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
     sha = plate_push(repo)
     assert sha is not None
 
-    branch = getCurrentBranchName(repo)
-    trailers = getCommitTrailers(repo, f"{branch}-plate")
+    branch = getCurrentGitBranchName(repo)
+    trailers = getGitCommitTrailers(repo, f"{branch}-plate")
     assert trailers["parent-branch"] == branch
     assert "convo-id" not in trailers
     assert "convo-name" not in trailers
@@ -916,32 +606,6 @@ def test_simulate_derived_agent_second(tmp_path: Path):
     """Per-function: second derived agent extends chain (parent-convo points at previous)."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_second_derived_agent_extends_chain(repo)
-
-def test_apply_patch(tmp_path: Path):
-    # 1. Make a test repo with a single commit; original tracked content
-    #    is TEST_FILE_CONTENTS.
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-
-    # 2. Modify the tracked file and capture the diff via `git diff --binary`
-    #    into a .patch file. (run() strips trailing newlines; git apply
-    #    requires them, so append "\n".)
-    modifiedContent = "modified content\n"
-    (repo / TEST_FILENAME).write_text(modifiedContent)
-    patch_text = run(["git", "diff", "--binary"], cwd=repo)
-    patch_path = tmp_path / "test.patch"
-    patch_path.write_text(patch_text + "\n")
-
-    # 3. git reset --hard to revert the WT to the original state.
-    run(["git", "reset", "--hard"], cwd=repo)
-    assert (repo / TEST_FILENAME).read_text() == TEST_FILE_CONTENTS
-
-    # 4. Call apply_patch(repo, patchPath); expected behavior:
-    #    a. Runs `git apply --3way <patch>` on the saved patch.
-    #    b. WT now reflects the patched state again.
-    apply_patch(repo, patch_path)
-
-    # 5. Assert: tracked file content matches the modified content (post-patch).
-    assert (repo / TEST_FILENAME).read_text() == modifiedContent
 
 def test_plate_drop_no_branch(tmp_path: Path, capsys):
     """Per-function: plate_drop with no plate branch warns + returns None."""
@@ -1023,33 +687,33 @@ def test_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(tmp_pat
 
 def test_setup_repo_checks_out_non_main_branch(repo: Path) -> None:
     """Working branch is randomized but is never 'main'."""
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     assert branch
     assert branch != "main"
 
 
 def test_setup_repo_branch_name_is_varied(tmp_path: Path) -> None:
     """Two fresh repos in succession should pick different branch names."""
-    from plate_lib import setup_repo
+    from plate_lib import setup_git_plate_test_repo
 
     seen = set()
     for i in range(10):
-        r = setup_repo(tmp_path / f"r{i}")
-        seen.add(getCurrentBranchName(r))
+        r = setup_git_plate_test_repo(tmp_path / f"r{i}")
+        seen.add(getCurrentGitBranchName(r))
     # Variance means we shouldn't always get the same name 10 times.
     assert len(seen) > 1
 
 
 def test_setup_repo_creates_three_commits(repo: Path) -> None:
-    assert countCommitsReachableFromRef(repo, "HEAD") == 3
+    assert countGitCommitsReachableFromRef(repo, "HEAD") == 3
 
 
 def test_setup_repo_main_has_one_commit(repo: Path) -> None:
-    assert countCommitsReachableFromRef(repo, "main") == 1
+    assert countGitCommitsReachableFromRef(repo, "main") == 1
 
 
 def test_setup_repo_starts_clean(repo: Path) -> None:
-    assert checkForCleanWorkTree(repo)
+    assert checkGitForCleanWorkTree(repo)
 
 
 def test_setup_repo_creates_expected_files(repo: Path) -> None:
@@ -1059,28 +723,28 @@ def test_setup_repo_creates_expected_files(repo: Path) -> None:
 
 
 def test_setup_repo_has_expected_subjects(repo: Path) -> None:
-    assert getCommitSubject(repo, "HEAD") == "F1"
-    assert getCommitSubject(repo, "HEAD~1") == "B"
-    assert getCommitSubject(repo, "main") == "A"
+    assert getGitCommitSubject(repo, "HEAD") == "F1"
+    assert getGitCommitSubject(repo, "HEAD~1") == "B"
+    assert getGitCommitSubject(repo, "main") == "A"
 
 
 def test_setup_repo_diverges_from_main(repo: Path) -> None:
     """The working branch and main share an ancestor (A) but diverge:
     main has neither b.txt nor fix.txt."""
-    assert getTreeSHA(repo, "main") != getTreeSHA(repo, "HEAD")
+    assert getGitTreeSHA(repo, "main") != getGitTreeSHA(repo, "HEAD")
 
 
 def test_setup_repo_no_plate_branch_initially(repo: Path) -> None:
-    plate = f"{getCurrentBranchName(repo)}-plate"
-    assert not branchExists(repo, plate)
+    plate = f"{getCurrentGitBranchName(repo)}-plate"
+    assert not checkIfGitBranchExists(repo, plate)
 
 
 # ── performRandomEdit ───────────────────────────────────────────────────────
 
 def test_performRandomEdit_dirties_wt(repo: Path) -> None:
-    assert checkForCleanWorkTree(repo)
+    assert checkGitForCleanWorkTree(repo)
     performRandomEdit(repo, seed=0)
-    assert not checkForCleanWorkTree(repo)
+    assert not checkGitForCleanWorkTree(repo)
 
 
 def test_performRandomEdit_returns_action_record(repo: Path) -> None:
@@ -1121,9 +785,9 @@ def test_performRandomEdit_seeded_is_deterministic(repo: Path, tmp_path: Path) -
     """Same seed → same action."""
     a = performRandomEdit(repo, seed=12345)
     # Reset by setting up a parallel repo from the same fixture base
-    from plate_lib import setup_repo
+    from plate_lib import setup_git_plate_test_repo
 
-    other = setup_repo(tmp_path / "other")
+    other = setup_git_plate_test_repo(tmp_path / "other")
     b = performRandomEdit(other, seed=12345)
     assert a == b
 
@@ -1132,7 +796,7 @@ def test_performRandomEdit_unseeded_works(repo: Path) -> None:
     """No seed → still produces a valid edit (non-deterministic)."""
     result = performRandomEdit(repo)
     assert result["action"] in ("modify_tracked", "create_untracked")
-    assert not checkForCleanWorkTree(repo)
+    assert not checkGitForCleanWorkTree(repo)
 
 
 # ── plate operation sequence specs ───────────────────────────────────
@@ -1147,15 +811,15 @@ def test_sequence_01_plate_push_first_time_preserves_user_workspace(repo: Path) 
 
 
 def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> None:
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    head_before = getSHAForRefViaRevParse(repo, "HEAD")
+    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
 
     # 1. Edit A: modify a tracked file. Run plate_push → P1.
     (repo / TEST_FILENAME).write_text("edit A\n")
     p1_sha = plate_push(repo)
     assert p1_sha is not None
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == p1_sha
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p1_sha
 
     # 2. Edit B: keep working — append more changes on top of the visible WT.
     (repo / TEST_FILENAME).write_text("edit A\nedit B\n")
@@ -1169,7 +833,7 @@ def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> N
     assert p2_sha != p1_sha
     assert run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo) == p1_sha
     # 4b. <branch>-plate advances to P2.
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == p2_sha
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p2_sha
     # 4c. Latest plate tree captures the current WT (both edit B and untracked).
     plate_files = run(
         ["git", "ls-tree", "-r", "--name-only", plateBranchName], cwd=repo
@@ -1180,7 +844,7 @@ def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> N
     )
     assert plate_tip_a_txt == "edit A\nedit B"
     # 4d. Branch HEAD and WT unchanged.
-    assert getSHAForRefViaRevParse(repo, "HEAD") == head_before
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
     assert (repo / TEST_FILENAME).read_text() == "edit A\nedit B\n"
     assert untracked_b in getGitUntrackedFilesList(repo)
 
@@ -1195,14 +859,14 @@ def test_sequence_03_plate_done_replays_stack_and_cleans_workspace(repo: Path) -
 
 
 def test_sequence_04_plate_done_captures_unpushed_work_before_cleanup(repo: Path) -> None:
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    branch_count_before = countCommitsReachableFromRef(repo, branch)
+    branch_count_before = countGitCommitsReachableFromRef(repo, branch)
 
     # 1. Edit A: create untracked file U_A, push as P1.
     u_a = createUntrackedFile(repo, random.Random())["file"]
     plate_push(repo)
-    assert branchExists(repo, plateBranchName)
+    assert checkIfGitBranchExists(repo, plateBranchName)
 
     # 2. Edit B: create untracked file U_B but DO NOT plate_push it.
     u_b = createUntrackedFile(repo, random.Random())["file"]
@@ -1218,32 +882,32 @@ def test_sequence_04_plate_done_captures_unpushed_work_before_cleanup(repo: Path
     plate_done(repo)
 
     # 4a. Plate ref deleted.
-    assert not branchExists(repo, plateBranchName)
+    assert not checkIfGitBranchExists(repo, plateBranchName)
     # 4b. Branch received TWO commits (P1 + the implicit pre-push that
     #     captured U_B). Without the implicit pre-push, only P1 lands and
     #     U_B is lost during clean -fd.
-    assert countCommitsReachableFromRef(repo, branch) == branch_count_before + 2
+    assert countGitCommitsReachableFromRef(repo, branch) == branch_count_before + 2
     # 4c. WT clean — both files are now tracked.
-    assert checkForCleanWorkTree(repo)
+    assert checkGitForCleanWorkTree(repo)
     tracked = getGitTrackedFilesList(repo)
     assert u_a in tracked
     assert u_b in tracked
 
 
 def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
-    branch = getCurrentBranchName(repo)
+    branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     rng = random.Random()
     # 1. P1: edit A — create untracked U_A, push.
     u_a = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
-    p1_sha = getSHAForRefViaRevParse(repo, plateBranchName)
+    p1_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
     # 2. P2: edit B — create untracked U_B, push.
     u_b = createUntrackedFile(repo, rng)["file"]
     p2_sha = plate_push(repo)
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == p2_sha
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p2_sha
 
     # 3. plate_drop — should rewind, NOT delete (multi-plate stack).
     patch_path = plate_drop(repo)
@@ -1252,8 +916,8 @@ def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
     assert patch_path.exists()
     assert patch_path.parent.name == "dropped"
     # 4b. <branch>-plate rewinds to P1 (still exists, not deleted).
-    assert branchExists(repo, plateBranchName)
-    assert getSHAForRefViaRevParse(repo, plateBranchName) == p1_sha
+    assert checkIfGitBranchExists(repo, plateBranchName)
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p1_sha
     # 4c. WT unchanged — both untracked files still present.
     assert (repo / u_a).exists()
     assert (repo / u_b).exists()
@@ -1276,7 +940,7 @@ def test_sequence_07_apply_patch_recovers_dropped_plate_work(repo: Path) -> None
     # 1. User creates a single plate P1.
     # 2. User runs plate_drop(repo) and keeps the generated patch path.
     # 3. User resets/cleans the repo back to branch HEAD.
-    # 4. User runs apply_patch(repo, patch).
+    # 4. User runs applyGitPatch(repo, patch).
     # 5. WT contains the dropped plate work again byte-for-byte.
     _check_plate_drop_then_apply_patch_round_trip(repo)
 
@@ -1413,11 +1077,11 @@ def test_sequence_19_drop_patch_is_portable_across_repos(tmp_path: Path) -> None
     # 2. In repoA: edit TEST_FILENAME, create an untracked file, plate_push,
     #    plate_drop → produces a portable .patch file.
     # 3. The .patch file is copied into repoB (e.g., emailed to a teammate).
-    # 4. In repoB: apply_patch(repoB, patch) restores the dropped edits
+    # 4. In repoB: applyGitPatch(repoB, patch) restores the dropped edits
     #    byte-for-byte — both the tracked modification and the untracked
     #    file land cleanly with no merge markers.
-    repoA = setup_repo(tmp_path / "a")
-    repoB = setup_repo(tmp_path / "b")
+    repoA = setup_git_plate_test_repo(tmp_path / "a")
+    repoB = setup_git_plate_test_repo(tmp_path / "b")
     _check_drop_patch_applies_in_fresh_repo(repoA, repoB)
 
 
