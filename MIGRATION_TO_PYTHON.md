@@ -20,8 +20,7 @@ A lot of bash tricks were used to get around bugs or side effects in how bash sc
    dispatcher and replace the `.sh` body with one-line Python shims to
    keep the source-able function names intact.
 7. If the script is a hook entry point, replace the `.sh` body with a
-   single `exec python3 <module> "$@"` line (or rewrite the hook config
-   to invoke Python directly).
+   single `exec python3 <module> "$@"` line (or rewrite the hook config to invoke Python directly).  
 8. Verify end-to-end (callers + integration tests) before checking the
    box below.
 
@@ -38,7 +37,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 - [x] common/scripts/hook-json.sh — bash shim now delegates to `hook_json_cli.py` + `hook_json_lib.py`; file kept until 9 sourcers migrate
 - [ ] common/scripts/invoke_command.sh
 - [ ] common/scripts/lock.sh
-- [ ] common/scripts/permissions-seed.sh
+- [x] common/scripts/permissions-seed.sh — bash shim now delegates to `permissions_seed_cli.py` + `permissions_seed_lib.py`; file kept until 4 sourcers migrate
 - [x] common/scripts/platform.sh — bash shim now delegates to `platform_cli.py` + `platform_lib.py`; file kept until 5 sourcers migrate
 - [!] common/scripts/silencers.sh — bash-only `hide_output`/`hide_errors`; delete once no `.sh` sources it
 - [ ] common/scripts/tmux-launcher.sh
