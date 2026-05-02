@@ -27,7 +27,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 
 - [ ] common/scripts/claude-launcher.sh
 - [x] common/scripts/git.sh — bash shim now delegates to `git_cli.py` + `git_lib.py`; file kept until 7 sourcers migrate
-- [ ] common/scripts/hook-json.sh
+- [x] common/scripts/hook-json.sh — bash shim now delegates to `hook_json_cli.py` + `hook_json_lib.py`; file kept until 9 sourcers migrate
 - [ ] common/scripts/invoke_command.sh
 - [ ] common/scripts/lock.sh
 - [ ] common/scripts/permissions-seed.sh
