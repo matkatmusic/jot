@@ -4,18 +4,25 @@ Inventory of every shell script in the repo, sorted into what will be
 migrated to Python and what will not. Migrate-able items are checkboxes
 so progress can be tracked file-by-file.
 
+**Before beginning**:
+- review the file being migrated and define its behavior as a spec.
+A lot of bash tricks were used to get around bugs or side effects in how bash scripting works.  Python doesn't have those problems, so we should leverage python's improvements.
+
 **Migration template** (per script, mirroring the `git.sh` pattern):
 0. Create a numbered todo list for the plan that was generated.
-1. Move logic into a `*_lib.py` module under `common/scripts/` (or the
+1. Add pytest coverage in `tests/` matching the original behavior. These are RED tests that should fail immediately. 
+2. Move logic into a `*_lib.py` module under `common/scripts/` (or the
    skill's local Python dir).
-2. If the script is sourced by other shells, add a `*_cli.py` argparse
+3. Run `pytest` to verify that the RED tests pass.  
+4. Revise implementations in the `*_lib.py` file until the tests pass.
+5. Do not proceed to the arg parsing dispatcher step next until all tests pass (GREEN). 
+6. If the script is sourced by other shells, add a `*_cli.py` argparse
    dispatcher and replace the `.sh` body with one-line Python shims to
    keep the source-able function names intact.
-3. If the script is a hook entry point, replace the `.sh` body with a
+7. If the script is a hook entry point, replace the `.sh` body with a
    single `exec python3 <module> "$@"` line (or rewrite the hook config
    to invoke Python directly).
-4. Add pytest coverage in `tests/` matching the original behavior.
-5. Verify end-to-end (callers + integration tests) before checking the
+8. Verify end-to-end (callers + integration tests) before checking the
    box below.
 
 ---
@@ -26,7 +33,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 
 ## common/scripts/
 
-- [ ] common/scripts/claude-launcher.sh
+- [x] common/scripts/claude-launcher.sh — bash shim now delegates to `claude_launcher_cli.py` + `claude_launcher_lib.py`; file kept until 4 sourcers migrate
 - [x] common/scripts/git.sh — bash shim now delegates to `git_cli.py` + `git_lib.py`; file kept until 7 sourcers migrate
 - [x] common/scripts/hook-json.sh — bash shim now delegates to `hook_json_cli.py` + `hook_json_lib.py`; file kept until 9 sourcers migrate
 - [ ] common/scripts/invoke_command.sh
