@@ -5,6 +5,7 @@ migrated to Python and what will not. Migrate-able items are checkboxes
 so progress can be tracked file-by-file.
 
 **Before beginning**:
+- in this file: mark the file being migrated as IN PROGRESS: `[~]` so that other agents don't attempt to migrate the file.
 - review the file being migrated and define its behavior as a spec.
 A lot of bash tricks were used to get around bugs or side effects in how bash scripting works.  Python doesn't have those problems, so we should leverage python's improvements.
 
@@ -35,7 +36,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 - [x] common/scripts/claude-launcher.sh — bash shim now delegates to `claude_launcher_cli.py` + `claude_launcher_lib.py`; file kept until 4 sourcers migrate
 - [x] common/scripts/git.sh — bash shim now delegates to `git_cli.py` + `git_lib.py`; file kept until 7 sourcers migrate
 - [x] common/scripts/hook-json.sh — bash shim now delegates to `hook_json_cli.py` + `hook_json_lib.py`; file kept until 9 sourcers migrate
-- [ ] common/scripts/invoke_command.sh
+- [x] common/scripts/invoke_command.sh — bash shim now delegates to `invoke_command_cli.py` + `invoke_command_lib.py`; file kept until tmux.sh migrates
 - [ ] common/scripts/lock.sh
 - [x] common/scripts/permissions-seed.sh — bash shim now delegates to `permissions_seed_cli.py` + `permissions_seed_lib.py`; file kept until 4 sourcers migrate
 - [x] common/scripts/platform.sh — bash shim now delegates to `platform_cli.py` + `platform_lib.py`; file kept until 5 sourcers migrate
