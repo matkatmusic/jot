@@ -90,7 +90,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 - [ ] skills/jot/scripts/jot-state-lib.sh
 - [ ] skills/jot/scripts/jot-stop.sh
 - [ ] skills/jot/scripts/jot.sh
-- [ ] skills/jot/scripts/scan-open-todos.sh
+- [x] skills/jot/scripts/scan-open-todos.sh — bash entry point now a one-line `exec python3` to `common/scripts/jot/scan_open_todos_cli.py` + `scan_open_todos_lib.py`
 
 ## skills/jot/tests/
 
