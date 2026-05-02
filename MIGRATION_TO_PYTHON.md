@@ -5,6 +5,7 @@ migrated to Python and what will not. Migrate-able items are checkboxes
 so progress can be tracked file-by-file.
 
 **Migration template** (per script, mirroring the `git.sh` pattern):
+0. Create a numbered todo list for the plan that was generated.
 1. Move logic into a `*_lib.py` module under `common/scripts/` (or the
    skill's local Python dir).
 2. If the script is sourced by other shells, add a `*_cli.py` argparse
@@ -31,7 +32,7 @@ Legend: `[ ]` to migrate, `[x]` migrated, `[~]` in progress, `[!]` wont migrate 
 - [ ] common/scripts/invoke_command.sh
 - [ ] common/scripts/lock.sh
 - [ ] common/scripts/permissions-seed.sh
-- [ ] common/scripts/platform.sh
+- [x] common/scripts/platform.sh — bash shim now delegates to `platform_cli.py` + `platform_lib.py`; file kept until 5 sourcers migrate
 - [!] common/scripts/silencers.sh — bash-only `hide_output`/`hide_errors`; delete once no `.sh` sources it
 - [ ] common/scripts/tmux-launcher.sh
 - [ ] common/scripts/tmux.sh
