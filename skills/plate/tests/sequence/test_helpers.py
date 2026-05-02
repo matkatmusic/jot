@@ -755,6 +755,63 @@ def test_plate_push_with_convo_id(tmp_path: Path):
     # Multi-line summary input collapses to single line of space-joined words.
     assert trailers["convo-summary"] == "line one line two line three"
 
+def test_plate_push_convo_summary_preserves_section_labels_on_own_lines(
+    tmp_path: Path,
+):
+    """Regression for multi-line trailer formatting.
+
+    Earlier code collapsed all whitespace in the convo-summary body to
+    single spaces (`" ".join(text.split())`), so when the user ran
+    `git log -1 --format='%(trailers)'` everything appeared as one wall
+    of text. The agent's section labels (`what:` `why:` `how:` ...) were
+    no longer on their own lines.
+
+    Fix: indent every continuation line with a single space (git's
+    standard multi-line trailer continuation rule), preserving the line
+    breaks. `getCommitTrailers` uses `unfold=true`, so the flat-form
+    test contract still holds for callers that expect a single-line
+    string.
+
+    Failing condition: the raw commit message has the section labels
+    smashed onto one line, OR the unfolded read returns something
+    other than the flat space-joined string.
+    """
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    (repo / TEST_FILENAME).write_text("modified\n")
+
+    summary = (
+        "what:\n"
+        "extracted git_lib from plate_lib.\n"
+        "why:\n"
+        "python migration cleanup.\n"
+        "how:\n"
+        "verbatim move plus a shim."
+    )
+    sha = plate_push(repo, convo_summary=summary)
+    assert sha is not None
+
+    branch = getCurrentBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    # Raw commit message: each section label is at the start of a line
+    # (with the single leading space that marks a trailer continuation).
+    raw = run(["git", "log", "-1", "--format=%B", plateBranchName], cwd=repo)
+    # The convo-summary trailer line opens with `convo-summary: what:`.
+    # The continuation lines are space-prefixed (` why:` etc.).
+    assert "convo-summary: what:" in raw
+    assert "\n why:" in raw, f"why: not on its own line in raw message:\n{raw}"
+    assert "\n how:" in raw, f"how: not on its own line in raw message:\n{raw}"
+
+    # Unfolded read (the form code paths already depend on): collapses
+    # continuation lines to single-space joins. Existing flat-form
+    # contract preserved.
+    trailers = getCommitTrailers(repo, plateBranchName)
+    flat = trailers["convo-summary"]
+    assert "what:" in flat and "why:" in flat and "how:" in flat
+    # No literal newline in the unfolded form.
+    assert "\n" not in flat
+
+
 def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path):
     """Regression for the production-vs-test convo_id semantics mismatch.
 

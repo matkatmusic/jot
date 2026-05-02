@@ -42,9 +42,34 @@ import sys
 from pathlib import Path
 
 
-def _collapse(text: str) -> str:
-    """Git trailers are single-line by spec. Collapse whitespace to one space."""
-    return " ".join(text.split())
+def _format_trailer_body(text: str) -> str:
+    """Format summary body for a multi-line git trailer value.
+
+    Git trailers can span multiple lines if every line after the first
+    starts with whitespace (RFC 822 / `git interpret-trailers` continuation
+    rule). We preserve line breaks so section labels (`what:` `why:` `how:`
+    `open questions:` `next steps:`) render on their own lines when the
+    user runs `git log -1 --format='%(trailers)'`.
+
+    `getCommitTrailers` reads with `unfold=true`, which collapses these
+    continuation lines back to a single space-joined string for
+    code paths that want the flat form (preserves the existing test
+    contract).
+
+    Trims leading/trailing blank lines. For empty body lines, emits a
+    single space so git keeps treating the block as one trailer rather
+    than ending it.
+    """
+    raw = [line.rstrip() for line in text.splitlines()]
+    while raw and not raw[0].strip():
+        raw.pop(0)
+    while raw and not raw[-1].strip():
+        raw.pop()
+    if not raw:
+        return ""
+    first = raw[0].lstrip()
+    rest = [(" " + line.lstrip()) if line.strip() else " " for line in raw[1:]]
+    return "\n".join([first] + rest)
 
 
 def _strip_summary_trailer(message: str) -> str:
@@ -79,7 +104,7 @@ def _append_summary_trailer(message: str, summary: str) -> str:
     # contiguous with the existing trailer paragraph.
     while content and content[-1].strip() == "":
         content.pop()
-    content.append(f"convo-summary: {_collapse(summary)}")
+    content.append(f"convo-summary: {_format_trailer_body(summary)}")
 
     rebuilt = "\n".join(content)
     if comments:

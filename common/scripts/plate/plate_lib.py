@@ -403,6 +403,36 @@ def getCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
             trailers[key.strip()] = value.strip()
     return trailers
 
+def _formatTrailerBody(text: str) -> str:
+    """Format a long body for a multi-line git trailer value.
+
+    Git trailers can span multiple lines if every line after the first
+    starts with whitespace (RFC 822 / `git interpret-trailers`
+    continuation rule). Indenting each continuation line with a single
+    space preserves the original line breaks so multi-section bodies
+    (e.g. the convo-summary's `what:` `why:` `how:` ... blocks) render
+    each label on its own line when the user runs
+    `git log -1 --format='%(trailers)'`.
+
+    Readers that want the flat form pass `unfold=true` (which
+    `getCommitTrailers` already does — preserves the existing
+    single-line shape every test asserts on).
+
+    Trims leading/trailing blank lines. Body lines that are pure
+    whitespace are emitted as a single space so git keeps treating the
+    block as one trailer rather than ending it.
+    """
+    raw = [line.rstrip() for line in text.splitlines()]
+    while raw and not raw[0].strip():
+        raw.pop(0)
+    while raw and not raw[-1].strip():
+        raw.pop()
+    if not raw:
+        return ""
+    first = raw[0].lstrip()
+    rest = [(" " + line.lstrip()) if line.strip() else " " for line in raw[1:]]
+    return "\n".join([first] + rest)
+
 # ── Helpers used by the plate operations ─────────────────────────────
 
 def resetHardToHead(repo: Path) -> None:
@@ -977,9 +1007,13 @@ def plate_push(
     if convo_name is not None:
         trailerLines.append(f"convo-name: {convo_name}")
     if convo_summary is not None:
-        # Git trailers are single-line; collapse newlines to single spaces.
-        flatSummary = " ".join(convo_summary.split())
-        trailerLines.append(f"convo-summary: {flatSummary}")
+        # Multi-line trailer value: each line after the first is indented
+        # with a single space so git's continuation rule preserves the
+        # section breaks (`what:` `why:` `how:` ... each on its own line
+        # when read via `git log --format='%(trailers)'`). Readers that
+        # want the flat form pass `unfold=true` (which `getCommitTrailers`
+        # does — preserves the existing test-asserted single-line shape).
+        trailerLines.append(f"convo-summary: {_formatTrailerBody(convo_summary)}")
 
     commitMessage = f"plate: WIP on {branch}\n\n" + "\n".join(trailerLines)
 

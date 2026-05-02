@@ -35,7 +35,42 @@ Examples:
 
 Target length: ~400 words. Hard cap 600.
 
-Use these 5 sections, in this order, with lowercase keys followed by a colon:
+Use these 5 sections, in this order, with lowercase keys followed by a colon.
+**Each section label MUST sit on its own line** with the section content on
+the lines below it (a blank line between sections is fine but optional). The
+trailer-rewrite pipeline (`_rebase_reword_summary.py::_format_trailer_body`)
+preserves these line breaks via git's continuation-indent rule, so when a
+reader runs `git log -1 --format='%(trailers)'` they see the labels rendered
+on their own lines.
+
+Bad (label inline with content — collapses into one wall of text):
+
+```
+what: extracted git_lib from plate_lib why: needed for python migration
+```
+
+Good (label on its own line):
+
+```
+what:
+extracted git_lib from plate_lib so plate_lib can shrink to plate-specific
+orchestration.
+
+why:
+part of the larger jot Python migration.
+
+how:
+moved the helpers verbatim, then added a thin shim back in git.sh.
+
+open questions:
+- whether to keep the shim long-term or drop it next milestone
+
+next steps:
+- write integration test for the shim
+- update PLATE STATE.md
+```
+
+Section guidance:
 
 what:
   2-4 sentences describing the concrete work that's been done across this
