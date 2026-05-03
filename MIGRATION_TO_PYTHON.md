@@ -125,12 +125,14 @@ Legend:
 
 ## skills/plate/scripts/
 
-- [ ] skills/plate/scripts/branch-snapshot.sh
-- [ ] skills/plate/scripts/branch-snapshot.v2.sh
-- [ ] skills/plate/scripts/done.sh
-- [ ] skills/plate/scripts/drop.sh
-- [ ] skills/plate/scripts/list-paused-plates.sh
-- [ ] skills/plate/scripts/next.sh
+Per `skills/plate/PLATE STATE.md` §"Stage 2 dead-code purge": logic already migrated to `common/scripts/plate/plate_lib.py`; these scripts are unreferenced by `/plate` and slated for deletion (held briefly for revertability after live-validation).
+
+- [-] skills/plate/scripts/branch-snapshot.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/branch-snapshot.v2.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/done.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/drop.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/list-paused-plates.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/next.sh — superseded by plate_lib.py
 - [ ] skills/plate/scripts/paths.sh
 - [ ] skills/plate/scripts/plate-orchestrator.sh
 - [ ] skills/plate/scripts/plate-session-start.sh
@@ -139,11 +141,11 @@ Legend:
 - [ ] skills/plate/scripts/plate-worker-start.sh
 - [ ] skills/plate/scripts/plate-worker-stop.sh
 - [ ] skills/plate/scripts/plate.sh
-- [ ] skills/plate/scripts/push.sh
-- [ ] skills/plate/scripts/register-parent.sh
-- [ ] skills/plate/scripts/render-tree.sh
+- [-] skills/plate/scripts/push.sh — superseded by plate_lib.py
+- [-] skills/plate/scripts/register-parent.sh — superseded by plate_lib.py
+- [ ] skills/plate/scripts/render-tree.sh — KEEP per PLATE STATE.md (`--show` design deferred)
 - [ ] skills/plate/scripts/show.sh
-- [ ] skills/plate/scripts/snapshot-stash.sh
+- [-] skills/plate/scripts/snapshot-stash.sh — superseded by plate_lib.py
 
 ## skills/plate/tests/
 
