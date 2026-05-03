@@ -152,16 +152,28 @@ def _cmd_show(argv: list[str]) -> str:
 def _cmd_set_plate_summary(argv: list[str]) -> str:
     """set-plate-summary <repo> <branch> <summary-file>
 
-    Invoked by the per-invocation Stop hook of the spawned summary
-    agent: reads the agent's output file and rewrites the plate branch
-    so only the tip carries `convo-summary` (set to the file's contents),
-    with all earlier plate commits stripped of `convo-summary` trailers.
+    Invoked by the per-invocation SessionEnd hook of the spawned
+    summary agent (plate-summary-stop.sh). Reads the agent's output
+    file and writes its content as the convo-summary trailer on the
+    tip of <branch>-plate, replacing the placeholder commit subject
+    with the agent's subject (line 1 of the payload).
+
+    Routes through `plate_lib.regenerateTipSummary`, which uses
+    `git commit-tree` directly. The legacy `rewriteBranchTipSummary`
+    rebase-and-worktree path was leaking orphan worktrees and
+    corrupting trailer blocks in production; the commit-tree path
+    avoids both failure modes.
     """
     if len(argv) != 3:
         return "plate: usage: set-plate-summary <repo> <branch> <summary-file>"
     repo, branch, summary_file = Path(argv[0]), argv[1], Path(argv[2])
     summary_text = summary_file.read_text()
-    new_tip = plate_lib.rewriteBranchTipSummary(repo, branch, summary_text)
+    new_tip = plate_lib.regenerateTipSummary(
+        repo,
+        branch,
+        prior_summary="",  # unused — agent already produced summary_text
+        agent_callable=lambda _prior: summary_text,
+    )
     return f"plate: summary written ({new_tip[:8]} on {branch}-plate)"
 
 

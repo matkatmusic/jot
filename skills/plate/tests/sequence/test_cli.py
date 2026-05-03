@@ -176,14 +176,53 @@ def test_routes_show_returns_todo_stub() -> None:
 
 
 def test_set_plate_summary_cli_routing(tmp_path: Path) -> None:
-    """set-plate-summary <repo> <branch> <summary-file> reads the file
-    and forwards the contents to plate_lib.rewriteBranchTipSummary."""
+    """set-plate-summary <repo> <branch> <summary-file> must dispatch
+    to plate_lib.regenerateTipSummary (the commit-tree based path) —
+    NOT rewriteBranchTipSummary (the rebase-based path that has been
+    leaking orphan worktrees and corrupting trailer blocks in
+    production). The agent's preserved summary.txt content is fed in
+    via an agent_callable so the file's content lands as-is in the
+    new convo-summary trailer.
+    """
+    summary_text = (
+        "Migrate scan-open-todos to python\n"
+        "\n"
+        "what:\n"
+        "thing\n"
+        "\n"
+        "why:\n"
+        "reason\n"
+    )
     summary_file = tmp_path / "summary.txt"
-    summary_file.write_text("what:\nthing\n\nwhy:\nreason\n\nhow:\napproach\n\nnext steps:\n- foo\n")
-    with mock.patch.object(cli.plate_lib, "rewriteBranchTipSummary", return_value="abc12345deadbeef") as mr:
-        out, rc = _run(["set-plate-summary", "/repos/myproj", "feature-x", str(summary_file)])
+    summary_file.write_text(summary_text)
+
+    with mock.patch.object(
+        cli.plate_lib, "regenerateTipSummary", return_value="abc12345deadbeef",
+    ) as mr:
+        out, rc = _run(
+            ["set-plate-summary", "/repos/myproj", "feature-x", str(summary_file)],
+        )
     assert rc == 0
-    assert mr.call_args.args == (Path("/repos/myproj"), "feature-x", summary_file.read_text())
+    assert mr.call_count == 1
+
+    # repo + branch passed through.
+    args, kwargs = mr.call_args
+    all_args = {"repo": Path("/repos/myproj"), "branch": "feature-x"}
+    # Accept either positional or keyword forms for repo + branch.
+    if args:
+        assert args[0] == all_args["repo"]
+        assert args[1] == all_args["branch"]
+    else:
+        assert kwargs.get("repo") == all_args["repo"]
+        assert kwargs.get("branch") == all_args["branch"]
+
+    # agent_callable returns summary.txt content verbatim (the spawned
+    # claude already produced it; no second invocation should happen).
+    agent_callable = kwargs.get("agent_callable")
+    assert callable(agent_callable), kwargs
+    assert agent_callable("ignored prior") == summary_text
+
+    # User-facing message includes new tip prefix + branch.
     assert "abc12345" in out and "feature-x-plate" in out
 
 

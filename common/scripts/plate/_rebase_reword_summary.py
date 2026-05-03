@@ -61,14 +61,17 @@ def _format_trailer_body(text: str) -> str:
     than ending it.
     """
     raw = [line.rstrip() for line in text.splitlines()]
-    while raw and not raw[0].strip():
-        raw.pop(0)
-    while raw and not raw[-1].strip():
-        raw.pop()
+    # Drop ALL blank lines (leading, trailing, AND interior). Git treats
+    # whitespace-only lines as paragraph separators that terminate a
+    # trailer block — so emitting `" "` for blank body lines produced
+    # un-parseable trailers. Section labels still render on their own
+    # lines because each label line is itself non-blank and gets
+    # indented as a continuation line below.
+    raw = [line for line in raw if line.strip()]
     if not raw:
         return ""
     first = raw[0].lstrip()
-    rest = [(" " + line.lstrip()) if line.strip() else " " for line in raw[1:]]
+    rest = [" " + line.lstrip() for line in raw[1:]]
     return "\n".join([first] + rest)
 
 

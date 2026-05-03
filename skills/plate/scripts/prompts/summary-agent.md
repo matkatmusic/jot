@@ -32,9 +32,9 @@ summary from `git log` to pick up where the previous work left off.
      `plate: WIP on <branch>` subject on the tip commit only — earlier
      plate commits keep their original subjects.
    - **Line 2**: blank.
-   - **Lines 3+**: the 5-section summary body (lowercase keys with colons,
-     `what:` `why:` `how:` `open questions:` `next steps:` in order,
-     omitting `open questions:` if none, ~400 words). This becomes the
+   - **Lines 3+**: the 5-section summary body (UPPERCASE keys with colons,
+     `WHAT:` `WHY:` `HOW:` `OPEN QUESTIONS:` `NEXT STEPS:` in order,
+     omitting `OPEN QUESTIONS:` if none, ~400 words). This becomes the
      `convo-summary:` trailer on the tip commit.
 5. After writing the file, exit. Do NOT take any further actions.
 

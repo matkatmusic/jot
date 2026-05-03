@@ -35,7 +35,7 @@ Examples:
 
 Target length: ~400 words. Hard cap 600.
 
-Use these 5 sections, in this order, with lowercase keys followed by a colon.
+Use these 5 sections, in this order, with UPPERCASE keys followed by a colon.
 **Each section label MUST sit on its own line** with the section content on
 the lines below it (a blank line between sections is fine but optional). The
 trailer-rewrite pipeline (`_rebase_reword_summary.py::_format_trailer_body`)
@@ -46,46 +46,47 @@ on their own lines.
 Bad (label inline with content — collapses into one wall of text):
 
 ```
-what: extracted git_lib from plate_lib why: needed for python migration
+WHAT: extracted git_lib from plate_lib
+WHY: needed for python migration
 ```
 
 Good (label on its own line):
 
 ```
-what:
+WHAT:
 extracted git_lib from plate_lib so plate_lib can shrink to plate-specific
 orchestration.
 
-why:
+WHY:
 part of the larger jot Python migration.
 
-how:
+HOW:
 moved the helpers verbatim, then added a thin shim back in git.sh.
 
-open questions:
+OPEN QUESTIONS:
 - whether to keep the shim long-term or drop it next milestone
 
-next steps:
+NEXT STEPS:
 - write integration test for the shim
 - update PLATE STATE.md
 ```
 
 Section guidance:
 
-what:
+WHAT:
   2-4 sentences describing the concrete work that's been done across this
   plate branch — files/features touched and what state they're in.
 
-why:
+WHY:
   1-3 sentences on the underlying goal — what problem is this solving.
 
-how:
+HOW:
   2-4 sentences on the approach taken — key technical decisions and the
   reasoning behind them.
 
-open questions:
+OPEN QUESTIONS:
   Bullet list of unresolved items the next agent must decide.
   Omit this section entirely if there are none.
 
-next steps:
+NEXT STEPS:
   1-4 bullets of concrete actions for the next agent.

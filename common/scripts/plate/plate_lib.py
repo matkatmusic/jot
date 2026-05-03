@@ -423,14 +423,17 @@ def _formatTrailerBody(text: str) -> str:
     block as one trailer rather than ending it.
     """
     raw = [line.rstrip() for line in text.splitlines()]
-    while raw and not raw[0].strip():
-        raw.pop(0)
-    while raw and not raw[-1].strip():
-        raw.pop()
+    # Drop ALL blank lines (leading, trailing, AND interior). Git treats
+    # whitespace-only lines as paragraph separators that terminate a
+    # trailer block — so emitting `" "` for blank body lines produced
+    # un-parseable trailers. Section labels still render on their own
+    # lines because each label line is itself non-blank and gets
+    # indented as a continuation line below.
+    raw = [line for line in raw if line.strip()]
     if not raw:
         return ""
     first = raw[0].lstrip()
-    rest = [(" " + line.lstrip()) if line.strip() else " " for line in raw[1:]]
+    rest = [" " + line.lstrip() for line in raw[1:]]
     return "\n".join([first] + rest)
 
 # ── Helpers used by the plate operations ─────────────────────────────
@@ -2636,6 +2639,149 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
 _REBASE_EDITOR_SCRIPT = (
     Path(__file__).resolve().parent / "_rebase_reword_summary.py"
 )
+
+# Reuse the trailer-manipulation helpers from the dual-role editor
+# script. Importing as a sibling module is safe — that script's
+# top-level only defines functions and is `if __name__ == "__main__"`
+# guarded.
+from _rebase_reword_summary import (  # noqa: E402
+    _strip_summary_trailer as _stripSummaryTrailerFromMessage,
+    _append_summary_trailer as _appendSummaryTrailerToMessage,
+    _parse_payload as _parseAgentPayload,
+    _replace_subject as _replaceCommitSubject,
+)
+
+
+def stripConvoSummaryFromCommit(
+    repo: Path, branch: str, target_ref: str,
+) -> str:
+    """Remove the convo-summary trailer from a commit on <branch>-plate.
+
+    Rewrites the targeted commit (preserving every other trailer + the
+    tree + the parent) and any descendants on <branch>-plate so the
+    branch chain stays linear. Updates refs/heads/<branch>-plate to the
+    new tip SHA and returns it.
+
+    Implementation: pure `git commit-tree` — no worktree, no rebase, no
+    interactive editor. This avoids the orphan-worktree leak that
+    `rewriteBranchTipSummary` (rebase-based) is currently causing.
+    """
+    plate_branch = f"{branch}-plate"
+    target_sha = run(["git", "rev-parse", target_ref], cwd=repo)
+    tip_sha = run(["git", "rev-parse", plate_branch], cwd=repo)
+
+    target_msg = run(
+        ["git", "log", "-1", "--format=%B", target_sha], cwd=repo,
+    )
+    target_tree = run(
+        ["git", "rev-parse", f"{target_sha}^{{tree}}"], cwd=repo,
+    )
+    target_parent = run(
+        ["git", "rev-parse", f"{target_sha}~1"], cwd=repo,
+    )
+
+    new_target_msg = _stripSummaryTrailerFromMessage(target_msg)
+    new_target_sha = run(
+        [
+            "git", "commit-tree", target_tree,
+            "-p", target_parent,
+            COMMIT_MESSAGE_FLAG, new_target_msg,
+        ],
+        cwd=repo,
+    )
+
+    # Re-emit each descendant chained off the rewritten target.
+    descendants = run(
+        ["git", "rev-list", "--reverse", f"{target_sha}..{tip_sha}"],
+        cwd=repo,
+    ).splitlines()
+    prev_sha = new_target_sha
+    for desc_sha in descendants:
+        if not desc_sha:
+            continue
+        desc_msg = run(
+            ["git", "log", "-1", "--format=%B", desc_sha], cwd=repo,
+        )
+        desc_tree = run(
+            ["git", "rev-parse", f"{desc_sha}^{{tree}}"], cwd=repo,
+        )
+        prev_sha = run(
+            [
+                "git", "commit-tree", desc_tree,
+                "-p", prev_sha,
+                COMMIT_MESSAGE_FLAG, desc_msg,
+            ],
+            cwd=repo,
+        )
+
+    run(
+        ["git", "update-ref", f"refs/heads/{plate_branch}", prev_sha],
+        cwd=repo,
+    )
+    return prev_sha
+
+
+def regenerateTipSummary(
+    repo: Path,
+    branch: str,
+    prior_summary: str,
+    agent_callable,
+) -> str:
+    """Regenerate the tip's convo-summary trailer.
+
+    Calls `agent_callable(prior_summary)` to produce the new summary
+    payload (in production the callable spawns a real claude; in tests
+    it's a deterministic mock). The payload follows the agent contract
+    in `skills/plate/summary-template.md`:
+        Line 1: subject (≤50 chars; replaces the tip's commit subject)
+        Line 2: blank
+        Lines 3+: 5-section body (becomes the convo-summary trailer)
+
+    Single-line payloads (no blank-line separator) are treated as
+    pure trailer body — the commit subject is left untouched.
+
+    Updates `refs/heads/<branch>-plate` to a new tip whose message has
+    the new subject (when present) AND the convo-summary trailer.
+    Returns the new tip SHA.
+
+    Implementation: pure `git commit-tree`, same rationale as
+    `stripConvoSummaryFromCommit` — avoids the rebase + worktree path
+    that has been leaking orphan worktrees.
+    """
+    new_payload = agent_callable(prior_summary)
+    subject, body = _parseAgentPayload(new_payload)
+    # When the payload has no body (no blank-line separator), treat the
+    # whole text as body so simple `prior -> "..."` callables in tests
+    # still land a trailer. Production payloads always have a body.
+    trailer_body = body if body else subject
+    if not body:
+        subject = ""  # nothing to replace the commit subject with
+
+    plate_branch = f"{branch}-plate"
+    tip_sha = run(["git", "rev-parse", plate_branch], cwd=repo)
+    tip_msg = run(["git", "log", "-1", "--format=%B", tip_sha], cwd=repo)
+    tip_tree = run(["git", "rev-parse", f"{tip_sha}^{{tree}}"], cwd=repo)
+    tip_parent = run(["git", "rev-parse", f"{tip_sha}~1"], cwd=repo)
+
+    # Strip any pre-existing convo-summary first so we never duplicate.
+    cleaned = _stripSummaryTrailerFromMessage(tip_msg)
+    if subject:
+        cleaned = _replaceCommitSubject(cleaned, subject)
+    new_msg = _appendSummaryTrailerToMessage(cleaned, trailer_body)
+
+    new_tip_sha = run(
+        [
+            "git", "commit-tree", tip_tree,
+            "-p", tip_parent,
+            COMMIT_MESSAGE_FLAG, new_msg,
+        ],
+        cwd=repo,
+    )
+    run(
+        ["git", "update-ref", f"refs/heads/{plate_branch}", new_tip_sha],
+        cwd=repo,
+    )
+    return new_tip_sha
 
 def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
     """Rebase the <branch>-plate ref so only the tip carries a
