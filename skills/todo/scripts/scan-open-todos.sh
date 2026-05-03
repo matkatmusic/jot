@@ -1,21 +1,9 @@
-#!/bin/bash
-# scan-open-todos.sh — print absolute paths of all open TODO .md files in
-# the given repo's Todos/ directory (excluding Todos/done/).
-# Usage: scan-open-todos.sh <repo_root>
-set -uo pipefail
-
-REPO_ROOT="${1:?repo_root required}"
-TODOS="$REPO_ROOT/Todos"
-
-[ -d "$TODOS" ] || { echo "(none)"; exit 0; }
-
-shopt -s nullglob
-found=0
-for f in "$TODOS"/*.md; do
-  printf '%s\n' "$f"
-  found=1
-done
-shopt -u nullglob
-
-[ "$found" -eq 0 ] && echo "(none)"
-exit 0
+#!/usr/bin/env bash
+# scan-open-todos.sh - delegates to common/scripts/todo/scan_open_todos_cli.py.
+# Different spec from the jot-side scan-open-todos.sh: this one lists every
+# Todos/*.md file (no status filter), printing "(none)" when empty/missing.
+# File kept executable so the existing caller (todo-launcher.sh) works
+# unmodified; remove once that caller is itself migrated.
+exec python3 \
+  "$(dirname "${BASH_SOURCE[0]}")/../../../common/scripts/todo/scan_open_todos_cli.py" \
+  "$@"
