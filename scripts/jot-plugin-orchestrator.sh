@@ -17,6 +17,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && p
 # whose success-output is noise the caller doesn't want (e.g. `tmux set-option`
 # echoing the new value).
 # returns: the command's exit code
+# [PENDING]
 hide_output() {
   "$@" >/dev/null
 }
@@ -27,6 +28,7 @@ hide_output() {
 # hide_output. Use for probes where "failed" is a valid answer state and
 # the diagnostic log would be noise.
 # returns: the command's exit code
+# [PENDING]
 hide_errors() {
   "$@" 2>/dev/null
 }
@@ -50,6 +52,7 @@ hide_errors() {
 #
 # Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md (commit 3).
 
+# [PENDING]
 emit_block() {
   local reason="$1"
   if command -v jq >/dev/null 2>&1; then
@@ -61,6 +64,7 @@ emit_block() {
   fi
 }
 
+# [PENDING]
 _hookjson_install_hint() {
   case "$1" in
     jq)       echo "jq (brew install jq)" ;;
@@ -71,6 +75,7 @@ _hookjson_install_hint() {
   esac
 }
 
+# [PENDING]
 check_requirements() {
   local prefix="$1"; shift
   local -a missing=()
@@ -95,6 +100,7 @@ check_requirements() {
 # invoke_command.sh — canonical command-execution wrapper.
 # Source silencers.sh separately if you also need hide_output / hide_errors.
 
+# [PENDING]
 invoke_command() {
     local output
     output=$("$@" 2>&1) # execute whatever command was passed in
@@ -128,6 +134,7 @@ invoke_command() {
 # source "$(dirname "${BASH_SOURCE[0]}")/silencers.sh"
 
 # usage: tmux_require_version <minimum_version>
+# [PENDING]
 tmux_require_version() {
   local installed
   installed=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -146,6 +153,7 @@ tmux_require_version() {
 # Base wrapper around `tmux set-option`. Usually called via one of the
 # scope-specific wrappers below. All args pass through unchanged.
 # returns: 0 on success, nonzero if tmux rejects the call
+# [PENDING]
 tmux_set_option() {
   invoke_command tmux set-option "$@"
 }
@@ -153,6 +161,7 @@ tmux_set_option() {
 # usage: tmux_set_option_t <target> <option_name> <option_value>
 # Sets a tmux option scoped to <target> (session, window, or pane).
 # returns: 0 on success, nonzero if target or option is invalid
+# [PENDING]
 tmux_set_option_t() {
   tmux_set_option -t "$1" "$2" "$3"
 }
@@ -160,6 +169,7 @@ tmux_set_option_t() {
 # usage: tmux_set_option_g <option_name> <option_value>
 # Sets a tmux option in the global scope.
 # returns: 0 on success, nonzero if option is invalid
+# [PENDING]
 tmux_set_option_g() {
   tmux_set_option -g "$1" "$2"
 }
@@ -167,10 +177,12 @@ tmux_set_option_g() {
 # usage: tmux_set_option_w <window_target> <option_name> <option_value>
 # Sets a window-scoped tmux option on the given window target.
 # returns: 0 on success, nonzero if target or option is invalid
+# [PENDING]
 tmux_set_option_w() {
   tmux_set_option -w -t "$1" "$2" "$3"
 }
 
+# [PENDING]
 tmux_set_option_tests() {
   local test_session="tmux-sh-opt-test-$$"
   local pass=0 fail=0
@@ -251,6 +263,7 @@ tmux_set_option_tests() {
 # ========================================================
 # usage: tmux_has_session <session_name>
 # returns: 0 if session exists, 1 if not
+# [PENDING]
 tmux_has_session() {
     invoke_command tmux has-session -t "$1"
 }
@@ -259,12 +272,14 @@ tmux_has_session() {
 # Creates a detached session. Extra args pass through to `tmux new-session -d -s <name>`
 # (e.g. `-n window`, `-c cwd`, trailing shell-command).
 # returns: 0 on success, 1 if creation failed (e.g. duplicate session)
+# [PENDING]
 tmux_new_session() {
   invoke_command tmux new-session -d -s "$1" "${@:2}"
 }
 
 # usage: tmux_kill_session <session_name>
 # returns: 0 on success, 1 if kill failed (e.g. session not found)
+# [PENDING]
 tmux_kill_session() {
   invoke_command tmux kill-session -t "$1"
 }
@@ -273,10 +288,12 @@ tmux_kill_session() {
 # Prints one line per client attached to the session. Empty output if
 # no clients are attached.
 # returns: 0 on success, nonzero if session does not exist
+# [PENDING]
 tmux_list_clients() {
   invoke_command tmux list-clients -t "$1"
 }
 
+# [PENDING]
 tmux_session_tests() {
   local test_session="tmux-sh-test-$$"
   local pass=0 fail=0
@@ -357,12 +374,14 @@ tmux_session_tests() {
 # trailing shell-command). When `-P` is passed, tmux emits the new pane id
 # to stdout — callers can capture with $() to get the id back.
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_new_pane() {
   invoke_command tmux split-window -t "$1" "${@:2}"
 }
 
 # usage: tmux_kill_pane <pane_target>
 # returns: 0 on success, nonzero if pane does not exist
+# [PENDING]
 tmux_kill_pane() {
   invoke_command tmux kill-pane -t "$1"
 }
@@ -371,6 +390,7 @@ tmux_kill_pane() {
 # Prints the target pane's visible contents to stdout. If [lines] is given,
 # also includes that many lines of scrollback history before the visible area.
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_capture_pane() {
   invoke_command tmux capture-pane -p -t "$1" ${2:+-S -$2}
 }
@@ -379,6 +399,7 @@ tmux_capture_pane() {
 # Prints one line per pane. With no extra args: "<pane_id> <pane_title>".
 # Extra args pass through to `tmux list-panes` (e.g. `-F '#{pane_title}'`).
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_list_panes() {
   if [ $# -eq 1 ]; then
     invoke_command tmux list-panes -t "$1" -F '#{pane_id} #{pane_title}'
@@ -389,16 +410,19 @@ tmux_list_panes() {
 
 # usage: tmux_select_pane <pane_target>
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_select_pane() {
   invoke_command tmux select-pane -t "$1"
 }
 
 # usage: tmux_set_pane_title <pane_target> <title>
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_set_pane_title() {
   invoke_command tmux select-pane -t "$1" -T "$2"
 }
 
+# [PENDING]
 tmux_pane_tests() {
   local test_session="tmux-sh-pane-test-$$"
   local pass=0 fail=0
@@ -529,12 +553,14 @@ tmux_pane_tests() {
 # Creates a new window. Extra args pass through to `tmux new-window -t <s> -n <w>`
 # (e.g. `-c cwd`, trailing shell-command).
 # returns: 0 on success, nonzero on failure
+# [PENDING]
 tmux_new_window() {
   invoke_command tmux new-window -t "$1" -n "$2" "${@:3}"
 }
 
 # usage: tmux_kill_window <window_target>
 # returns: 0 on success, nonzero if window does not exist
+# [PENDING]
 tmux_kill_window() {
   invoke_command tmux kill-window -t "$1"
 }
@@ -543,6 +569,7 @@ tmux_kill_window() {
 # Prints one line per window. With no extra args: "<window_index> <window_name>".
 # Extra args pass through to `tmux list-windows` (e.g. `-F '#{window_name}'`).
 # returns: 0 on success, nonzero if session does not exist
+# [PENDING]
 tmux_list_windows() {
   if [ $# -eq 1 ]; then
     invoke_command tmux list-windows -t "$1" -F '#{window_index} #{window_name}'
@@ -553,12 +580,14 @@ tmux_list_windows() {
 
 # usage: tmux_window_exists <session> <window_name>
 # returns: 0 if a window with exact name exists in session, 1 if not
+# [PENDING]
 tmux_window_exists() {
   tmux_list_windows "$1" -F '#{window_name}' | grep -qx "$2"
 }
 
 # usage: tmux_pane_has_title <target> <title>
 # returns: 0 if any pane in target has the exact title, 1 if not
+# [PENDING]
 tmux_pane_has_title() {
   tmux_list_panes "$1" -F '#{pane_title}' | grep -qx "$2"
 }
@@ -566,10 +595,12 @@ tmux_pane_has_title() {
 # usage: tmux_split_window <target> <direction>
 # direction: h for horizontal (side-by-side), v for vertical (stacked)
 # returns: 0 on success, nonzero on failure
+# [PENDING]
 tmux_split_window() {
   invoke_command tmux split-window -"$2" -t "$1"
 }
 
+# [PENDING]
 tmux_window_tests() {
   local test_session="tmux-sh-win-test-$$"
   local pass=0 fail=0
@@ -670,6 +701,7 @@ tmux_window_tests() {
 # usage: tmux_select_layout <target> <layout>
 # layout: even-horizontal | even-vertical | main-horizontal | main-vertical | tiled
 # returns: 0 on success, nonzero on failure
+# [PENDING]
 tmux_select_layout() {
   invoke_command tmux select-layout -t "$1" "$2"
 }
@@ -677,10 +709,12 @@ tmux_select_layout() {
 # usage: tmux_retile <target>
 # Re-applies the `tiled` layout to the target window.
 # returns: 0 on success, nonzero on failure
+# [PENDING]
 tmux_retile() {
   tmux_select_layout "$1" tiled
 }
 
+# [PENDING]
 tmux_layout_tests() {
   local test_session="tmux-sh-lay-test-$$"
   local pass=0 fail=0
@@ -745,18 +779,21 @@ tmux_layout_tests() {
 # usage: tmux_send_keys <pane_target> <text>
 # Sends <text> to the pane. Does not append Enter.
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_send_keys() {
   invoke_command tmux send-keys -t "$1" "$2"
 }
 
 # usage: tmux_send_enter <pane_target>
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_send_enter() {
   invoke_command tmux send-keys -t "$1" Enter
 }
 
 # usage: tmux_send_Ctrl_c <pane_target>
 # returns: 0 on success, nonzero if target does not exist
+# [PENDING]
 tmux_send_Ctrl_c() {
   invoke_command tmux send-keys -t "$1" C-c
 }
@@ -765,6 +802,7 @@ tmux_send_Ctrl_c() {
 # Sends <text> then presses Enter as a separate send-keys call, because
 # some TUIs drop Enter when it arrives in the same call as a long string.
 # returns: 0 on success, nonzero if either send fails
+# [PENDING]
 tmux_send_and_submit() {
   tmux_send_keys "$1" "$2"
   local result=$?
@@ -780,6 +818,7 @@ tmux_send_and_submit() {
 # marker, then types <text> and submits. Optional <label> appears in the
 # cancellation log when at least one retry was needed.
 # returns: exit code of the final tmux_send_and_submit
+# [PENDING]
 tmux_cancel_and_send() {
   local attempt=0
   while [ $attempt -lt 5 ]; do
@@ -798,6 +837,7 @@ tmux_cancel_and_send() {
   tmux_send_and_submit "$1" "$2"
 }
 
+# [PENDING]
 tmux_cancel_and_send_tests() {
   local test_session="tmux-sh-cancel-test-$$"
   local pass=0 fail=0
@@ -858,6 +898,7 @@ tmux_cancel_and_send_tests() {
   [ "$fail" -eq 0 ]
 }
 
+# [PENDING]
 tmux_send_keys_tests() {
   local test_session="tmux-sh-send-test-$$"
   local pass=0 fail=0
@@ -954,6 +995,22 @@ tmux_send_keys_tests() {
 # source "$(dirname "${BASH_SOURCE[0]}")/silencers.sh"
 # source "$(dirname "${BASH_SOURCE[0]}")/tmux.sh"
 
+# Moved above tmux_ensure_session (Phase 0.1) so callees precede callers.
+# [PENDING]
+tmux_ensure_keepalive_pane() {
+  local target="$1" cwd="$2" keepalive_cmd="$3" title="$4"
+  if tmux_pane_has_title "$target" "$title"; then
+    return 0
+  fi
+  local ka_id
+  ka_id=$(tmux_new_pane "$target" -c "$cwd" -P -F '#{pane_id}' "$keepalive_cmd")
+  if [ -n "$ka_id" ]; then
+    hide_output tmux_set_pane_title "$ka_id" "$title"
+  fi
+  hide_output tmux_retile "$target"
+}
+
+# [PENDING]
 tmux_ensure_session() {
   local session="$1" window="$2" cwd="$3" keepalive_cmd="$4" keepalive_title="$5"
   if ! tmux_has_session "$session"; then
@@ -973,19 +1030,7 @@ tmux_ensure_session() {
   tmux_ensure_keepalive_pane "${session}:${window}" "$cwd" "$keepalive_cmd" "$keepalive_title"
 }
 
-tmux_ensure_keepalive_pane() {
-  local target="$1" cwd="$2" keepalive_cmd="$3" title="$4"
-  if tmux_pane_has_title "$target" "$title"; then
-    return 0
-  fi
-  local ka_id
-  ka_id=$(tmux_new_pane "$target" -c "$cwd" -P -F '#{pane_id}' "$keepalive_cmd")
-  if [ -n "$ka_id" ]; then
-    hide_output tmux_set_pane_title "$ka_id" "$title"
-  fi
-  hide_output tmux_retile "$target"
-}
-
+# [PENDING]
 tmux_split_worker_pane() {
   local target="$1" cwd="$2" cmd="$3"
   local pane_id
@@ -998,6 +1043,7 @@ tmux_split_worker_pane() {
 
 # usage: tmux_wait_for_claude_readiness <pane_id> [timeout_seconds]
 # returns: 0 when the Claude Code TUI is ready for input, 1 on timeout
+# [PENDING]
 tmux_wait_for_claude_readiness() {
   local pane_id="$1"
   local timeout="${2:-10}"
@@ -1016,6 +1062,7 @@ tmux_wait_for_claude_readiness() {
   return 1
 }
 
+# [PENDING]
 tmux_launcher_tests() {
   local test_session="tmux-sh-launcher-test-$$"
   local pass=0 fail=0
@@ -1117,6 +1164,7 @@ tmux_launcher_tests() {
 # No longer assumes jot-specific hook scripts, permissions location, or
 # SessionStart/Stop/SessionEnd wiring — callers supply those.
 
+# [PENDING]
 build_claude_cmd() {
   local settings_out="$1"
   local allow_json="$2"
@@ -1176,16 +1224,21 @@ JSON
 #
 # Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md (commit 8).
 
+# De-nested from permissions_seed (Phase 0.0). Relies on bash dynamic scoping:
+# callers invoke this only from within permissions_seed, where $log_file and
+# $log_prefix are set as locals. The Python port will pass them explicitly.
+# [PENDING]
+_permseed_log() {
+  [ -z "$log_file" ] && return 0
+  printf '%s %s: %s\n' "$(date -Iseconds)" "$log_prefix" "$1" \
+    >> "$log_file" 2>/dev/null || true
+}
+
+# [PENDING]
 permissions_seed() {
   local installed="$1" default="$2" default_sha_file="$3" prior_sha_file="$4"
   local log_file="${5:-}" log_prefix="${6:-plugin}"
   local current_default_sha installed_sha prior_sha
-
-  _permseed_log() {
-    [ -z "$log_file" ] && return 0
-    printf '%s %s: %s\n' "$(date -Iseconds)" "$log_prefix" "$1" \
-      >> "$log_file" 2>/dev/null || true
-  }
 
   if [ ! -f "$default" ] || [ ! -f "$default_sha_file" ]; then
     _permseed_log "bundled permissions default missing at $default — cannot seed"
@@ -1233,6 +1286,7 @@ permissions_seed() {
 # ========================================================
 # usage: git_is_repo <directory>
 # returns: 0 if directory is inside a git work tree, 1 if not
+# [PENDING]
 git_is_repo() {
   hide_output hide_errors git -C "$1" rev-parse --is-inside-work-tree
   local result=$?
@@ -1241,6 +1295,7 @@ git_is_repo() {
 
 # usage: git_get_repo_root [directory]
 # returns: 0 on success (prints absolute repo root path), 1 if not in a git repo
+# [PENDING]
 git_get_repo_root() {
   local dir="${1:-.}"
   local git_common_dir
@@ -1255,6 +1310,7 @@ git_get_repo_root() {
 
 # usage: git_get_branch_name <directory>
 # returns: 0 on success (prints branch name), 1 if not a git repo or detached HEAD
+# [PENDING]
 git_get_branch_name() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1271,6 +1327,7 @@ git_get_branch_name() {
 
 # usage: git_get_recent_commits <directory>
 # returns: 0 on success (prints space-separated hashes), 1 if not a git repo or no commits
+# [PENDING]
 git_get_recent_commits() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1288,6 +1345,7 @@ git_get_recent_commits() {
 # usage: git_get_uncommitted <directory>
 # returns: 0 on success (prints space-separated filenames), 1 if not a git repo
 # prints "None" and returns 0 if the working tree is clean
+# [PENDING]
 git_get_uncommitted() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1305,6 +1363,7 @@ git_get_uncommitted() {
 # usage: git_ensure_gitignore_entry <repo_root> <pattern>
 # returns: 0 on success, 1 if not a git repo
 # Appends <pattern> to .gitignore if not already present.
+# [PENDING]
 git_ensure_gitignore_entry() {
   local gitignore="$1/.gitignore"
   if ! hide_errors grep -qxF "$2" "$gitignore"; then
@@ -1313,6 +1372,7 @@ git_ensure_gitignore_entry() {
 }
 
 # ========================================================
+# [PENDING]
 git_tests() {
   local test_dir pass=0 fail=0
 
@@ -1455,6 +1515,7 @@ git_tests() {
 # source "$(dirname "${BASH_SOURCE[0]}")/silencers.sh"
 # source "$(dirname "${BASH_SOURCE[0]}")/tmux.sh"
 
+# [PENDING]
 spawn_terminal_if_needed() {
   local session="${1:?spawn_terminal_if_needed: session name required}"
   local log_file="${2:-/dev/null}"
@@ -1540,6 +1601,7 @@ OSA
 
 # usage: lock_acquire <lock_dir> [timeout_seconds] [stale_after_seconds]
 # returns: 0 on success, 1 on timeout
+# [PENDING]
 lock_acquire() {
   local timeout="${2:-10}"
   local stale_after="${3:-60}"
@@ -1570,12 +1632,14 @@ lock_acquire() {
 
 # usage: lock_release <lock_dir>
 # returns: 0 on success, 1 if lock dir didn't exist
+# [PENDING]
 lock_release() {
   hide_errors rmdir "$1"
   local result=$?
   return $result
 }
 
+# [PENDING]
 lock_tests() {
   local test_dir="/tmp/lock-test-$$"
   local pass=0 fail=0
@@ -1659,10 +1723,13 @@ lock_tests() {
 # source "${CLAUDE_PLUGIN_ROOT}/common/scripts/lock.sh"
 
 # Aliases for backward compat — callers use jot_lock_acquire/release.
+# [PENDING]
 jot_lock_acquire() { lock_acquire "$@"; }
+# [PENDING]
 jot_lock_release() { lock_release "$@"; }
 
 # usage: jot_state_init <state_dir>
+# [PENDING]
 jot_state_init() {
   mkdir -p "$1"
   touch "$1/queue.txt" "$1/active_job.txt" "$1/audit.log"
@@ -1671,6 +1738,7 @@ jot_state_init() {
 # usage: jot_queue_pop_first <state_dir>
 # returns: 0 on success (prints popped line), 1 if queue is empty
 # MUST be called while holding the queue lock.
+# [PENDING]
 jot_queue_pop_first() {
   local queue="$1/queue.txt"
   local active="$1/active_job.txt"
@@ -1684,12 +1752,14 @@ jot_queue_pop_first() {
 }
 
 # usage: jot_send_prompt <tmux_target> <input_file_path>
+# [PENDING]
 jot_send_prompt() {
   tmux_send_and_submit "$1" \
     "Read $2 and follow the instructions at the top of that file"
 }
 
 # usage: jot_audit_rotate <audit_log> [max_lines]
+# [PENDING]
 jot_audit_rotate() {
   [ -f "$1" ] || return 0
   local max="${2:-1000}"
@@ -1723,6 +1793,7 @@ jot_audit_rotate() {
 
 # usage: safe <command> [args...]
 # returns: stdout from command, or "(unavailable)" on failure
+# [PENDING]
 safe() {
   local out
   out=$(hide_errors "$@") || out="(unavailable)"
@@ -1731,6 +1802,7 @@ safe() {
 
 # usage: jot_build_claude_cmd
 # Sets globals: TMPDIR_INV, SETTINGS_FILE, CLAUDE_CMD
+# [PENDING]
 jot_build_claude_cmd() {
   TMPDIR_INV=$(mktemp -d /tmp/jot.XXXXXX)
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
@@ -1765,6 +1837,7 @@ JSON
 
 # usage: phase2_launch_window
 # Spawns a tmux pane running claude for this jot invocation.
+# [PENDING]
 phase2_launch_window() {
   STATE_DIR="$REPO_ROOT/Todos/.jot-state"
   jot_state_init "$STATE_DIR"
@@ -1805,8 +1878,30 @@ phase2_launch_window() {
   spawn_terminal_if_needed "jot" "$LOG_FILE" "jot"
 }
 
+#### scan-open-todos.sh ####
+# Moved above jot_main (Phase 0.1) so callees precede callers.
+# [PENDING]
+scan_open_todos() {
+    TARGET_DIR="${1:-.}"
+    TODOS_DIR="$TARGET_DIR/Todos"
+
+    if [ ! -d "$TODOS_DIR" ]; then
+        exit 0
+    fi
+
+    for f in "$TODOS_DIR"/*.md; do
+        [ -f "$f" ] || continue
+        # Check frontmatter for status: open (within first 10 lines)
+        if head -10 "$f" | grep -q '^status: open' 2>/dev/null; then
+            echo "$f"
+        fi
+    done
+}
+#### end scan-open-todos.sh ####
+
 # usage: jot_main
 # Entry point. Reads hook JSON from stdin, runs Phase 1 + Phase 2.
+# [PENDING]
 jot_main() {
   : "${CLAUDE_PLUGIN_ROOT:?jot plugin env not set — not running under Claude Code plugin harness}"
   : "${CLAUDE_PLUGIN_DATA:?jot plugin env not set — not running under Claude Code plugin harness}"
@@ -1930,6 +2025,7 @@ jot_main() {
 # usage: plate_main
 # Entry point. Reads hook JSON from stdin, dispatches /plate variants
 # inline, emits a single block back to the foreground claude.
+# [PENDING]
 plate_main() {
   : "${CLAUDE_PLUGIN_ROOT:?plate plugin env not set — not running under Claude Code plugin harness}"
   : "${CLAUDE_PLUGIN_DATA:?plate plugin env not set — not running under Claude Code plugin harness}"
@@ -2036,6 +2132,7 @@ plate_main() {
 # SIGTERM and keep running to completion — causing the bash-level `wait` to
 # block for the agent's natural runtime (200s+) rather than the requested
 # timeout. SIGKILL cannot be caught, so the process dies within ~1s.
+# [PENDING]
 _run_with_timeout() {
   local secs=$1; shift
   "$@" &
@@ -2060,6 +2157,7 @@ _run_with_timeout() {
 # Avoids the TOCTOU window of a has-session pre-check. First window named
 # `main`; $1 (keepalive_cmd) becomes that window's argv. Prints claimed
 # session name on stdout. Bound is a safety cap on pathological tmux state.
+# [PENDING]
 debate_claim_session() {
   local keepalive_cmd="$1"
   local n=1 session
@@ -2084,6 +2182,7 @@ debate_claim_session() {
 # agent CLI (gemini) can take 200-400s to respond to a trivial `-p "Reply…"`
 # probe, making live smoke tests unusable here. launch_agent's 120s readiness
 # timeout catches broken agents at R1 spawn time instead.
+# [PENDING]
 _default_model() {
   local models_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/models.json"
   local agent="$1"
@@ -2093,6 +2192,7 @@ _default_model() {
 # _probe_gemini / _probe_codex — run inside backgrounded subshells. Presence
 # check only (binary + credentials). Empty stdout → unavailable. Non-empty
 # stdout → the configured model name (or "" if no models configured).
+# [PENDING]
 _probe_gemini() {
   hide_output hide_errors command -v gemini || return 0
   [[ -f "$HOME/.gemini/oauth_creds.json" ]] \
@@ -2104,6 +2204,7 @@ _probe_gemini() {
   local m; m=$(_default_model gemini)
   printf '%s\n' "${m:-present}"
 }
+# [PENDING]
 _probe_codex() {
   hide_output hide_errors command -v codex || return 0
   [[ -f "$HOME/.codex/auth.json" ]] || [[ -n "${OPENAI_API_KEY:-}" ]] || return 0
@@ -2111,6 +2212,7 @@ _probe_codex() {
   printf '%s\n' "${m:-present}"
 }
 
+# [PENDING]
 detect_available_agents() {
   AVAILABLE_AGENTS=(claude)
   GEMINI_MODEL=""
@@ -2139,6 +2241,7 @@ detect_available_agents() {
 # Writes a settings.json granting the debate permissions. No SessionStart /
 # Stop / SessionEnd hooks — the daemon drives Claude interactively via
 # tmux send-keys, so no lifecycle instrumentation is needed.
+# [PENDING]
 debate_build_claude_cmd() {
   TMPDIR_INV=$(mktemp -d /tmp/debate.XXXXXX)
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
@@ -2167,6 +2270,7 @@ debate_build_claude_cmd() {
 # Reads hook JSON from stdin and sets shared globals (INPUT, CWD,
 # TRANSCRIPT_PATH, REPO_ROOT, SCRIPTS_DIR, LOG_FILE). Sources the
 # common libs. Called by debate_main, debate_retry_main, debate_abort_main.
+# [PENDING]
 init_hook_context() {
   : "${CLAUDE_PLUGIN_ROOT:?debate plugin env not set}"
   : "${CLAUDE_PLUGIN_DATA:?debate plugin env not set}"
@@ -2193,6 +2297,7 @@ init_hook_context() {
 # Prints the matching debate dir path, or empty if none. Uses cmp so
 # multi-line topics and trailing-newline edge cases work correctly.
 # Most-recent dir (lexicographic timestamp) wins.
+# [PENDING]
 find_matching_debate() {
   local repo_root="$1" topic="$2"
   local dir match_ts="" best=""
@@ -2219,6 +2324,7 @@ find_matching_debate() {
 #     reused and the agent is re-added to AVAILABLE_AGENTS so synthesis
 #     includes them. Otherwise hard-fail: cannot run a missing agent.
 # Original composition is derived from r1_instructions_<agent>.txt filenames.
+# [PENDING]
 check_resume_feasibility() {
   local -a original=()
   local f agent
@@ -2249,6 +2355,7 @@ check_resume_feasibility() {
 }
 
 # any_live_lock <debate_dir> → 0 if a live lock exists, 1 otherwise.
+# [PENDING]
 any_live_lock() {
   local dir="$1" lock pane_id
   for lock in "$dir"/.*.lock; do
@@ -2264,6 +2371,7 @@ any_live_lock() {
 # not stored on disk, we recover it by asking tmux which session owns any
 # still-live lock-file pane id. Self-healing across session renames; no
 # separate session-name artifact to keep in sync.
+# [PENDING]
 live_debate_session() {
   local dir="$1" lock pane_id session
   for lock in "$dir"/.*.lock; do
@@ -2276,10 +2384,101 @@ live_debate_session() {
   return 1
 }
 
+#### debate-build-prompts.sh ####
+# Moved above debate_start_or_resume (Phase 0.1) so callees precede callers.
+# Builds per-stage instruction files from templates.
+# Usage (function-call form): DEBATE_AGENTS="claude gemini codex" debate_build_prompts <stage> <debate_dir> <plugin_root>
+#   stage: r1 | r2 | synthesis
+# DEBATE_AGENTS env var: space-separated list of active agents for this debate.
+# AGENT_FILTER env var (optional): emit only that agent's instruction file.
+# [PENDING]
+debate_build_prompts() {
+  local STAGE="$1"
+  local DEBATE_DIR="$2"
+  local PLUGIN_ROOT="$3"
+  local RENDER="$PLUGIN_ROOT/common/scripts/jot/render_template.py"
+  local -a AGENTS=()
+  if [ -n "${DEBATE_AGENTS:-}" ]; then
+    read -ra AGENTS <<< "$DEBATE_AGENTS"
+  else
+    local line
+    while IFS= read -r line; do
+      [ -n "$line" ] && AGENTS+=("$line")
+    done < "$DEBATE_DIR/agents.txt"
+  fi
+  local FILTER="${AGENT_FILTER:-}"
+  local agent other
+  local -a others
+  case "$STAGE" in
+    r1)
+      for agent in "${AGENTS[@]}"; do
+        [ -n "$FILTER" ] && [ "$FILTER" != "$agent" ] && continue
+        DEBATE_DIR="$DEBATE_DIR" \
+        OUTPUT_FILE="$DEBATE_DIR/r1_${agent}.md" \
+          python3 "$RENDER" \
+            "$PLUGIN_ROOT/skills/debate/prompts/r1.template.md" \
+            DEBATE_DIR OUTPUT_FILE \
+          > "$DEBATE_DIR/r1_instructions_${agent}.txt"
+      done
+      ;;
+    r2)
+      for agent in "${AGENTS[@]}"; do
+        [ -n "$FILTER" ] && [ "$FILTER" != "$agent" ] && continue
+        others=()
+        for other in "${AGENTS[@]}"; do
+          [ "$other" = "$agent" ] && continue
+          others+=("$other")
+        done
+        {
+          printf '# Debate -- Round 2: Cross-Critique\n\n'
+          printf '## Your Round 1 Response\nRead from: %s\n\n' "$DEBATE_DIR/r1_${agent}.md"
+          printf '## Other Agents'\'' Round 1 Responses\n'
+          for other in "${others[@]}"; do
+            printf 'Read %s'\''s response from: %s\n' "$other" "$DEBATE_DIR/r1_${other}.md"
+          done
+          printf '\n## Instructions\n'
+          printf '%s\n' '- Identify agreement and disagreement across responses'
+          printf '%s\n' '- Validate or challenge claims with evidence'
+          printf '%s\n' '- Concede where others made stronger arguments'
+          printf '%s\n' '- Raise new considerations from reading their perspectives'
+          printf '\n## Output\nWrite your critique as markdown to: %s\nDo not write to any other file.\n' "$DEBATE_DIR/r2_${agent}.md"
+        } > "$DEBATE_DIR/r2_instructions_${agent}.txt"
+      done
+      ;;
+    synthesis)
+      {
+        printf '# Debate -- Round 3: Synthesis\n\n'
+        printf '%d agents (%s) debated across two rounds. Produce a balanced assessment.\n\n' \
+          "${#AGENTS[@]}" "${AGENTS[*]}"
+        printf '## Round 1 Responses\n'
+        for agent in "${AGENTS[@]}"; do
+          printf 'Read %s R1 from: %s\n' "$agent" "$DEBATE_DIR/r1_${agent}.md"
+        done
+        printf '\n## Round 2 Responses\n'
+        for agent in "${AGENTS[@]}"; do
+          printf 'Read %s R2 from: %s\n' "$agent" "$DEBATE_DIR/r2_${agent}.md"
+        done
+        printf '\n## Structure\n'
+        printf '1. **Topic**: One-line restatement\n'
+        printf '2. **Agreement**: Where agents align\n'
+        printf '3. **Disagreement**: Where they diverge, strongest argument per side\n'
+        printf '4. **Strongest Arguments**: Most compelling points, attributed\n'
+        printf '5. **Weaknesses**: Arguments successfully challenged in R2\n'
+        printf '6. **Path Forward**: Synthesized recommendation\n'
+        printf '7. **Confidence**: High/Medium/Low with reasoning\n'
+        printf '8. **Open Questions**: Unresolved issues\n'
+        printf '\n## Output\nWrite synthesis as markdown to: %s\nDo not write to any other file.\n' "$DEBATE_DIR/synthesis.md"
+      } > "$DEBATE_DIR/synthesis_instructions.txt"
+      ;;
+    *) echo "Unknown stage: $STAGE" >&2; return 1 ;;
+  esac
+}
+
 # debate_start_or_resume
 # Shared body invoked by fresh-start and resume paths. Caller sets:
 # TOPIC, DEBATE_DIR, RESUMING (0|1), AVAILABLE_AGENTS, GEMINI_MODEL,
 # CODEX_MODEL, SCRIPTS_DIR, CWD, REPO_ROOT, LOG_FILE.
+# [PENDING]
 debate_start_or_resume() {
   # One tmux session per invocation; always a single window named `main`.
   # Session name `debate-N` is chosen at claim time below.
@@ -2365,6 +2564,7 @@ debate_start_or_resume() {
 
 # ── Main entry point ──
 
+# [PENDING]
 debate_main() {
   init_hook_context
   check_requirements "debate" jq python3 tmux claude
@@ -2433,6 +2633,7 @@ debate_main() {
 
 # ── /debate-retry entry point ──
 
+# [PENDING]
 debate_retry_main() {
   init_hook_context
   check_requirements "debate-retry" jq python3 tmux claude
@@ -2473,6 +2674,7 @@ debate_retry_main() {
 
 # ── /debate-abort entry point ──
 
+# [PENDING]
 debate_abort_main() {
   init_hook_context
   check_requirements "debate-abort" jq tmux
@@ -2501,102 +2703,13 @@ debate_abort_main() {
 
 #### end debate.sh
 
-#### debate-build-prompts.sh ####
-# Builds per-stage instruction files from templates.
-# Usage (function-call form): DEBATE_AGENTS="claude gemini codex" debate_build_prompts <stage> <debate_dir> <plugin_root>
-#   stage: r1 | r2 | synthesis
-# DEBATE_AGENTS env var: space-separated list of active agents for this debate.
-# AGENT_FILTER env var (optional): emit only that agent's instruction file.
-
-debate_build_prompts() {
-  local STAGE="$1"
-  local DEBATE_DIR="$2"
-  local PLUGIN_ROOT="$3"
-  local RENDER="$PLUGIN_ROOT/common/scripts/jot/render_template.py"
-  local -a AGENTS=()
-  if [ -n "${DEBATE_AGENTS:-}" ]; then
-    read -ra AGENTS <<< "$DEBATE_AGENTS"
-  else
-    local line
-    while IFS= read -r line; do
-      [ -n "$line" ] && AGENTS+=("$line")
-    done < "$DEBATE_DIR/agents.txt"
-  fi
-  local FILTER="${AGENT_FILTER:-}"
-  local agent other
-  local -a others
-  case "$STAGE" in
-    r1)
-      for agent in "${AGENTS[@]}"; do
-        [ -n "$FILTER" ] && [ "$FILTER" != "$agent" ] && continue
-        DEBATE_DIR="$DEBATE_DIR" \
-        OUTPUT_FILE="$DEBATE_DIR/r1_${agent}.md" \
-          python3 "$RENDER" \
-            "$PLUGIN_ROOT/skills/debate/prompts/r1.template.md" \
-            DEBATE_DIR OUTPUT_FILE \
-          > "$DEBATE_DIR/r1_instructions_${agent}.txt"
-      done
-      ;;
-    r2)
-      for agent in "${AGENTS[@]}"; do
-        [ -n "$FILTER" ] && [ "$FILTER" != "$agent" ] && continue
-        others=()
-        for other in "${AGENTS[@]}"; do
-          [ "$other" = "$agent" ] && continue
-          others+=("$other")
-        done
-        {
-          printf '# Debate -- Round 2: Cross-Critique\n\n'
-          printf '## Your Round 1 Response\nRead from: %s\n\n' "$DEBATE_DIR/r1_${agent}.md"
-          printf '## Other Agents'\'' Round 1 Responses\n'
-          for other in "${others[@]}"; do
-            printf 'Read %s'\''s response from: %s\n' "$other" "$DEBATE_DIR/r1_${other}.md"
-          done
-          printf '\n## Instructions\n'
-          printf '%s\n' '- Identify agreement and disagreement across responses'
-          printf '%s\n' '- Validate or challenge claims with evidence'
-          printf '%s\n' '- Concede where others made stronger arguments'
-          printf '%s\n' '- Raise new considerations from reading their perspectives'
-          printf '\n## Output\nWrite your critique as markdown to: %s\nDo not write to any other file.\n' "$DEBATE_DIR/r2_${agent}.md"
-        } > "$DEBATE_DIR/r2_instructions_${agent}.txt"
-      done
-      ;;
-    synthesis)
-      {
-        printf '# Debate -- Round 3: Synthesis\n\n'
-        printf '%d agents (%s) debated across two rounds. Produce a balanced assessment.\n\n' \
-          "${#AGENTS[@]}" "${AGENTS[*]}"
-        printf '## Round 1 Responses\n'
-        for agent in "${AGENTS[@]}"; do
-          printf 'Read %s R1 from: %s\n' "$agent" "$DEBATE_DIR/r1_${agent}.md"
-        done
-        printf '\n## Round 2 Responses\n'
-        for agent in "${AGENTS[@]}"; do
-          printf 'Read %s R2 from: %s\n' "$agent" "$DEBATE_DIR/r2_${agent}.md"
-        done
-        printf '\n## Structure\n'
-        printf '1. **Topic**: One-line restatement\n'
-        printf '2. **Agreement**: Where agents align\n'
-        printf '3. **Disagreement**: Where they diverge, strongest argument per side\n'
-        printf '4. **Strongest Arguments**: Most compelling points, attributed\n'
-        printf '5. **Weaknesses**: Arguments successfully challenged in R2\n'
-        printf '6. **Path Forward**: Synthesized recommendation\n'
-        printf '7. **Confidence**: High/Medium/Low with reasoning\n'
-        printf '8. **Open Questions**: Unresolved issues\n'
-        printf '\n## Output\nWrite synthesis as markdown to: %s\nDo not write to any other file.\n' "$DEBATE_DIR/synthesis.md"
-      } > "$DEBATE_DIR/synthesis_instructions.txt"
-      ;;
-    *) echo "Unknown stage: $STAGE" >&2; return 1 ;;
-  esac
-}
-#### end debate-build-prompts.sh ####
-
 #### debate-tmux-orchestrator.sh ####
 # Background daemon that drives the full R1 -> R2 -> synthesis flow inside
 # the debate's tmux session. Forked from debate.sh as:
 #   bash <orchestrator>.sh debate-tmux-orchestrator ... &; disown
 # The argv-dispatch case routes to `debate_tmux_orchestrator` below.
 
+# [PENDING]
 cleanup() {
   local settings_dir
   settings_dir=$(dirname "$SETTINGS_FILE")
@@ -2605,9 +2718,12 @@ cleanup() {
   esac
 }
 
+# [PENDING]
 _stash()  { eval "${1}_${2}=\"\$3\""; }
+# [PENDING]
 _lookup() { local _v="${1}_${2}"; eval "printf '%s' \"\${$_v:-}\""; }
 
+# [PENDING]
 init_agent_models() {
   local _a
   for _a in gemini codex claude; do
@@ -2620,6 +2736,7 @@ init_agent_models() {
   _stash TRIED_MODELS  codex  "${CODEX_MODEL:-}"
 }
 
+# [PENDING]
 agent_launch_cmd() {
   local a="$1"
   local m; m=$(_lookup CURRENT_MODEL "$a")
@@ -2647,6 +2764,7 @@ agent_launch_cmd() {
   esac
 }
 
+# [PENDING]
 agent_ready_marker() {
   case "$1" in
     gemini) echo "Type your message or @path/to/file" ;;
@@ -2655,6 +2773,7 @@ agent_ready_marker() {
   esac
 }
 
+# [PENDING]
 agent_error_markers() {
   case "$1" in
     codex)  printf '%s\n' 'Selected model is at capacity' 'model is overloaded' ;;
@@ -2663,6 +2782,7 @@ agent_error_markers() {
   esac
 }
 
+# [PENDING]
 pane_has_capacity_error() {
   local pane_id="$1" agent="$2"
   local cap marker
@@ -2677,6 +2797,7 @@ pane_has_capacity_error() {
   return 1
 }
 
+# [PENDING]
 _next_model() {
   local agent="$1"
   local tried; tried=$(_lookup TRIED_MODELS "$agent")
@@ -2691,107 +2812,8 @@ _next_model() {
   return 1
 }
 
-retry_pane_with_next_model() {
-  local panes_var="$1" i="$2" agent="$3" stage="$4"
-  local next
-  if ! next=$(_next_model "$agent"); then
-    echo "[orch] $stage/$agent: no remaining models; giving up" >&2
-    return 1
-  fi
-  echo "[orch] $stage/$agent: capacity hit -- rotating to model '$next'"
-  _stash CURRENT_MODEL "$agent" "$next"
-  local tried; tried=$(_lookup TRIED_MODELS "$agent")
-  _stash TRIED_MODELS "$agent" "${tried},${next}"
-  local current_pane
-  eval "current_pane=\${${panes_var}[$i]}"
-  hide_errors tmux_kill_pane "$current_pane"
-  local new_pane; new_pane=$(new_empty_pane)
-  eval "${panes_var}[$i]=\"\$new_pane\""
-  hide_output tmux_retile "$WINDOW_TARGET"
-  sleep 1
-  launch_agent "$new_pane" "$stage" "$agent" \
-    "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" || return 1
-  send_prompt  "$new_pane" "$stage" "$agent" \
-    "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || return 1
-  return 0
-}
-
-new_empty_pane() {
-  hide_output tmux_retile "$WINDOW_TARGET"
-  tmux_new_pane "$WINDOW_TARGET" -c "$CWD" -P -F '#{pane_id}'
-}
-
-launch_agents_parallel() {
-  local stage="$1" panes_var="$2"
-  local pids=() agents_run=() i agent pane_id fail=0
-  local t0=$SECONDS
-  for i in "${!AGENTS[@]}"; do
-    agent="${AGENTS[$i]}"
-    eval "pane_id=\${${panes_var}[$i]}"
-    if [ -s "$DEBATE_DIR/${stage}_${agent}.md" ]; then
-      echo "[orch] ${stage}/${agent} already complete, skipping launch"
-      hide_errors tmux_kill_pane "$pane_id"
-      continue
-    fi
-    if [ -f "$DEBATE_DIR/.${stage}_${agent}.lock" ]; then
-      echo "[orch] ${stage}/${agent} lock held by live pane, skipping launch (wait_for_outputs will observe)"
-      hide_errors tmux_kill_pane "$pane_id"
-      continue
-    fi
-    (
-      launch_agent "$pane_id" "$stage" "$agent" \
-        "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" \
-        || exit 1
-      send_prompt "$pane_id" "$stage" "$agent" \
-        "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || exit 1
-    ) &
-    pids+=("$!")
-    agents_run+=("$agent")
-  done
-  for i in "${!pids[@]}"; do
-    if ! wait "${pids[$i]}"; then
-      echo "[orch] ${stage}/${agents_run[$i]} worker exited non-zero" >&2
-      fail=1
-    fi
-  done
-  echo "[orch] launch_agents_parallel ${stage}: ${#pids[@]} workers, $((SECONDS - t0))s wall"
-  return "$fail"
-}
-
-archive_debate() {
-  echo "[orch] archiving intermediate files to $DEBATE_DIR/archive/"
-  mkdir -p "$DEBATE_DIR/archive"
-  local f
-  for f in \
-      "$DEBATE_DIR/context.md" \
-      "$DEBATE_DIR/synthesis_instructions.txt" \
-      "$DEBATE_DIR"/r1_instructions_*.txt \
-      "$DEBATE_DIR"/r1_*.md \
-      "$DEBATE_DIR"/r2_instructions_*.txt \
-      "$DEBATE_DIR"/r2_*.md \
-      ; do
-    [ -f "$f" ] && mv "$f" "$DEBATE_DIR/archive/"
-  done
-  [ -f "$DEBATE_DIR/orchestrator.log" ] && mv "$DEBATE_DIR/orchestrator.log" "$DEBATE_DIR/archive/"
-}
-
-clean_stale_locks() {
-  local stage="$1"
-  local lock agent pane_id current
-  for lock in "$DEBATE_DIR"/.${stage}_*.lock; do
-    [ -f "$lock" ] || continue
-    agent=$(basename "$lock" .lock)
-    agent="${agent#.${stage}_}"
-    pane_id=$(sed -n 's|^debate:\(%[0-9]*\)$|\1|p' "$lock")
-    if [ -z "$pane_id" ]; then rm -f "$lock"; continue; fi
-    if ! hide_errors tmux list-panes -t "$WINDOW_TARGET" -F '#{pane_id}' | grep -qFx "$pane_id"; then
-      rm -f "$lock"; continue
-    fi
-    current=$(hide_errors tmux display-message -p -t "$pane_id" '#{pane_current_command}')
-    if [ "$current" != "$agent" ]; then rm -f "$lock"; fi
-  done
-}
-
+# Moved above the launch/send/wait cluster (Phase 0.1) so callees precede callers.
+# [PENDING]
 write_failed() {
   local stage="$1" reason="$2"
   local tmpfile
@@ -2818,6 +2840,17 @@ write_failed() {
   mv -f "$tmpfile" "$DEBATE_DIR/FAILED.txt"
 }
 
+# Moved above retry_pane_with_next_model and launch_agents_parallel (Phase 0.1)
+# so callees precede callers. Note: wait_for_outputs is intentionally placed
+# AFTER retry_pane_with_next_model below because it calls retry_pane_with_next_model;
+# placing it above (per the literal plan instruction) would create a forward ref.
+# [PENDING]
+new_empty_pane() {
+  hide_output tmux_retile "$WINDOW_TARGET"
+  tmux_new_pane "$WINDOW_TARGET" -c "$CWD" -P -F '#{pane_id}'
+}
+
+# [PENDING]
 launch_agent() {
   local pane_id="$1" stage="$2" agent="$3" launch_cmd="$4" ready_marker="$5"
   local timeout="${6:-120}"
@@ -2838,6 +2871,7 @@ launch_agent() {
   return 1
 }
 
+# [PENDING]
 send_prompt() {
   local pane_id="$1" stage="$2" agent="$3" instructions="$4"
   tmux_send_and_submit "$pane_id" "read $instructions and perform them"
@@ -2858,6 +2892,33 @@ send_prompt() {
   return 1
 }
 
+# [PENDING]
+retry_pane_with_next_model() {
+  local panes_var="$1" i="$2" agent="$3" stage="$4"
+  local next
+  if ! next=$(_next_model "$agent"); then
+    echo "[orch] $stage/$agent: no remaining models; giving up" >&2
+    return 1
+  fi
+  echo "[orch] $stage/$agent: capacity hit -- rotating to model '$next'"
+  _stash CURRENT_MODEL "$agent" "$next"
+  local tried; tried=$(_lookup TRIED_MODELS "$agent")
+  _stash TRIED_MODELS "$agent" "${tried},${next}"
+  local current_pane
+  eval "current_pane=\${${panes_var}[$i]}"
+  hide_errors tmux_kill_pane "$current_pane"
+  local new_pane; new_pane=$(new_empty_pane)
+  eval "${panes_var}[$i]=\"\$new_pane\""
+  hide_output tmux_retile "$WINDOW_TARGET"
+  sleep 1
+  launch_agent "$new_pane" "$stage" "$agent" \
+    "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" || return 1
+  send_prompt  "$new_pane" "$stage" "$agent" \
+    "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || return 1
+  return 0
+}
+
+# [PENDING]
 wait_for_outputs() {
   local prefix="$1" timeout="$2" panes_var="$3"
   local reported=""
@@ -2897,6 +2958,81 @@ wait_for_outputs() {
   return 1
 }
 
+# [PENDING]
+launch_agents_parallel() {
+  local stage="$1" panes_var="$2"
+  local pids=() agents_run=() i agent pane_id fail=0
+  local t0=$SECONDS
+  for i in "${!AGENTS[@]}"; do
+    agent="${AGENTS[$i]}"
+    eval "pane_id=\${${panes_var}[$i]}"
+    if [ -s "$DEBATE_DIR/${stage}_${agent}.md" ]; then
+      echo "[orch] ${stage}/${agent} already complete, skipping launch"
+      hide_errors tmux_kill_pane "$pane_id"
+      continue
+    fi
+    if [ -f "$DEBATE_DIR/.${stage}_${agent}.lock" ]; then
+      echo "[orch] ${stage}/${agent} lock held by live pane, skipping launch (wait_for_outputs will observe)"
+      hide_errors tmux_kill_pane "$pane_id"
+      continue
+    fi
+    (
+      launch_agent "$pane_id" "$stage" "$agent" \
+        "$(agent_launch_cmd "$agent")" "$(agent_ready_marker "$agent")" \
+        || exit 1
+      send_prompt "$pane_id" "$stage" "$agent" \
+        "$DEBATE_DIR/${stage}_instructions_${agent}.txt" || exit 1
+    ) &
+    pids+=("$!")
+    agents_run+=("$agent")
+  done
+  for i in "${!pids[@]}"; do
+    if ! wait "${pids[$i]}"; then
+      echo "[orch] ${stage}/${agents_run[$i]} worker exited non-zero" >&2
+      fail=1
+    fi
+  done
+  echo "[orch] launch_agents_parallel ${stage}: ${#pids[@]} workers, $((SECONDS - t0))s wall"
+  return "$fail"
+}
+
+# [PENDING]
+archive_debate() {
+  echo "[orch] archiving intermediate files to $DEBATE_DIR/archive/"
+  mkdir -p "$DEBATE_DIR/archive"
+  local f
+  for f in \
+      "$DEBATE_DIR/context.md" \
+      "$DEBATE_DIR/synthesis_instructions.txt" \
+      "$DEBATE_DIR"/r1_instructions_*.txt \
+      "$DEBATE_DIR"/r1_*.md \
+      "$DEBATE_DIR"/r2_instructions_*.txt \
+      "$DEBATE_DIR"/r2_*.md \
+      ; do
+    [ -f "$f" ] && mv "$f" "$DEBATE_DIR/archive/"
+  done
+  [ -f "$DEBATE_DIR/orchestrator.log" ] && mv "$DEBATE_DIR/orchestrator.log" "$DEBATE_DIR/archive/"
+}
+
+# [PENDING]
+clean_stale_locks() {
+  local stage="$1"
+  local lock agent pane_id current
+  for lock in "$DEBATE_DIR"/.${stage}_*.lock; do
+    [ -f "$lock" ] || continue
+    agent=$(basename "$lock" .lock)
+    agent="${agent#.${stage}_}"
+    pane_id=$(sed -n 's|^debate:\(%[0-9]*\)$|\1|p' "$lock")
+    if [ -z "$pane_id" ]; then rm -f "$lock"; continue; fi
+    if ! hide_errors tmux list-panes -t "$WINDOW_TARGET" -F '#{pane_id}' | grep -qFx "$pane_id"; then
+      rm -f "$lock"; continue
+    fi
+    current=$(hide_errors tmux display-message -p -t "$pane_id" '#{pane_current_command}')
+    if [ "$current" != "$agent" ]; then rm -f "$lock"; fi
+  done
+}
+
+# [PENDING]
 wait_for_file() {
   local path="$1" timeout="$2"
   local elapsed=0
@@ -2915,6 +3051,7 @@ wait_for_file() {
   return 1
 }
 
+# [PENDING]
 daemon_main() {
   echo "========================================"
   echo "[orch] DEBATE DAEMON"
@@ -3009,6 +3146,7 @@ daemon_main() {
 # Entry-point function: argv-dispatch routes "debate-tmux-orchestrator" here.
 # Positional: DEBATE_DIR SESSION WINDOW_NAME SETTINGS_FILE CWD REPO_ROOT PLUGIN_ROOT
 # Env (caller-set): DEBATE_AGENTS, GEMINI_MODEL, CODEX_MODEL, COMPOSITION_DRIFTED
+# [PENDING]
 debate_tmux_orchestrator() {
   DEBATE_DIR="$1"
   SESSION="$2"
@@ -3029,6 +3167,7 @@ debate_tmux_orchestrator() {
 
 #### debate-orchestrator.sh ####
 
+# [PENDING]
 debate_launch() {
     SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/../../.." && pwd)"
@@ -3060,6 +3199,7 @@ debate_launch() {
 # exits 0 silently so the foreground Claude can dispatch the `todo` skill
 # body (which may ask clarification questions via AskUserQuestion).
 
+# [PENDING]
 todo_main() {
   : "${CLAUDE_PLUGIN_DATA:?todo plugin env not set}"
 
@@ -3150,6 +3290,7 @@ JSON
 # Synchronously reads YAML frontmatter from all open TODOs under Todos/
 # (excluding Todos/done/) and emits a formatted block via emit_block.
 
+# [PENDING]
 todo_list_main() {
   local REPO
   REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -3205,6 +3346,7 @@ todo_list_main() {
 
 #### end todo-list.sh ####
 #### jot-session-start.sh 
+# [PENDING]
 jot_session_start() {
     INPUT_FILE="${1:-}"
     TMPDIR_INV="${2:-}"
@@ -3253,6 +3395,7 @@ jot_session_start() {
 #### end jot-session-start.sh
 
 #### jot-session-end.sh ####
+# [PENDING]
 jot_session_end() {
 
     TMPDIR_INV="${1:-}"
@@ -3273,6 +3416,7 @@ jot_session_end() {
 #### end jot-session-end.sh ####
 
 #### jot-stop.sh ####
+# [PENDING]
 jot_stop(){
     # jot-stop.sh — Stop hook for per-invocation claude panes.
     #
@@ -3374,26 +3518,8 @@ jot_stop(){
 
 #### end jot-stop.sh ####
 
-#### scan-open-todos.sh ####
-scan_open_todos() {
-    TARGET_DIR="${1:-.}"
-    TODOS_DIR="$TARGET_DIR/Todos"
-
-    if [ ! -d "$TODOS_DIR" ]; then
-        exit 0
-    fi
-
-    for f in "$TODOS_DIR"/*.md; do
-        [ -f "$f" ] || continue
-        # Check frontmatter for status: open (within first 10 lines)
-        if head -10 "$f" | grep -q '^status: open' 2>/dev/null; then
-            echo "$f"
-        fi
-    done
-}
-#### end scan-open-todos.sh ####
-
 #### todo-launcher.sh ####
+# [PENDING]
 todo_launcher() {
     SESSION_ID="${1:?session_id required}"
     IDEA="${2:?refined idea required}"
@@ -3538,6 +3664,7 @@ JSON
 #### end todo-launcher.sh ####
 
 #### todo-stop.sh ####
+# [PENDING]
 todo_stop() {
     # SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     # . "$SCRIPT_DIR/tmux.sh"
@@ -3601,6 +3728,7 @@ todo_stop() {
 #### end todo-stop.sh ####
 
 #### todo-session-start.sh ####
+# [PENDING]
 todo_session_start() {
     # todo-session-start.sh — SessionStart hook for per-invocation claude panes.
     # Fires once when claude starts in a fresh tmux pane. Reads the pane id from
@@ -3652,6 +3780,7 @@ todo_session_start() {
 #### end todo-session-start.sh ####
 
 #### todo-session-end.sh ####
+# [PENDING]
 todo_session_end() {
 # todo-session-end.sh — SessionEnd hook for per-invocation claude panes.
 # Wipes the per-invocation /tmp/todo.XXXXXX directory that held this
@@ -3677,6 +3806,7 @@ todo_session_end() {
 #### end todo-session-end.sh ####
 
 #### plate-summary-stop.sh ####
+# [PENDING]
 plate_summary_stop() {
     # plate-summary-stop.sh — per-invocation SessionEnd hook for the
     # spawned summary agent. Reads the agent's output file and forwards it
@@ -3720,6 +3850,7 @@ plate_summary_stop() {
 #### end plate-summary-stop.sh ####
 
 #### plate-summary-watch.sh ####
+# [PENDING]
 plate_summary_watch() {
     # plate-summary-watch.sh — fire-and-forget watchdog for the spawned
     # plate-summary agent. Polls the agent's output file; when it appears
@@ -3782,6 +3913,15 @@ plate_summary_watch() {
 # Operator-invoked post-mortem collector for a /jot run. Writes a single
 # diagnostic report file. Invoke via:
 #   bash scripts/jot-plugin-orchestrator.sh jot-diag-collect [output-path]
+# De-nested from jot_diag_collect (Phase 0.0). Pure helpers — no captured state.
+# [PENDING]
+section() { printf '\n═══════════════════════════════════════════════════════════\n%s\n═══════════════════════════════════════════════════════════\n' "$1"; }
+# [PENDING]
+indent()  { sed 's/^/  /'; }
+# [PENDING]
+kv()      { printf '%-28s %s\n' "$1" "$2"; }
+
+# [PENDING]
 jot_diag_collect() {
   local OUT CWD REPO_ROOT PROJECT TMUX_TARGET STATE_DIR LATEST FIRST_LINE
   local FOUND_TMP _log _root p CLIENTS d cmd
@@ -3793,10 +3933,6 @@ jot_diag_collect() {
   TMUX_TARGET="jot:jots"
   STATE_DIR="$REPO_ROOT/Todos/.jot-state"
 
-  local section indent kv
-  section() { printf '\n═══════════════════════════════════════════════════════════\n%s\n═══════════════════════════════════════════════════════════\n' "$1"; }
-  indent()  { sed 's/^/  /'; }
-  kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
   {
     printf 'jot-diag-collect report\n'

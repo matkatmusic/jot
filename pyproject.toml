@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+testpaths = ["scripts"]
+python_files = ["test_monolith.py"]
+python_functions = ["test_*"]
