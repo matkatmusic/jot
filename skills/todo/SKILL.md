@@ -37,7 +37,7 @@ Merge the clarification answers (if any) into a single refined idea string.
 Invoke the launcher via Bash — this is the **only** Bash call this skill needs:
 
 ```
-bash <todo_scripts_dir>/todo-launcher.sh <session_id> <refined_idea> <pending_file>
+bash $CLAUDE_PLUGIN_ROOT/scripts/jot-plugin-orchestrator.sh todo-launcher <session_id> <refined_idea> <pending_file>
 ```
 
 Substitute the actual `todo_scripts_dir`, `session_id`, and `pending_file` values from the pending JSON; pass the refined idea as the second argument (quote it). The launcher:

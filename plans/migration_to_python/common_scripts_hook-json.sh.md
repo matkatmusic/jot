@@ -3,199 +3,151 @@
 ## Source
 
 - File: `common/scripts/hook-json.sh`
-- Class: `(sourced)`. Every consumer pulls it via `. "${CLAUDE_PLUGIN_ROOT}/common/scripts/hook-json.sh"` and then calls bash functions `emit_block` and `check_requirements`. No subprocess invocations exist.
-- Size: ~40 lines bash.
-- Position in dependency graph: leaf shared library; no `.sh` deps. The `(.py helpers) - inline python3 for emit_block JSON encoding` annotation in `MIGRATION_TO_PYTHON.md` line 99 refers to the planned helper, not existing code. Current source uses `jq` first with a hand-rolled `printf` fallback (no inline `python3 -c`).
+- Size: ~40 lines bash, leaf shared library, no `.sh` deps.
+- Sourced by every consumer via `. "${CLAUDE_PLUGIN_ROOT}/common/scripts/hook-json.sh"`. No subprocess invocations.
+- Functions emit Claude Code hook protocol JSON to stdout. Under the new return-don't-echo rule, the migrated functions RETURN the JSON dict (or string); a thin caller in `scripts/jot-plugin-orchestrator.py` is responsible for writing to stdout.
 
-### Callers (verified by `grep -rn 'hook-json'`)
+## Target
 
-Active sourcing consumers (must keep `emit_block` / `check_requirements` callable as bash functions):
+- Module: `common/scripts/hook_json_lib.py`
+- No `_cli.py`. No bash shim. No transitional `.sh`. The `.sh` file is deleted in step 7 once all callers import the Python module directly.
+
+## Function table (spine of the plan)
+
+| name | Python signature (typed) | return type | one-line behavior note |
+|---|---|---|---|
+| `emit_block` | `emit_block(reason: str) -> dict[str, str]` | `dict` | Returns `{"decision": "block", "reason": reason}`. Caller serializes via `json.dumps(..., separators=(",", ":"), ensure_ascii=False)` and writes to stdout. Was: bash `emit_block` echoed JSON; now returns the dict so callers control the I/O boundary. |
+| `_install_hint` | `_install_hint(cmd: str) -> str` | `str` | Pure mapping: `jq` -> `"jq (brew install jq)"`, `python3` -> `"python3 (brew install python)"`, `tmux` -> `"tmux (brew install tmux)"`, `claude` -> `"claude (https://claude.com/claude-code)"`, else returns `cmd` unchanged. Was: bash `_hookjson_install_hint` (renamed: drop `_hookjson` prefix; module namespace replaces it). |
+| `check_requirements` | `check_requirements(prefix: str, commands: Sequence[str]) -> dict[str, str] \| None` | `dict \| None` | Probes each command via `shutil.which`. All present: returns `None`. Any missing: returns the same dict shape as `emit_block` with reason `"<prefix> needs: <comma-joined hints> - install and retry."`. Was: bash version called `emit_block` then `exit 0`; that I/O + termination is now the caller's responsibility. The hyphen replaces the legacy em-dash per repo style; the byte-exact em-dash contract is dropped (see Risk 3). |
+
+## Callers needing import-site updates
+
+Active sourcing consumers (verified by `grep -rn 'hook-json'`):
 
 1. `skills/jot/scripts/jot.sh:122`
 2. `skills/plate/scripts/plate.sh:19`
 3. `skills/todo/scripts/todo.sh:20`
-4. `skills/todo/scripts/todo-launcher.sh:26`
+4. `skills/todo-launcher/scripts/todo-launcher.sh:26`
 5. `skills/todo-list/scripts/todo-list.sh:14`
 6. `skills/debate/scripts/debate.sh:157`
 7. `skills/debate/tests/upfront-instructions-test.sh:48`
 
-Inactive / discardable (do NOT block migration):
+Plus the hook entry: `scripts/jot-plugin-orchestrator.py` will import `hook_json_lib` directly and own the stdout write + exit-code path that was previously inside `check_requirements`.
 
-- `skills/debate/scripts/OLD_DISCARD/debate.sh:91` (already discarded path)
-- `plans/debate-resume.md:496`, `plans/plate-status-2026-04-14.md:82`, `plans/jot-generalizing-refactor.md:40,120,121` (documentation only)
-- `CHANGELOG.md`, `README.md`, `common/scripts/USAGE.md` (documentation only)
+These bash callers cannot import Python directly. Two paths:
 
-Python-side: `scripts/jot-plugin-orchestrator.py` does its own `json.loads` / `json.dumps` for hook protocol forwarding and never sources `hook-json.sh`. It is the closest reference for shape semantics but has no functional dependency on this file.
+- **Preferred:** migrate each caller to Python in its own plan; the import-site update happens there.
+- **Mid-migration only:** if a bash caller still exists when this plan reaches step 6, replace its `emit_block` / `check_requirements` call sites with `python3 -c 'from hook_json_lib import ...; ...'` inline, keeping the bash file otherwise intact. Mark the bash caller `[s]` until its own migration completes. The `.sh` file `hook-json.sh` itself is still deleted.
 
-## Behavior spec (exact contracts)
+Inactive / discardable (do not block migration):
 
-### Function: `emit_block <reason>`
+- `skills/debate/scripts/OLD_DISCARD/debate.sh:91`
+- `plans/debate-resume.md:496`, `plans/plate-status-2026-04-14.md:82`, `plans/jot-generalizing-refactor.md:40,120,121`
+- `CHANGELOG.md`, `README.md`, `common/scripts/USAGE.md`
 
-- Writes a single JSON object plus trailing newline to **stdout**.
-- Schema (Claude Code hook protocol, `decision: "block"` form):
-  ```json
-  {"decision":"block","reason":"<reason text>"}
-  ```
-- Field order in current bash output: `decision` first, `reason` second (matches `jq -n --arg r "$reason" '{decision:"block", reason:$r}'`).
-- Fallback path (no `jq`) uses `printf` with manual escaping: backslashes first, then double-quotes. No other characters are escaped (newlines, control chars, unicode pass through raw - this is a known limitation but is the current contract).
-- Exit code: 0. Function does not exit; caller controls flow.
-- Side effects: stdout only. No stderr writes.
+## Hook protocol invariants (preserved)
 
-### Function: `_hookjson_install_hint <cmd>` (private)
-
-Pure mapping. Returns one-line install hint via `echo`:
-
-- `jq` -> `jq (brew install jq)`
-- `python3` -> `python3 (brew install python)`
-- `tmux` -> `tmux (brew install tmux)`
-- `claude` -> `claude (https://claude.com/claude-code)`
-- any other name -> the name unchanged.
-
-### Function: `check_requirements <prefix> <cmd...>`
-
-- Probes each `<cmd>` via `command -v`.
-- If all present: `return 0`. Does NOT exit; caller continues.
-- If any missing:
-  1. Builds a comma-space joined list of `_hookjson_install_hint` results in argument order.
-  2. Calls `emit_block "<prefix> needs: <list> EM-DASH install and retry."` where `EM-DASH` is the literal U+2014 byte sequence in the existing source (UTF-8: `0xE2 0x80 0x94`). Byte-exact preservation required for hook output stability.
-  3. `exit 0` (NOT non-zero; the hook protocol expects exit 0 + decision JSON to surface a block to the user).
-- Stderr: silent. Stdout: exactly the `emit_block` JSON line.
-
-### Hook protocol invariants
-
-- Output is a single object on a single line followed by `\n`.
+- Output (when serialized by the caller) is a single object on a single line followed by `\n`.
 - No leading whitespace; no trailing whitespace before the newline.
-- `decision` is always literal `"block"` (not `"approve"` / `"ask"`).
-- Only `decision` and `reason` keys. No `permissionDecision`, `continue`, `stopReason`, etc. Those exist in the broader Claude Code hook protocol but this helper does not emit them.
+- `decision` is always literal `"block"`.
+- Only `decision` and `reason` keys.
+- Field order: `decision` first, `reason` second. Locked by Python dict insertion order plus `json.dumps`.
+- `ensure_ascii=False` to match `jq`'s raw-UTF-8 default.
 
-## Target Python module path
+## RED tests (file: `tests/test_hook_json_lib.py`)
 
-Library: `common/scripts/hook_json_lib.py`
-
-- Pure functions:
-  - `emit_block(reason: str, *, stream=sys.stdout) -> None`
-  - `check_requirements(prefix: str, commands: Sequence[str], *, stream=sys.stdout, exit_fn=sys.exit) -> None`
-  - `_install_hint(cmd: str) -> str`
-- All JSON via `json.dumps({...}, separators=(",", ":"), ensure_ascii=False)` to match `jq` compact form (no internal spaces, raw UTF-8). Verify against captured bash baseline.
-- `check_requirements` accepts `exit_fn` injection so tests can assert exit-0 without terminating pytest.
-
-CLI shim: `common/scripts/hook_json_cli.py` (argparse dispatcher) with subcommands:
-
-- `emit-block --reason TEXT` -> prints JSON, exit 0.
-- `check-requirements --prefix TEXT -- CMD [CMD ...]` -> if missing: prints block JSON, exits with sentinel `42`. If all present: exits `0` with no output.
-- `install-hint CMD` -> prints hint string, exit 0.
-
-## `_cli.py` shim spec (bash to python bridge)
-
-The bash file `common/scripts/hook-json.sh` MUST keep the function names sourceable. The original `check_requirements` calls `exit 0` from inside the function (terminates the whole sourced parent script). A python subprocess cannot terminate the bash parent, so we use a sentinel exit code.
-
-Final `.sh` body:
-
-```bash
-# hook-json.sh - shim. Real logic lives in hook_json_lib.py via hook_json_cli.py.
-_HOOKJSON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-emit_block() {
-  python3 "$_HOOKJSON_DIR/hook_json_cli.py" emit-block --reason "$1"
-}
-
-check_requirements() {
-  local prefix="$1"; shift
-  python3 "$_HOOKJSON_DIR/hook_json_cli.py" check-requirements --prefix "$prefix" -- "$@"
-  local rc=$?
-  case $rc in
-    0)  return 0 ;;       # all deps present
-    42) exit 0 ;;         # missing deps; JSON already emitted; terminate parent script
-    *)  return $rc ;;     # unexpected python failure; propagate
-  esac
-}
-```
-
-This preserves byte-exact stdout AND the parent-script-exits-0 contract.
-
-## RED test scenarios (pytest)
-
-File: `tests/test_hook_json.py`. Each test starts as a plain-English scenario comment, then a failing assertion.
+Tests assert on return values and `shutil.which` monkeypatches. No stdout capture. The orchestrator caller's stdout write is tested separately in `tests/test_jot_plugin_orchestrator.py`.
 
 ### `emit_block` group
 
-1. `emit_block_simple_reason_exact_bytes`: `emit_block("hello")` writes exactly `b'{"decision":"block","reason":"hello"}\n'` to the captured stream. Byte-equality assertion (no JSON re-parse) to lock field order and absence of internal spaces.
-2. `emit_block_field_order_decision_first`: re-parse output and assert ordered keys via `json.JSONDecoder(object_pairs_hook=list)`; first key must be `"decision"`.
-3. `emit_block_escapes_double_quote`: `emit_block('say "hi"')` round-trips: parsed `reason` equals `'say "hi"'` and raw bytes contain `\"`.
-4. `emit_block_escapes_backslash`: `emit_block(r'a\b')` round-trips; raw bytes contain `\\`.
-5. `emit_block_preserves_unicode`: `emit_block("cafe naive")` plus a multibyte character; parsed reason equals input. Verifies `ensure_ascii=False` matches `jq` default.
-6. `emit_block_newline_in_reason_round_trips`: `emit_block("line1\nline2")` parsed reason equals input; raw contains `\n` (escaped).
-7. `emit_block_empty_string`: `emit_block("")` -> `{"decision":"block","reason":""}\n`.
-8. `emit_block_no_stderr`: captures stderr and asserts empty.
-9. `emit_block_writes_single_line`: exactly one `\n` in output, at the end.
+1. `emit_block_returns_block_dict`: `emit_block("hello") == {"decision": "block", "reason": "hello"}`.
+2. `emit_block_field_order_decision_first`: iterate keys of returned dict; first key is `"decision"`.
+3. `emit_block_preserves_quotes_in_reason`: `emit_block('say "hi"')["reason"] == 'say "hi"'` (no pre-escaping; serialization is the caller's job).
+4. `emit_block_preserves_backslash`: `emit_block(r"a\b")["reason"] == r"a\b"`.
+5. `emit_block_preserves_unicode`: `emit_block("café naïve")["reason"] == "café naïve"`.
+6. `emit_block_preserves_newline`: `emit_block("line1\nline2")["reason"] == "line1\nline2"`.
+7. `emit_block_empty_string`: `emit_block("") == {"decision": "block", "reason": ""}`.
+8. `emit_block_only_two_keys`: `set(emit_block("x").keys()) == {"decision", "reason"}`.
 
 ### `_install_hint` group
 
-10. `install_hint_jq_canonical`: returns `"jq (brew install jq)"`.
-11. `install_hint_python3_canonical`: returns `"python3 (brew install python)"`.
-12. `install_hint_tmux_canonical`: returns `"tmux (brew install tmux)"`.
-13. `install_hint_claude_canonical`: returns `"claude (https://claude.com/claude-code)"`.
-14. `install_hint_unknown_passthrough`: `_install_hint("foo")` returns `"foo"`.
+9. `install_hint_jq`: `_install_hint("jq") == "jq (brew install jq)"`.
+10. `install_hint_python3`: `_install_hint("python3") == "python3 (brew install python)"`.
+11. `install_hint_tmux`: `_install_hint("tmux") == "tmux (brew install tmux)"`.
+12. `install_hint_claude`: `_install_hint("claude") == "claude (https://claude.com/claude-code)"`.
+13. `install_hint_unknown_passthrough`: `_install_hint("foo") == "foo"`.
 
 ### `check_requirements` group
 
-15. `check_requirements_all_present_returns_zero_silent`: given commands that all exist (use `["python3"]` plus monkeypatched probe), produces no stdout; exit_fn called with `0` OR not called at all (function returns).
-16. `check_requirements_one_missing_emits_block_with_hint`: monkeypatch `shutil.which` so `jq` returns None. Output is exactly `{"decision":"block","reason":"<prefix> needs: jq (brew install jq) <EMDASH> install and retry."}\n` where `<EMDASH>` is U+2014 in UTF-8. Exit_fn called with sentinel (CLI: `42`; library: caller-supplied default).
-17. `check_requirements_multiple_missing_joined_in_arg_order`: missing `[jq, tmux]` produces `"... needs: jq (brew install jq), tmux (brew install tmux) <EMDASH> install and retry."`. Order matches argument order.
-18. `check_requirements_unknown_cmd_listed_by_name`: missing `[foobar]` produces `"... needs: foobar <EMDASH> install and retry."`.
-19. `check_requirements_prefix_used_verbatim`: prefix `/jot` is interpolated as-is. Only the surrounding JSON encoding handles escapes.
-20. `check_requirements_em_dash_byte_sequence_preserved`: assert raw output contains the byte sequence `b'\xe2\x80\x94'`. Hook-protocol byte-exactness test.
+14. `check_requirements_all_present_returns_none`: monkeypatch `shutil.which` to return a path for all queried names; `check_requirements("/test", ["jq"]) is None`.
+15. `check_requirements_one_missing_returns_block`: monkeypatch `shutil.which("jq")` to None; result equals `{"decision": "block", "reason": "/test needs: jq (brew install jq) - install and retry."}`.
+16. `check_requirements_multiple_missing_arg_order`: missing `["jq", "tmux"]`; reason equals `"/test needs: jq (brew install jq), tmux (brew install tmux) - install and retry."`.
+17. `check_requirements_unknown_cmd_passthrough`: missing `["foobar"]`; reason equals `"/test needs: foobar - install and retry."`.
+18. `check_requirements_prefix_verbatim`: prefix `/jot` interpolated unchanged.
+19. `check_requirements_uses_ascii_hyphen`: assert literal `" - install and retry."` (ASCII hyphen, two spaces). No em-dash byte sequence anywhere in returned reason.
 
-### CLI shim group (`hook_json_cli.py`)
+### Caller integration (in `tests/test_jot_plugin_orchestrator.py`)
 
-21. `cli_emit_block_subcommand_exit0`: `python3 hook_json_cli.py emit-block --reason hi` -> stdout exact JSON, exit 0.
-22. `cli_check_requirements_all_present_exit0`: exit 0; no stdout.
-23. `cli_check_requirements_missing_exit42`: missing deps -> exit code `42`; JSON on stdout. Locks the sentinel contract used by the bash wrapper.
-24. `cli_install_hint_subcommand`: `install-hint jq` -> `jq (brew install jq)\n`; exit 0.
+20. `orchestrator_writes_block_dict_as_compact_json`: caller invokes `emit_block`, serializes via `json.dumps(d, separators=(",", ":"), ensure_ascii=False)`, writes to a captured stream. Captured bytes equal `b'{"decision":"block","reason":"hello"}\n'`.
+21. `orchestrator_check_requirements_missing_writes_then_exits_zero`: caller invokes `check_requirements`, writes the returned dict to stdout (if not `None`), and exits 0. Verifies the parent-script-exits-0 contract now lives in Python.
 
-### Bash-shim integration group (subprocess tests)
+## Confirm RED
 
-25. `bash_emit_block_via_shim_byte_exact`: source `hook-json.sh` in a fresh bash subshell, call `emit_block "hi"`, capture stdout, assert exact bytes (validates the python bridge is invisible to consumers).
-26. `bash_check_requirements_present_no_exit`: bash script that sources, calls `check_requirements /test python3`, then echoes `OK`. Output ends with `OK` (function returned, did not exit).
-27. `bash_check_requirements_missing_exits_zero_with_json`: bash script sources, calls `check_requirements /test definitely-not-a-command`, then echoes `SHOULD_NOT_PRINT`. Asserts: exit code 0, stdout contains the block JSON, stdout does NOT contain `SHOULD_NOT_PRINT`.
-28. `bash_real_consumer_jot_sh_still_works`: minimal smoke. Invoke `bash skills/jot/scripts/jot.sh --help` (or its lightest path) with the new shim in place; assert no syntax errors and exit code matches pre-migration baseline.
+After scaffold (step 2) every function body is `print("TODO: <name>")` and the declared return is missing, so tests 1-19 fail on assertion (not import). Tests 20-21 fail because the orchestrator caller has not yet been wired.
+
+## GREEN order (callees-first, bottom-up)
+
+1. `_install_hint` (no deps). Tests 9-13 flip green.
+2. `emit_block` (no deps). Tests 1-8 flip green.
+3. `check_requirements` (depends on `_install_hint` and the dict shape from `emit_block`). Tests 14-19 flip green.
+4. Wire the orchestrator caller in `scripts/jot-plugin-orchestrator.py`: import `hook_json_lib`, write returned dict via `json.dumps(..., separators=(",", ":"), ensure_ascii=False)` plus `\n`, exit 0 when `check_requirements` returns a dict. Tests 20-21 flip green.
+
+Commit per function. Run `pytest tests/test_hook_json_lib.py tests/test_jot_plugin_orchestrator.py -v` after each.
+
+## Update callers (step 6)
+
+For each of the seven active sourcing consumers, the corresponding migration plan owns its own import-site update. If a consumer is still bash when this plan finishes, replace its in-line use of `emit_block` / `check_requirements` with a `python3 -c '...'` inline invocation that imports `hook_json_lib`, serializes the returned dict, and exits 0 on a block. Track each via `[s]` in `MIGRATION_TO_PYTHON.md` until its own migration plan completes.
+
+## Delete (step 7)
+
+When no caller sources `hook-json.sh`, `git rm common/scripts/hook-json.sh`. No transitional shim survives at this path. The migration is fully done; no `[s]` for `hook-json.sh` itself.
+
+## Verify end-to-end (step 8)
+
+1. `pytest tests/test_hook_json_lib.py tests/test_jot_plugin_orchestrator.py -v` -> all green.
+2. **Baseline capture (pre-migration), saved under `tests/fixtures/hook_json_baseline/`:**
+   - `bash -c '. common/scripts/hook-json.sh; emit_block "hi"' > emit_simple.json`
+   - Variants: empty reason, reason with `"`, reason with `\\`, reason with newline, multibyte reason.
+   - `bash -c '. common/scripts/hook-json.sh; check_requirements /test definitely-missing-cmd' > missing_one.json; echo $? > missing_one.exit`
+   - Variant: two missing.
+3. **Post-migration diff:** Python caller output matches baseline EXCEPT for the em-dash -> hyphen substitution (Risk 3). Diff must show only that single byte-sequence change in the `check_requirements` outputs; `emit_block` outputs must be byte-equal.
+4. Live `/jot` invocation: `echo '{"prompt":"/jot foo"}' | bash skills/jot/scripts/jot.sh`. Behavior matches pre-migration recording.
+5. Live `/plate` invocation via `bash skills/plate/scripts/plate.sh`.
+6. Live `/debate` invocation via `bash skills/debate/scripts/debate.sh`.
+7. Force missing-dep path with PATH narrowed to exclude `jq`. User sees the canonical block JSON with the ASCII-hyphen install hint.
+8. `pytest tests/ -v` (full suite) plus `bash skills/debate/tests/upfront-instructions-test.sh`. Both pass.
+9. Hook protocol parser smoke: pipe orchestrator output into `python3 -c 'import json,sys; assert json.load(sys.stdin)=={"decision":"block","reason":"x"}'`.
 
 ## Risk callouts
 
-1. **Byte-exact JSON shape is load-bearing.** Claude Code parses hook output strictly. Any change to key order, whitespace, or escaping could silently change UI behavior. Tests 1-9 plus 25 lock this.
-2. **`exit` from sourced function.** Original bash exits the parent script from inside `check_requirements`. Python subprocess cannot. The sentinel-42 bridge is a behavior-preserving workaround; if a future caller depends on parent-exit semantics across pipes, integration test 27 must catch divergence.
-3. **Em-dash preservation.** Repo style rules forbid em-dash in new code, but the existing user-visible string contains one. Migration MUST preserve the byte sequence to avoid changing the displayed message hash. Test 20 enforces. Source it from a constant `_EMDASH = "—"` so reviewers can spot it.
-4. **Unicode escaping divergence.** `jq` emits raw UTF-8 by default; Python `json.dumps` defaults to `ensure_ascii=True`. Pin `ensure_ascii=False` and verify against a captured baseline from the current bash for at least one non-ASCII reason.
-5. **`python3` startup cost on every call.** `emit_block` is invoked at most once per hook invocation, so ~50ms overhead is acceptable. `check_requirements` is also one-shot. No concern.
-6. **`_hookjson_install_hint` is private.** Prefixed with `_` and not documented as public. Safe to drop from the bash shim entirely (only used internally by `check_requirements`). Library `_install_hint` should remain underscore-prefixed.
-7. **Multiple skill scripts source this concurrently.** Idempotent. No shared state beyond function definitions. Re-sourcing is safe.
-8. **`upfront-instructions-test.sh` is a test file.** Sourcing the shim from a bash test must still work. Integration test 28 verifies a representative consumer.
-
-## Verification plan (live hook invocations)
-
-1. `pytest tests/test_hook_json.py -v` -> all 28 scenarios GREEN.
-2. **Baseline capture (pre-migration)**: before changing the `.sh`, run from the original bash:
-   - `bash -c '. common/scripts/hook-json.sh; emit_block "hi"' > tests/fixtures/hook_json_baseline/emit_simple.json`
-   - Repeat for: empty reason, reason with `"`, reason with `\\`, reason with newline, multibyte reason.
-   - `bash -c '. common/scripts/hook-json.sh; check_requirements /test definitely-missing-cmd' > tests/fixtures/hook_json_baseline/missing_one.json; echo $? > tests/fixtures/hook_json_baseline/missing_one.exit`
-   - Repeat for: two missing, unknown cmd.
-3. **Post-migration diff**: re-run identical commands. `diff` against fixtures must be empty (stdout AND exit code).
-4. **Real hook invocation `/jot`**: `echo '{"prompt":"/jot foo"}' | bash skills/jot/scripts/jot.sh`. Confirm orchestrator behavior matches pre-migration recording.
-5. **Real hook invocation `/plate`**: same pattern via `bash skills/plate/scripts/plate.sh`.
-6. **Real hook invocation `/debate`**: `bash skills/debate/scripts/debate.sh`.
-7. **Force missing-dep path**: invoke with PATH narrowed to exclude `jq`. Assert the user sees the canonical block JSON with the em-dash hint (byte-exact match against fixture).
-8. **Existing test suite regression**: `pytest tests/ -v` (full suite) plus `bash skills/debate/tests/upfront-instructions-test.sh`. Both must pass unchanged.
-9. **Hook protocol parser smoke**: pipe `emit_block` output into `python3 -c 'import json,sys; assert json.load(sys.stdin)=={"decision":"block","reason":"x"}'` to confirm parser compatibility.
+1. **Byte-exact JSON shape is load-bearing.** Claude Code parses hook output strictly. Field order, whitespace, escaping must match. Tests 1-8 plus baseline diff (verify step 3) lock this. `json.dumps(separators=(",", ":"), ensure_ascii=False)` matches `jq`'s compact form.
+2. **`exit 0` from sourced bash function.** Original bash terminated the parent script from inside `check_requirements`. Python `check_requirements` cannot do that and should not try; it returns the dict. The orchestrator caller owns the exit. Test 21 enforces.
+3. **Em-dash -> ASCII hyphen.** Prior plan preserved U+2014 byte-exact. The new repo style rule (`feedback_no_emdash`) forbids em-dash anywhere. The migrated reason uses `" - install and retry."` (ASCII). Test 19 enforces. Verification step 3 expects this single intentional diff against the baseline; reviewers must confirm no downstream consumer parses the em-dash byte sequence.
+4. **Unicode escaping divergence.** `jq` emits raw UTF-8 by default; Python `json.dumps` defaults to `ensure_ascii=True`. The orchestrator caller MUST pass `ensure_ascii=False`. Test 20 plus a multibyte baseline lock this.
+5. **`_install_hint` is private.** Underscore-prefixed; not part of the public API. Internal use only.
+6. **Multiple skill scripts source this concurrently.** Was idempotent in bash. Python module-level imports are also idempotent; `sys.modules` cache handles re-imports.
+7. **`upfront-instructions-test.sh` is itself a bash test.** Either migrate it in its own plan, or use the inline `python3 -c '...'` pattern in step 6.
 
 ## Numbered TODO list (template steps 0-8)
 
 0. Create this numbered TODO list (this section).
-1. Mark `common/scripts/hook-json.sh` as `[i]` in `MIGRATION_TO_PYTHON.md` line 97.
+1. Mark `common/scripts/hook-json.sh` as `[i]` in `MIGRATION_TO_PYTHON.md`.
 2. Plan written here. Mark entry as `[p]` in `MIGRATION_TO_PYTHON.md`.
-3. Capture pre-migration byte baselines per Verification step 2. Commit fixtures under `tests/fixtures/hook_json_baseline/` for permanent regression coverage.
-4. Write RED tests in `tests/test_hook_json.py` covering all 28 scenarios above. Run pytest. All RED (fail with `ModuleNotFoundError: hook_json_lib` or similar).
-5. Mark `common/scripts/hook-json.sh` as `[~]` in `MIGRATION_TO_PYTHON.md`.
-6. Implement `common/scripts/hook_json_lib.py` (pure functions). Run pytest. Library-only tests GREEN; CLI plus bash-shim tests still RED.
-7. Implement `common/scripts/hook_json_cli.py` argparse dispatcher with `emit-block`, `check-requirements` (sentinel-42 on missing), `install-hint` subcommands. Run pytest. CLI tests GREEN.
-8. Replace the `common/scripts/hook-json.sh` body with the bash shim (function definitions delegating to `hook_json_cli.py` with the 42-sentinel mapping). Run full pytest plus integration tests plus the seven sourcing consumers' smoke tests plus post-migration baseline diff. All must be byte-equal to baseline. Mark entry `[x]` in `MIGRATION_TO_PYTHON.md`.
-
+3. Capture pre-migration byte baselines per Verification step 2. Commit fixtures under `tests/fixtures/hook_json_baseline/`.
+4. Scaffold `common/scripts/hook_json_lib.py` with three functions, each body `print("TODO: <name>")`, all with typed signatures and return types per the function table. Module imports cleanly.
+5. Write RED tests in `tests/test_hook_json_lib.py` (tests 1-19) and add tests 20-21 to `tests/test_jot_plugin_orchestrator.py`. Run pytest. Confirm RED for the expected reason (assertion failure, not import error).
+6. Mark `common/scripts/hook-json.sh` as `[~]`.
+7. GREEN one body at a time, callees-first: `_install_hint` -> `emit_block` -> `check_requirements`. Commit per body; rerun pytest after each.
+8. Wire orchestrator caller in `scripts/jot-plugin-orchestrator.py`. Tests 20-21 flip green.
+9. Update each of the seven active sourcing consumers per "Update callers" section. Mark each `[s]` if it remains bash; their own migration plans flip them to `[x]`.
+10. `git rm common/scripts/hook-json.sh`. Run live verifications (step 8 above). Mark entry `[x]` in `MIGRATION_TO_PYTHON.md`.

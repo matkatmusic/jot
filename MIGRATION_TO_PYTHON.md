@@ -79,7 +79,7 @@ The graph below is one-layer per file: each block shows only that file's DIRECT 
 
 [p] - common/scripts/claude-launcher.sh
 
-[p] - common/scripts/git.sh
+[~] - common/scripts/git.sh
 
 [p] - common/scripts/hook-json.sh
 |

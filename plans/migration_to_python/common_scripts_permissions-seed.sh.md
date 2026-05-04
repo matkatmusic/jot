@@ -2,294 +2,138 @@
 
 ## Source
 
-`common/scripts/permissions-seed.sh` - sourced bash library exposing one
-function, `permissions_seed`, that performs a three-state first-run / upgrade
-seed of a user-editable permissions allowlist file (typically
-`${CLAUDE_PLUGIN_DATA}/permissions.local.json`).
+`common/scripts/permissions-seed.sh` is a sourced bash library exposing a single function, `permissions_seed`, that performs a three-state first-run / upgrade seed of a user-editable permissions allowlist file (typically `${CLAUDE_PLUGIN_DATA}/permissions.local.json`).
 
-## Migration class
+## Target
 
-**`(sourced)` - Medium.** Every active caller uses `. permissions-seed.sh` to
-import the `permissions_seed` shell function into its own scope. No caller
-invokes the file as a subprocess. Per the tracker rules, the shim must be a
-bash file that defines a `permissions_seed` function which delegates to a
-`_cli.py` per template step 6.
+`common/scripts/permissions_seed_lib.py` (new module). No `_cli.py`. No surviving `.sh`. Callers import the module and call `permissions_seed(...)` directly.
 
-## Callers (active)
+## Function table
 
-1. `skills/jot/scripts/jot.sh:126`
-2. `skills/todo/scripts/todo-launcher.sh:30`
-3. `skills/debate/scripts/debate.sh:161`
-4. `skills/plate/scripts/archive/push.sh:27`
+The spine of this plan. Every row gets a Python function with the same name, typed signature, declared return type, and stub body `print("TODO: <name>")`. Per-function notes follow each row inline.
 
-Inactive / archived (do not adapt):
-- `skills/debate/scripts/OLD_DISCARD/debate.sh:95` (dead)
-- `plans/debate-resume.md:500` (planning doc)
-- `plans/plate-status-2026-04-14.md` (planning doc)
+| name | Python signature | return type | one-line behavior note |
+|---|---|---|---|
+| `permissions_seed` | `permissions_seed(installed: Path, default: Path, default_sha_file: Path, prior_sha_file: Path, log_file: Path \| None = None, log_prefix: str = "plugin") -> None` | `None` | Top-level entry. Runs the three-state decision tree. Mutates files. Returns nothing. |
+| `_permseed_log` | `_permseed_log(log_file: Path \| None, log_prefix: str, message: str) -> None` | `None` | Append `<ISO-8601-with-offset> <prefix>: <message>\n` to `log_file`. No-op if `log_file` is `None`. Swallow `OSError`. |
+| `_read_first_token` | `_read_first_token(path: Path) -> str` | `str` | Read `path`, return first whitespace-separated token of first line. Return `""` if file missing or unreadable. Replaces bash `awk '{print $1}'`. was: inline `awk` pipeline. |
+| `_sha256_file` | `_sha256_file(path: Path) -> str` | `str` | Return `hashlib.sha256(path.read_bytes()).hexdigest()`. Return `""` on `OSError`. Replaces bash `shasum -a 256 ... \| awk '{print $1}'`. was: inline shell pipeline. |
+| `_write_prior_sha` | `_write_prior_sha(prior_sha_file: Path, sha: str) -> None` | `None` | Write `f"{sha}\n"` to `prior_sha_file`. Replaces bash `printf '%s\n' "$sha" > "$prior_sha_file"`. was: inline `printf >`. |
 
-Each caller sources the file then invokes `permissions_seed` with positional
-args during plugin start-up to compose the allowlist consumed downstream by
-spawned Claude agents (whose permissions are then expanded by
-`common/scripts/jot/expand_permissions.py`).
+Per-function notes:
+
+- **`permissions_seed`.** Decision tree (preserved from bash, in order):
+  1. If `default` missing OR `default_sha_file` missing -> log `"bundled permissions default missing at <default> - cannot seed"`; return. No on-disk writes.
+  2. `current_default_sha = _read_first_token(default_sha_file)`.
+  3. If `installed` missing -> `shutil.copyfile(default, installed)`; `_write_prior_sha(prior_sha_file, current_default_sha)`; log `"seeded <installed> from bundled default (sha=<current_default_sha>)"`; return.
+  4. `installed_sha = _sha256_file(installed)`.
+  5. `prior_sha = _read_first_token(prior_sha_file)` (returns `""` if absent).
+  6. If `installed_sha == current_default_sha` -> return (no writes, no log).
+  7. If `prior_sha` non-empty AND `installed_sha == prior_sha` -> `shutil.copyfile(default, installed)`; `_write_prior_sha(prior_sha_file, current_default_sha)`; log `"upgraded <installed> to new bundled default (was <prior_sha>, now <current_default_sha>)"`; return.
+  8. If `prior_sha != current_default_sha` -> log `"<installed> is user-edited; bundled default updated - diff manually. installed_sha=<...> prior_sha=<...> current_default_sha=<...>"`; `_write_prior_sha(prior_sha_file, current_default_sha)`; return. Installed bytes NEVER overwritten.
+  9. Implicit fall-through (`prior_sha == current_default_sha` and installed differs from both): no log, no write, return.
+
+- **`_permseed_log`.** Timestamp via `datetime.datetime.now().astimezone().isoformat(timespec="seconds")` to match `date -Iseconds`. Open with `mode="a"`. Wrap in `try/except OSError: pass` to preserve bash `|| true`.
+
+- **`_read_first_token`.** `try: text = path.read_text(); except OSError: return ""`. Then `tokens = text.split(); return tokens[0] if tokens else ""`. Tolerates `<sha>  <filename>` form emitted by `shasum -a 256 file > sha`.
+
+- **`_sha256_file`.** `try: return hashlib.sha256(path.read_bytes()).hexdigest(); except OSError: return ""`. Return value must equal `shasum -a 256` output (lowercase hex, no prefix).
+
+- **`_write_prior_sha`.** Use `path.write_text(f"{sha}\n")`. No directory creation; bash original assumed parent exists.
+
+## Callers needing import-site updates
+
+1. `skills/jot/scripts/jot.sh:126` (bash) - migrate this caller in same change OR install transitional shim per `MIGRATION_TO_PYTHON.md` philosophy.
+2. `skills/todo/scripts/todo-launcher.sh:30` (bash) - same.
+3. `skills/debate/scripts/debate.sh:161` (bash) - same.
+4. `skills/plate/scripts/archive/push.sh:27` (bash) - same.
+
+Inactive (do not adapt): `skills/debate/scripts/OLD_DISCARD/debate.sh`, `plans/debate-resume.md`, `plans/plate-status-2026-04-14.md`.
+
+Each active bash caller currently does `. permissions-seed.sh` then calls `permissions_seed <args>`. Until each bash caller is itself migrated, the file `common/scripts/permissions-seed.sh` survives temporarily as a `[s]` transitional shim:
+
+```bash
+permissions_seed() {
+  python3 -c 'from common.scripts.permissions_seed_lib import permissions_seed; import sys; from pathlib import Path; \
+args=sys.argv[1:]; permissions_seed(Path(args[0]), Path(args[1]), Path(args[2]), Path(args[3]), \
+Path(args[4]) if len(args)>4 and args[4] else None, args[5] if len(args)>5 else "plugin")' "$@"
+}
+```
+
+Delete the `.sh` once all four bash callers migrate to Python and import `permissions_seed_lib` directly.
 
 ## Interaction with `expand_permissions.py`
 
 Two distinct stages, no shared code path:
 
-1. `permissions_seed` (this file) - **on-disk seeding**: writes
-   `permissions.local.json` and the sidecar `prior.sha` only when needed.
-   Runs once per plugin start.
-2. `expand_permissions.py` - **in-memory expansion**: reads the now-existing
-   `permissions.local.json`, expands `${CWD}/${HOME}/${REPO_ROOT}` placeholders,
-   and prints the allow array to stdout for the spawned worker.
+1. `permissions_seed` (this module) - on-disk seeding. Writes `permissions.local.json` and the sidecar `prior.sha` only when needed. Runs once per plugin start.
+2. `expand_permissions.py` - in-memory expansion. Reads the now-existing JSON, expands `${CWD}/${HOME}/${REPO_ROOT}` placeholders, prints the allow array.
 
-Stage 1 is a precondition of stage 2: without seeding, the JSON read by
-`expand_permissions.py` does not exist. The two helpers are intentionally
-separate (per `plans/jot-generalizing-refactor.md` commit 8) and stay
-separate after migration.
+Stage 1 is a precondition of stage 2. The two stay separate after migration.
 
-## Behavior spec - `permissions_seed`
+## RED tests
 
-Signature (preserved across migration):
+Test file: `tests/test_permissions_seed_lib.py`. Fixture helper `build_layout(tmp_path, *, default_text, default_sha=None, installed_text=None, prior_sha=None) -> tuple[Path, Path, Path, Path]` constructs the four input paths.
 
-```
-permissions_seed <installed> <default> <default_sha_file> <prior_sha_file>
-                 [log_file] [log_prefix]
-```
+All assertions hit return values or filesystem/log side effects. None capture stdout.
 
-Defaults:
-- `log_file` = `""` (silent if empty)
-- `log_prefix` = `"plugin"`
+Behavior coverage:
 
-Decision tree (in order):
+1. `test_bundled_default_missing_returns_none_and_writes_nothing` - default absent -> `permissions_seed(...) is None`, `installed.exists() is False`, `prior_sha_file.exists() is False`.
+2. `test_bundled_default_sha_file_missing_returns_none_and_writes_nothing` - sha sidecar absent -> same as #1.
+3. `test_fresh_install_copies_default_bytes` - installed absent -> `installed.read_bytes() == default.read_bytes()`.
+4. `test_fresh_install_records_current_default_sha` - `prior_sha_file.read_text() == f"{current_default_sha}\n"`.
+5. `test_fresh_install_emits_seeded_log_line` - `log_file.read_text()` contains `"seeded "` and `current_default_sha`.
+6. `test_installed_equals_default_is_total_noop` - capture mtimes pre-call; assert mtimes unchanged post-call AND `log_file.exists() is False`.
+7. `test_untouched_old_default_is_upgraded` - `installed.read_bytes() == new_default.read_bytes()` and `prior_sha_file.read_text() == f"{new_default_sha}\n"`.
+8. `test_upgrade_emits_upgraded_log_line` - log contains `"upgraded "` and both old and new sha values.
+9. `test_user_edited_bytes_preserved_byte_for_byte` - snapshot `installed.read_bytes()` pre-call; assert equal post-call.
+10. `test_user_edited_with_stale_prior_rewrites_prior_sha_only` - `prior_sha_file.read_text() == f"{current_default_sha}\n"`, installed bytes unchanged, log contains `"is user-edited"`.
+11. `test_user_edited_with_current_prior_record_is_silent` - prior already equals current_default; assert no log file created, no file mutation.
+12. `test_log_file_none_creates_no_log` - `log_file=None` on a fresh install path -> no extra files appear in `tmp_path`.
+13. `test_log_file_directory_missing_does_not_raise` - `log_file=tmp_path/"nonexistent"/"log.txt"` -> call returns `None`, no exception.
+14. `test_log_prefix_default_is_plugin` - log line matches regex `r" plugin: "` between timestamp and message.
+15. `test_log_prefix_custom_appears_in_line` - pass `log_prefix="todo"` -> log line contains `" todo: "`.
+16. `test_sha_sidecar_with_trailing_filename_parsed` - write `default_sha_file` as `"<sha>  default.json\n"`; assert `prior_sha_file.read_text()` equals `f"{sha}\n"` (proves first-token parse).
+17. `test_returns_none_in_every_branch` - parametrize over each scenario; assert `permissions_seed(...) is None` every time.
 
-1. **Bundled default missing.** If `default` does not exist OR
-   `default_sha_file` does not exist -> log
-   `"bundled permissions default missing at <default> - cannot seed"`,
-   return 0. No on-disk writes.
-2. **Read current default sha.** `current_default_sha` = first whitespace-
-   separated token of `default_sha_file`.
-3. **Fresh install.** If `installed` does not exist -> `cp default installed`,
-   write `current_default_sha\n` to `prior_sha_file`, log
-   `"seeded <installed> from bundled default (sha=<current_default_sha>)"`,
-   return 0.
-4. **Compute installed sha.** `installed_sha` = `shasum -a 256 <installed>`
-   first token (silent failure -> empty string).
-5. **Compute prior sha.** `prior_sha` = first token of `prior_sha_file` if
-   that file exists; else empty string.
-6. **Already up-to-date.** If `installed_sha == current_default_sha` ->
-   return 0 (no writes, no log).
-7. **Untouched copy of an older default.** If `prior_sha` non-empty AND
-   `installed_sha == prior_sha` -> `cp default installed`, write
-   `current_default_sha\n` to `prior_sha_file`, log
-   `"upgraded <installed> to new bundled default (was <prior_sha>, now <current_default_sha>)"`,
-   return 0.
-8. **User-edited file with a stale prior record.** If
-   `prior_sha != current_default_sha` -> log
-   `"<installed> is user-edited; bundled default updated - diff manually. installed_sha=<...> prior_sha=<...> current_default_sha=<...>"`,
-   write `current_default_sha\n` to `prior_sha_file` (the installed file is
-   NEVER overwritten), return 0.
-9. **User-edited file with already-current prior record.** Implicit fall-through
-   from step 8 when `prior_sha == current_default_sha`: no log, no writes,
-   return 0.
+## RED -> GREEN order (callees-first)
 
-Always returns 0. Never raises. Logging failures are swallowed
-(`>> file 2>/dev/null || true`).
+Per `RED_GREEN_TDD.md`: write all RED first, confirm RED, then implement bottom-up so each commit flips a small, named cluster.
 
-Log line format: `<ISO-8601 with offset> <log_prefix>: <message>` appended
-to `log_file`.
+Implementation order:
 
-## Target Python module path
+1. `_write_prior_sha` - flips tests #4, #7, #10, #16.
+2. `_read_first_token` - flips #16 fully; partially unblocks #2, #4, #7.
+3. `_sha256_file` - flips #6 (noop branch), unblocks #7 vs #10 distinction.
+4. `_permseed_log` - flips #5, #8, #10, #13, #14, #15.
+5. `permissions_seed` - flips remaining: #1, #2, #3, #6, #9, #11, #12, #17.
 
-`common/scripts/jot/permissions_seed.py`
-
-Mirrors the existing `common/scripts/jot/expand_permissions.py` neighbour and
-keeps the namespaced-python-helpers convention noted in `README.md`.
-
-Public API:
-
-```python
-def permissions_seed(
-    installed: Path,
-    default: Path,
-    default_sha_file: Path,
-    prior_sha_file: Path,
-    log_file: Path | None = None,
-    log_prefix: str = "plugin",
-) -> None: ...
-```
-
-CLI entry: `common/scripts/jot/permissions_seed_cli.py` parses positional
-args matching the bash signature, calls `permissions_seed(...)`, exits 0
-unconditionally (matching bash behavior).
-
-## Shim (final `.sh` body)
-
-`common/scripts/permissions-seed.sh` becomes a thin bash file that still works
-when sourced and still exposes `permissions_seed` as a shell function:
-
-```bash
-#!/bin/bash
-# Shim: delegates to common/scripts/jot/permissions_seed_cli.py.
-# Preserves the sourced-function calling convention used by callers.
-
-permissions_seed() {
-  python3 "$(dirname "${BASH_SOURCE[0]}")/jot/permissions_seed_cli.py" "$@"
-}
-```
-
-Rationale: callers use `permissions_seed <args>` in their own scope; the
-shim provides exactly that name. The Python CLI does all I/O (cp, sha
-compute, sha-file write, optional log append).
-
-## RED test scenarios (pytest)
-
-Test file: `tests/test_permissions_seed.py`. Each test starts with a plain-
-English scenario comment then a failing assertion. All filesystem state is
-built under `tmp_path`; `subprocess`/`os.environ` are not needed because the
-public API is a pure function operating on `Path` arguments. A small helper
-`build_layout(tmp_path, *, default_text, default_sha=None, installed_text=None,
-prior_sha=None)` constructs the four input paths and returns them.
-
-Behavior coverage (12 scenarios):
-
-1. `bundled_default_missing_returns_silently` - default file absent -> nothing
-   created, return value is None, log file untouched.
-2. `bundled_default_sha_file_missing_returns_silently` - sha sidecar absent ->
-   no writes, no exception.
-3. `fresh_install_copies_default_and_records_prior_sha` - installed absent ->
-   installed file equals default text, prior_sha_file contains
-   `current_default_sha\n`.
-4. `fresh_install_logs_seed_message` - log_file given on fresh install ->
-   log file contains `seeded <installed> from bundled default (sha=...)`.
-5. `installed_sha_equals_current_default_is_noop` - installed == default
-   bytes -> no writes (mtime unchanged), no log lines.
-6. `untouched_old_default_is_upgraded` - installed_sha == prior_sha and
-   prior_sha != current_default_sha -> installed overwritten with new default,
-   prior_sha_file rewritten, upgrade log emitted.
-7. `user_edited_file_with_stale_prior_is_left_alone_and_logged` - installed
-   bytes differ from default and from prior -> installed file bytes preserved,
-   prior_sha_file rewritten to current_default_sha, user-edited log emitted.
-8. `user_edited_file_is_never_overwritten_even_after_log` - assert installed
-   bytes byte-for-byte equal pre-call snapshot in scenario 7.
-9. `user_edited_with_current_prior_record_is_silent` - installed differs from
-   default but prior_sha already equals current_default_sha -> no log line
-   appended, no file mutated.
-10. `silent_when_log_file_arg_omitted` - scenario 3 with log_file=None ->
-    no log file path is created or touched.
-11. `log_file_directory_missing_does_not_raise` - log_file points into a
-    non-existent directory -> call still completes, return None (matches
-    bash `|| true`).
-12. `log_prefix_default_is_plugin_when_omitted` - log line contains
-    ` plugin: ` between timestamp and message.
-
-CLI-shim coverage (3 scenarios) in same file:
-
-13. `cli_invokes_permissions_seed_with_positional_args` - invoke
-    `permissions_seed_cli.py` via `subprocess.run` with all 6 args; assert
-    same on-disk effect as direct call.
-14. `cli_omits_optional_log_args` - only 4 positional args -> no log file
-    created.
-15. `cli_exits_zero_when_default_missing` - exit code 0 when bundled default
-    missing (matches bash return 0).
-
-## Risk callouts
-
-1. **Sourced-function contract.** Callers expect a *shell function* named
-   `permissions_seed`. The shim must define this function, not just `exec`.
-   Replacing the file with a one-line `exec python3` shim (the standalone
-   pattern) would silently break every caller because sourcing such a file
-   would either run python at source-time or do nothing useful.
-2. **Subprocess overhead.** Each call now spawns `python3`. Acceptable: each
-   caller invokes `permissions_seed` exactly once at start-up, never in a
-   loop.
-3. **Timestamp format.** Bash uses `date -Iseconds`. Python must emit an
-   equivalent ISO-8601-with-offset string. Use
-   `datetime.datetime.now().astimezone().isoformat(timespec="seconds")` and
-   verify the format in a test.
-4. **`shasum` vs `hashlib.sha256`.** Bash piped through `shasum -a 256 |
-   awk '{print $1}'`. Python must compute
-   `hashlib.sha256(file.read_bytes()).hexdigest()` to match exactly. RED
-   test 6 asserts an upgrade triggered by sha equality.
-5. **Silent log-write failure.** Bash swallows append failures. Python must
-   wrap the log append in `try/except OSError: pass` to preserve scenario 11.
-6. **Sha sidecar parsing.** Bash uses `awk '{print $1}'` on `default_sha_file`
-   and `prior_sha_file`, tolerating optional trailing data (e.g. `<sha>
-   <filename>` from `shasum -a 256 file > sha`). Python must split on
-   whitespace and take token zero, not assume the file is the bare hex string.
-7. **`$BASH_SOURCE` resolution in shim.** `dirname "${BASH_SOURCE[0]}"` must
-   resolve to `common/scripts/`. Confirm by sourcing the shim from each of
-   the four caller scripts in the verification phase.
-8. **No on-disk mutation when default missing.** Scenarios 1 and 2 must not
-   create the prior_sha_file. A naive port that always writes the sha would
-   regress this.
-
-## Verification plan
-
-1. `pytest tests/test_permissions_seed.py -v` -> GREEN (all 15 scenarios).
-2. End-to-end source check, per caller:
-   - `bash -c '. common/scripts/permissions-seed.sh; type permissions_seed'`
-     must print `permissions_seed is a function`.
-3. End-to-end seed check (fresh install simulation, isolated tmp dir):
-
-```
-TMP=$(mktemp -d)
-echo '{"permissions":{"allow":[]}}' > "$TMP/default.json"
-shasum -a 256 "$TMP/default.json" > "$TMP/default.sha"
-bash -c '. common/scripts/permissions-seed.sh; permissions_seed \
-  "$1/installed.json" "$1/default.json" "$1/default.sha" "$1/prior.sha" \
-  "$1/log.txt" test' _ "$TMP"
-diff "$TMP/installed.json" "$TMP/default.json"   # must be empty
-test -s "$TMP/prior.sha"                          # must be non-empty
-grep -q 'seeded ' "$TMP/log.txt"                  # log line written
-```
-
-4. End-to-end upgrade check: pre-populate `installed.json` with bytes
-   matching `prior.sha`, then change `default.json` and `default.sha`, run
-   `permissions_seed`, assert installed bytes now match new default and
-   `upgraded` log line appears.
-5. End-to-end user-edit check: pre-populate `installed.json` with custom
-   bytes whose sha differs from prior; run; assert installed bytes UNCHANGED
-   byte-for-byte and `is user-edited` log line appears.
-6. Smoke each real caller in dev install:
-   - `bash skills/todo/scripts/todo-launcher.sh < /dev/null` (with a stub
-     pending file) - must not error before the function call returns.
-   - `echo '{}' | bash skills/jot/scripts/jot.sh` - must reach Phase 2.
-   - `echo '{}' | bash skills/debate/scripts/debate.sh` - must reach the
-     post-source code path.
-7. Diff timestamps `installed.json` and `prior.sha` between two consecutive
-   no-op runs (scenario 5 equivalent) - neither file's mtime should change.
-
-A failing verification looks like: any scenario above producing a different
-on-disk state than the bash original; or `type permissions_seed` returning
-non-zero in step 2.
+Commit per leaf or per small cluster. After each, run `pytest tests/test_permissions_seed_lib.py -v` and confirm new tests green, no prior tests regress.
 
 ## Migration template steps (TODO)
 
-0. **Confirm tracker state.** Verify `MIGRATION_TO_PYTHON.md` line for
-   `common/scripts/permissions-seed.sh` is still `[ ]`. Annotate migration
-   class `(sourced)` if missing.
-1. **Mark `[i]`.** Flip the four tracker rows to `[i]` (lines 105, 130, 245,
-   355) before any code lands.
-2. **Land this plan; mark `[p]`.** Commit this file at
-   `plans/migration_to_python/common_scripts_permissions-seed.sh.md` and
-   flip tracker rows to `[p]`.
-3. **Write RED tests.** Create `tests/test_permissions_seed.py` containing
-   the 15 scenarios above. Run `pytest tests/test_permissions_seed.py -v`
-   and confirm RED (all fail with `ModuleNotFoundError` or `AttributeError`
-   referencing `permissions_seed`).
-4. **Mark `[~]`.** Flip tracker rows to `[~]`.
-5. **Implement Python module + CLI.** Create
-   `common/scripts/jot/permissions_seed.py` (pure function) and
-   `common/scripts/jot/permissions_seed_cli.py` (positional-args entry).
-   Match the behavior spec section above exactly. No reads from
-   `os.environ`. No prints to stdout. All errors swallowed per scenarios
-   1, 2, 11.
-6. **Run pytest GREEN.** `pytest tests/test_permissions_seed.py -v` ->
-   all 15 pass. Resolve any deltas before proceeding.
-7. **Replace `.sh` body with sourced-function shim.** Overwrite
-   `common/scripts/permissions-seed.sh` with the shim shown above. Keep
-   the existing top-of-file header comment block intact (callers read it).
-8. **Verify end-to-end and mark `[x]`.** Run every step in the Verification
-   plan section. On full GREEN, flip the four tracker rows to `[x]`.
+0. **Tracker `[i]`.** Flip `MIGRATION_TO_PYTHON.md` row for `common/scripts/permissions-seed.sh` to `[i]`.
+1. **Inventory done.** Function table above.
+2. **Scaffold.** Create `common/scripts/permissions_seed_lib.py` with all 5 functions from the table. Each body is `print(f"TODO: {name}")` and the declared return (`return None` or `return ""`) so signatures hold under static checkers.
+3. **RED tests.** Create `tests/test_permissions_seed_lib.py` with all 17 scenarios. Run `pytest tests/test_permissions_seed_lib.py -v`. Every test must fail on assertion (not on import or signature mismatch). If any test errors on import, fix the scaffold, not the test.
+4. **Confirm RED.** Capture pytest output showing 17/17 failing on assertion. Mark tracker `[~]`.
+5. **GREEN, callees-first.** Implement the 5 bodies in the order above. After each body, run pytest and confirm the expected cluster flips green with zero regressions. Commit per body or per small cluster.
+6. **Update bash callers.** For each of the four active bash callers, either (a) migrate the caller in this same change to Python and import `permissions_seed_lib` directly, or (b) replace `common/scripts/permissions-seed.sh` body with the transitional shim shown in the Callers section and mark the file `[s]`.
+7. **Delete the `.sh`.** Once no bash caller remains, `git rm common/scripts/permissions-seed.sh`. Until then, the shim survives as `[s]`.
+8. **Verify end-to-end.** Per `feedback_verify_before_commit.md`: pytest is necessary but not sufficient.
+   - `pytest tests/test_permissions_seed_lib.py -v` -> 17/17 green.
+   - Live integration: run a real plugin start (`echo '{}' | bash skills/jot/scripts/jot.sh` while shim is in place) and confirm `${CLAUDE_PLUGIN_DATA}/permissions.local.json` materializes with expected bytes and `prior.sha` sidecar.
+   - Two-run mtime check: invoke twice in succession with installed already current; assert `installed` and `prior_sha_file` mtimes unchanged between runs (proves scenario #6 in vivo).
+   - Upgrade simulation: pre-populate `installed` with bytes matching old `prior.sha`; bump `default` and `default.sha`; run; assert installed bytes equal new default and log contains `"upgraded "`.
+   - User-edit simulation: pre-populate `installed` with custom bytes whose sha matches neither; run; assert installed bytes byte-for-byte unchanged and log contains `"is user-edited"`.
+9. **Tracker `[x]`.** After live verification passes, flip the tracker row to `[x]` (or `[s]` if any bash caller still remains).
 
+## Risk callouts
+
+1. **Timestamp format parity.** Bash `date -Iseconds` emits e.g. `2026-05-04T01:40:12-07:00`. Python `datetime.now().astimezone().isoformat(timespec="seconds")` emits the same. Test #14 asserts the prefix shape implicitly via the `" plugin: "` separator; add an explicit format regex if needed.
+2. **`shasum` vs `hashlib.sha256` parity.** `shasum -a 256 file` and `hashlib.sha256(file.read_bytes()).hexdigest()` agree on lowercase hex. Test #7 asserts upgrade triggered by sha equality across the two implementations.
+3. **Silent log-write failure.** Bash swallows append failures. Python wraps the append in `try/except OSError: pass`. Test #13 enforces this.
+4. **Sha sidecar parsing.** `_read_first_token` splits on whitespace and takes index 0; tolerates `<sha>  <filename>` form. Test #16 enforces this.
+5. **No on-disk mutation when default missing.** Tests #1 and #2 assert `prior_sha_file.exists() is False` after the call, preventing a regression where a naive port writes the sha unconditionally.
+6. **Installed never overwritten on user edit.** Test #9 snapshots bytes pre-call and compares post-call. This is the single most important invariant; bash currently guarantees it via the absence of any `cp` on the user-edit branch.
