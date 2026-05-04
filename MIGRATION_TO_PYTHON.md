@@ -85,9 +85,9 @@ The graph below is one-layer per file: each block shows only that file's DIRECT 
 |
 | -- (.py helpers) - inline python3 for emit_block JSON encoding
 
-[p] - common/scripts/invoke_command.sh
+[a] - common/scripts/invoke_command.sh
 
-[p] - common/scripts/lock.sh
+[a] - common/scripts/lock.sh
 
 [p] - common/scripts/permissions-seed.sh
 
