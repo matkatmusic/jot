@@ -1656,7 +1656,7 @@ lock_tests() {
 
 # source "${CLAUDE_PLUGIN_ROOT}/common/scripts/invoke_command.sh"
 # source "${CLAUDE_PLUGIN_ROOT}/common/scripts/tmux.sh"
-source "${CLAUDE_PLUGIN_ROOT}/common/scripts/lock.sh"
+# source "${CLAUDE_PLUGIN_ROOT}/common/scripts/lock.sh"
 
 # Aliases for backward compat — callers use jot_lock_acquire/release.
 jot_lock_acquire() { lock_acquire "$@"; }
@@ -3778,6 +3778,198 @@ plate_summary_watch() {
 }
 #### end plate-summary-watch.sh ####
 
+# ─── inlined from skills/jot/tests/jot-diag-collect.sh ───
+# Operator-invoked post-mortem collector for a /jot run. Writes a single
+# diagnostic report file. Invoke via:
+#   bash scripts/jot-plugin-orchestrator.sh jot-diag-collect [output-path]
+jot_diag_collect() {
+  local OUT CWD REPO_ROOT PROJECT TMUX_TARGET STATE_DIR LATEST FIRST_LINE
+  local FOUND_TMP _log _root p CLIENTS d cmd
+
+  OUT="${1:-/tmp/jot-diag-$(date +%Y%m%d-%H%M%S).log}"
+  CWD=$(pwd)
+  REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || echo "$CWD")
+  PROJECT=$(basename "$REPO_ROOT")
+  TMUX_TARGET="jot:jots"
+  STATE_DIR="$REPO_ROOT/Todos/.jot-state"
+
+  local section indent kv
+  section() { printf '\n═══════════════════════════════════════════════════════════\n%s\n═══════════════════════════════════════════════════════════\n' "$1"; }
+  indent()  { sed 's/^/  /'; }
+  kv()      { printf '%-28s %s\n' "$1" "$2"; }
+
+  {
+    printf 'jot-diag-collect report\n'
+    printf 'generated: %s\n' "$(date -Iseconds)"
+    printf 'cwd:       %s\n' "$CWD"
+    printf 'project:   %s\n' "$PROJECT"
+    printf 'tmux target (expected): %s\n' "$TMUX_TARGET"
+
+    section "1. Latest Todos/*_input.txt"
+    LATEST=$(ls -t "$REPO_ROOT"/Todos/*_input.txt 2>/dev/null | head -1 || true)
+    if [ -z "$LATEST" ]; then
+      echo "(no input.txt found in $REPO_ROOT/Todos/)"
+    else
+      kv "path" "$LATEST"
+      kv "size (bytes)" "$(wc -c < "$LATEST" | tr -d ' ')"
+      kv "mtime" "$(stat -f '%Sm' "$LATEST" 2>/dev/null || stat -c '%y' "$LATEST")"
+      FIRST_LINE=$(head -1 "$LATEST")
+      kv "first line" "$FIRST_LINE"
+      if [[ "$FIRST_LINE" == PROCESSED:* ]]; then
+        kv "status" "✓ PROCESSED (success)"
+      elif [[ "$FIRST_LINE" == "# Jot Task" ]]; then
+        kv "status" "⏳ PENDING (claude hasn't finished OR failed)"
+      else
+        kv "status" "? unknown first-line format"
+      fi
+      echo
+      echo "--- full content ---"
+      cat "$LATEST"
+    fi
+
+    section "2. State dir ($STATE_DIR)"
+    if [ ! -d "$STATE_DIR" ]; then
+      echo "(state dir does not exist — Phase 2 may not have run)"
+    else
+      echo "--- ls -la ---"
+      ls -la "$STATE_DIR" 2>&1 | indent
+      echo
+      echo "--- queue.txt ---"
+      if [ -f "$STATE_DIR/queue.txt" ]; then
+        if [ -s "$STATE_DIR/queue.txt" ]; then
+          cat "$STATE_DIR/queue.txt" | indent
+        else
+          echo "  (empty — no jobs pending)"
+        fi
+      else
+        echo "  (missing)"
+      fi
+      echo
+      echo "--- active_job.txt ---"
+      if [ -f "$STATE_DIR/active_job.txt" ]; then
+        if [ -s "$STATE_DIR/active_job.txt" ]; then
+          cat "$STATE_DIR/active_job.txt" | indent
+          echo "  (claude is currently processing this file)"
+        else
+          echo "  (empty — claude is idle)"
+        fi
+      else
+        echo "  (missing)"
+      fi
+      echo
+      echo "--- audit.log (last 30 entries) ---"
+      if [ -f "$STATE_DIR/audit.log" ]; then
+        tail -30 "$STATE_DIR/audit.log" | indent
+      else
+        echo "  (missing)"
+      fi
+      echo
+      echo "--- queue.lock ---"
+      if [ -e "$STATE_DIR/queue.lock" ]; then
+        echo "  LOCK IS HELD (type: $(test -d "$STATE_DIR/queue.lock" && echo "dir (mkdir lock)" || echo "file"))"
+        echo "  If no /jot is currently running, this is a stale lock and should be removed:"
+        echo "    rm -rf '$STATE_DIR/queue.lock'"
+      else
+        echo "  (free — no lock held)"
+      fi
+    fi
+
+    section "3. tmux session 'jot'"
+    if ! tmux has-session -t jot 2>/dev/null; then
+      echo "(no 'jot' tmux session exists)"
+    else
+      echo "--- tmux list-sessions | grep jot ---"
+      tmux list-sessions 2>&1 | grep '^jot' | indent
+      echo
+      echo "--- tmux list-windows -t jot ---"
+      tmux list-windows -t jot 2>&1 | indent
+      echo
+      echo "--- tmux list-panes -t $TMUX_TARGET ---"
+      tmux list-panes -t "$TMUX_TARGET" -F '#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}' 2>&1 | indent
+      echo
+      echo "--- pane start command ---"
+      tmux display-message -t "$TMUX_TARGET" -p 'start: #{pane_start_command}' 2>&1 | indent
+      echo
+      echo "--- tmux attached clients ---"
+      CLIENTS=$(tmux list-clients -t jot 2>/dev/null)
+      if [ -z "$CLIENTS" ]; then
+        echo "  (no clients attached)"
+      else
+        echo "$CLIENTS" | indent
+      fi
+      echo
+      echo "--- pane content (last 80 lines of scrollback) ---"
+      tmux_capture_pane "$TMUX_TARGET" 80 2>&1 | indent
+    fi
+
+    section "4. /tmp/jot.* per-invocation dirs"
+    FOUND_TMP=0
+    for d in /tmp/jot.*; do
+      [ -d "$d" ] || continue
+      FOUND_TMP=1
+      echo "--- $d ---"
+      ls -la "$d" 2>&1 | indent
+      if [ -f "$d/settings.json" ]; then
+        echo "  --- settings.json ---"
+        cat "$d/settings.json" | indent
+      fi
+    done
+    [ "$FOUND_TMP" = "0" ] && echo "(none — either not started or SessionEnd cleaned up)"
+
+    _log="${JOT_LOG_FILE:-${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/jot}/jot-log.txt}"
+    section "5. $_log (last 20 entries)"
+    if [ -f "$_log" ]; then
+      tail -20 "$_log" | indent
+    else
+      echo "(missing)"
+    fi
+
+    section "6. Todos/ directory listing (newest first)"
+    if [ -d "$REPO_ROOT/Todos" ]; then
+      ls -lat "$REPO_ROOT/Todos/" 2>&1 | head -20 | indent
+    else
+      echo "(no Todos/ dir in $REPO_ROOT)"
+    fi
+
+    _root="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/installed/jot}"
+    section "7. Installed plugin orchestrator path"
+    for p in \
+      "$_root/scripts/jot-plugin-orchestrator.sh" \
+      "$_root/scripts" \
+      "$_root/hooks/hooks.json"
+    do
+      if [ -e "$p" ] || [ -L "$p" ]; then
+        if [ -L "$p" ]; then
+          kv "$p" "→ $(readlink "$p")"
+        else
+          kv "$p" "present ($(stat -f '%z' "$p" 2>/dev/null || stat -c '%s' "$p") bytes)"
+        fi
+      else
+        kv "$p" "MISSING"
+      fi
+    done
+
+    section "8. Dependency check"
+    for cmd in jq python3 tmux claude osascript; do
+      if command -v "$cmd" >/dev/null 2>&1; then
+        kv "$cmd" "$(command -v "$cmd")"
+      else
+        kv "$cmd" "NOT FOUND"
+      fi
+    done
+
+    section "END OF REPORT"
+  } > "$OUT" 2>&1
+
+  echo "jot-diag report: $OUT"
+  echo "size: $(wc -c < "$OUT") bytes, $(wc -l < "$OUT") lines"
+  echo
+  echo "share this with Claude via:"
+  echo "  cat $OUT"
+  echo "or just paste the path."
+}
+# ─── end jot-diag-collect.sh ───
+
 # Source-guard: when this file is sourced (e.g., by test_monolith.sh) we want
 # the function definitions above to be exported into the caller's scope, but
 # we must NOT execute the dispatch logic below (which reads stdin and calls
@@ -3800,6 +3992,7 @@ case "${1:-}" in
   plate-summary-stop)       shift; plate_summary_stop "$@";      exit ;;
   plate-summary-watch)      shift; plate_summary_watch "$@";     exit ;;
   debate-tmux-orchestrator) shift; debate_tmux_orchestrator "$@"; exit ;;
+  jot-diag-collect)         shift; jot_diag_collect "$@";        exit ;;
 esac
 
 INPUT=$(cat)
