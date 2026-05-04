@@ -79,15 +79,15 @@ The graph below is one-layer per file: each block shows only that file's DIRECT 
 
 [p] - common/scripts/claude-launcher.sh
 
-[~] - common/scripts/git.sh
+[p] - common/scripts/git.sh
 
 [p] - common/scripts/hook-json.sh
 |
 | -- (.py helpers) - inline python3 for emit_block JSON encoding
 
-[a] - common/scripts/invoke_command.sh
+[p] - common/scripts/invoke_command.sh
 
-[a] - common/scripts/lock.sh
+[p] - common/scripts/lock.sh
 
 [p] - common/scripts/permissions-seed.sh
 
