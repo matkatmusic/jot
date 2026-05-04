@@ -1984,20 +1984,33 @@ debate_resume_integration_test() {
 run_all_tests() {
   local pass=0 fail=0
   local -a failed=()
-  local fn
+  local fn loc src lineno idx=0 padded results_dir log
+  results_dir="$SCRIPT_DIR/test_results"
+  rm -rf "$results_dir"
+  mkdir -p "$results_dir"
+  shopt -s extdebug
   while IFS= read -r fn; do
     case "$fn" in
+      run_all_tests) continue ;;
       *_test|*_tests) ;;
       *) continue ;;
     esac
-    if "$fn" >/dev/null 2>&1; then
+    idx=$((idx + 1))
+    printf -v padded '%02d' "$idx"
+    loc=$(declare -F "$fn")
+    lineno=$(awk '{print $2}' <<<"$loc")
+    src=$(awk '{for(i=3;i<=NF;i++) printf "%s%s",$i,(i<NF?OFS:"")}' <<<"$loc")
+    log="$results_dir/${padded}_${fn}.txt"
+    printf '>> %s  (%s:%s)  -> %s\n' "$fn" "$src" "$lineno" "$log"
+    if "$fn" >"$log" 2>&1; then
       pass=$((pass + 1))
     else
       local rc=$?
       fail=$((fail + 1))
-      failed+=("$fn (rc=$rc)")
+      failed+=("$fn (rc=$rc) -> $log")
     fi
-  done < <(declare -F | awk '{print $3}' | grep -E '_(test|tests)$' | sort)
+  done < <(shopt -s extdebug; declare -F | awk '{print $3}' | grep -E '_(test|tests)$' | sort)
+  shopt -u extdebug
   echo "PASS=$pass FAIL=$fail"
   if [ $fail -gt 0 ]; then
     printf 'FAILED:\n'

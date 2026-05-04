@@ -792,8 +792,8 @@ tmux_cancel_and_send() {
     fi
     attempt=$((attempt + 1))
   done
-  if [ $attempt -gt 0 ] && [ -n "$3" ]; then
-    echo "[tmux] cancelled in-progress work: $3 ($((attempt + 1)) Ctrl-C's)"
+  if [ $attempt -gt 0 ] && [ -n "${3:-}" ]; then
+    echo "[tmux] cancelled in-progress work: ${3} ($((attempt + 1)) Ctrl-C's)"
   fi
   tmux_send_and_submit "$1" "$2"
 }
@@ -2801,7 +2801,7 @@ write_failed() {
       "$stage" "$reason" "$(date -Iseconds)"
     printf '## missing agents\n'
     local agent lock pane_id
-    for agent in "${AGENTS[@]}"; do
+    for agent in ${AGENTS[@]+"${AGENTS[@]}"}; do
       [ -s "$DEBATE_DIR/${stage}_${agent}.md" ] && continue
       printf '\n### %s\n' "$agent"
       lock="$DEBATE_DIR/.${stage}_${agent}.lock"
@@ -3064,7 +3064,7 @@ todo_main() {
   : "${CLAUDE_PLUGIN_DATA:?todo plugin env not set}"
 
   local REPO
-  REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   export CLAUDE_PLUGIN_ROOT="$REPO"
 
   local SCRIPTS_DIR="$REPO/skills/todo/scripts"
@@ -3152,7 +3152,7 @@ JSON
 
 todo_list_main() {
   local REPO
-  REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+  REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   export CLAUDE_PLUGIN_ROOT="$REPO"
 
 #   . "$REPO/common/scripts/silencers.sh"
@@ -3191,10 +3191,9 @@ todo_list_main() {
     exit 0
   fi
 
-  local SCRIPT_DIR FORMATTED
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  local FORMATTED
   FORMATTED=$(TODOS_DIR="$REPO_ROOT/Todos" \
-              python3 "$SCRIPT_DIR/format_open_todos.py")
+              python3 "$REPO/skills/todo-list/scripts/format_open_todos.py")
 
   if [ -z "$FORMATTED" ]; then
     emit_block "No open TODOs."
