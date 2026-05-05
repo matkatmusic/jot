@@ -17,7 +17,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && p
 # whose success-output is noise the caller doesn't want (e.g. `tmux set-option`
 # echoing the new value).
 # returns: the command's exit code
-# [PENDING]
+# [ABSORBED -> subprocess.run(..., stdout=subprocess.DEVNULL) @ 2026-05-04]
 hide_output() {
   "$@" >/dev/null
 }
@@ -28,7 +28,7 @@ hide_output() {
 # hide_output. Use for probes where "failed" is a valid answer state and
 # the diagnostic log would be noise.
 # returns: the command's exit code
-# [PENDING]
+# [ABSORBED -> subprocess.run(..., stderr=subprocess.DEVNULL) or try/except @ 2026-05-04]
 hide_errors() {
   "$@" 2>/dev/null
 }
@@ -52,7 +52,7 @@ hide_errors() {
 #
 # Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md (commit 3).
 
-# [PENDING]
+# [MIGRATED -> hookjson_emitBlock @ 2026-05-04]
 emit_block() {
   local reason="$1"
   if command -v jq >/dev/null 2>&1; then
@@ -64,7 +64,7 @@ emit_block() {
   fi
 }
 
-# [PENDING]
+# [MIGRATED -> hookjson_installHint @ 2026-05-04]
 _hookjson_install_hint() {
   case "$1" in
     jq)       echo "jq (brew install jq)" ;;
@@ -75,7 +75,7 @@ _hookjson_install_hint() {
   esac
 }
 
-# [PENDING]
+# [MIGRATED -> hookjson_checkRequirements @ 2026-05-04]
 check_requirements() {
   local prefix="$1"; shift
   local -a missing=()
@@ -100,7 +100,7 @@ check_requirements() {
 # invoke_command.sh — canonical command-execution wrapper.
 # Source silencers.sh separately if you also need hide_output / hide_errors.
 
-# [PENDING]
+# [ABSORBED -> subprocess.run(..., check=True, capture_output=True, text=True) with try/except logging caller via sys._getframe(1).f_code.co_name @ 2026-05-04]
 invoke_command() {
     local output
     output=$("$@" 2>&1) # execute whatever command was passed in
@@ -134,7 +134,7 @@ invoke_command() {
 # source "$(dirname "${BASH_SOURCE[0]}")/silencers.sh"
 
 # usage: tmux_require_version <minimum_version>
-# [PENDING]
+# [MIGRATED -> tmux_requireVersion @ 2026-05-04]
 tmux_require_version() {
   local installed
   installed=$(tmux -V 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)
@@ -153,7 +153,7 @@ tmux_require_version() {
 # Base wrapper around `tmux set-option`. Usually called via one of the
 # scope-specific wrappers below. All args pass through unchanged.
 # returns: 0 on success, nonzero if tmux rejects the call
-# [PENDING]
+# [MIGRATED -> tmux_setOption @ 2026-05-04]
 tmux_set_option() {
   invoke_command tmux set-option "$@"
 }
