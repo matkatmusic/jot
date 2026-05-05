@@ -182,7 +182,7 @@ tmux_set_option_w() {
   tmux_set_option -w -t "$1" "$2" "$3"
 }
 
-# [PENDING]
+# [TEST -> test_tmux_setOptionTests @ 2026-05-05]
 tmux_set_option_tests() {
   local test_session="tmux-sh-opt-test-$$"
   local pass=0 fail=0
@@ -293,7 +293,7 @@ tmux_list_clients() {
   invoke_command tmux list-clients -t "$1"
 }
 
-# [PENDING]
+# [TEST -> test_tmux_sessionTests @ 2026-05-05]
 tmux_session_tests() {
   local test_session="tmux-sh-test-$$"
   local pass=0 fail=0
@@ -422,7 +422,7 @@ tmux_set_pane_title() {
   invoke_command tmux select-pane -t "$1" -T "$2"
 }
 
-# [PENDING]
+# [TEST -> test_tmux_paneTests @ 2026-05-05]
 tmux_pane_tests() {
   local test_session="tmux-sh-pane-test-$$"
   local pass=0 fail=0
@@ -714,7 +714,7 @@ tmux_retile() {
   tmux_select_layout "$1" tiled
 }
 
-# [PENDING]
+# [TEST -> test_tmux_layoutTests @ 2026-05-05]
 tmux_layout_tests() {
   local test_session="tmux-sh-lay-test-$$"
   local pass=0 fail=0
@@ -898,7 +898,7 @@ tmux_cancel_and_send_tests() {
   [ "$fail" -eq 0 ]
 }
 
-# [PENDING]
+# [TEST -> test_tmux_sendKeysTests @ 2026-05-05]
 tmux_send_keys_tests() {
   local test_session="tmux-sh-send-test-$$"
   local pass=0 fail=0
@@ -1062,7 +1062,7 @@ tmux_wait_for_claude_readiness() {
   return 1
 }
 
-# [PENDING]
+# [TEST -> test_tmux_launcherTests @ 2026-05-05]
 tmux_launcher_tests() {
   local test_session="tmux-sh-launcher-test-$$"
   local pass=0 fail=0
@@ -1880,7 +1880,7 @@ phase2_launch_window() {
 
 #### scan-open-todos.sh ####
 # Moved above jot_main (Phase 0.1) so callees precede callers.
-# [PENDING]
+# [MIGRATED -> todo_scanOpen @ 2026-05-05]
 scan_open_todos() {
     TARGET_DIR="${1:-.}"
     TODOS_DIR="$TARGET_DIR/Todos"
@@ -1901,7 +1901,7 @@ scan_open_todos() {
 
 # usage: jot_main
 # Entry point. Reads hook JSON from stdin, runs Phase 1 + Phase 2.
-# [PENDING]
+# [MIGRATED -> jot_main @ 2026-05-05]
 jot_main() {
   : "${CLAUDE_PLUGIN_ROOT:?jot plugin env not set — not running under Claude Code plugin harness}"
   : "${CLAUDE_PLUGIN_DATA:?jot plugin env not set — not running under Claude Code plugin harness}"
@@ -2157,7 +2157,7 @@ _run_with_timeout() {
 # Avoids the TOCTOU window of a has-session pre-check. First window named
 # `main`; $1 (keepalive_cmd) becomes that window's argv. Prints claimed
 # session name on stdout. Bound is a safety cap on pathological tmux state.
-# [PENDING]
+# [MIGRATED -> debate_claimSession @ 2026-05-05]
 debate_claim_session() {
   local keepalive_cmd="$1"
   local n=1 session
@@ -2182,7 +2182,7 @@ debate_claim_session() {
 # agent CLI (gemini) can take 200-400s to respond to a trivial `-p "Reply…"`
 # probe, making live smoke tests unusable here. launch_agent's 120s readiness
 # timeout catches broken agents at R1 spawn time instead.
-# [PENDING]
+# [MIGRATED -> debate_defaultModel @ 2026-05-05]
 _default_model() {
   local models_json="${CLAUDE_PLUGIN_ROOT}/skills/debate/scripts/assets/models.json"
   local agent="$1"
@@ -2192,7 +2192,7 @@ _default_model() {
 # _probe_gemini / _probe_codex — run inside backgrounded subshells. Presence
 # check only (binary + credentials). Empty stdout → unavailable. Non-empty
 # stdout → the configured model name (or "" if no models configured).
-# [PENDING]
+# [MIGRATED -> debate_probeGemini @ 2026-05-05]
 _probe_gemini() {
   hide_output hide_errors command -v gemini || return 0
   [[ -f "$HOME/.gemini/oauth_creds.json" ]] \
@@ -2204,7 +2204,7 @@ _probe_gemini() {
   local m; m=$(_default_model gemini)
   printf '%s\n' "${m:-present}"
 }
-# [PENDING]
+# [MIGRATED -> debate_probeCodex @ 2026-05-05]
 _probe_codex() {
   hide_output hide_errors command -v codex || return 0
   [[ -f "$HOME/.codex/auth.json" ]] || [[ -n "${OPENAI_API_KEY:-}" ]] || return 0
@@ -2212,7 +2212,7 @@ _probe_codex() {
   printf '%s\n' "${m:-present}"
 }
 
-# [PENDING]
+# [MIGRATED -> debate_detectAvailableAgents @ 2026-05-05]
 detect_available_agents() {
   AVAILABLE_AGENTS=(claude)
   GEMINI_MODEL=""
@@ -2241,7 +2241,7 @@ detect_available_agents() {
 # Writes a settings.json granting the debate permissions. No SessionStart /
 # Stop / SessionEnd hooks — the daemon drives Claude interactively via
 # tmux send-keys, so no lifecycle instrumentation is needed.
-# [PENDING]
+# [MIGRATED -> debate_buildClaudeCmd @ 2026-05-05]
 debate_build_claude_cmd() {
   TMPDIR_INV=$(mktemp -d /tmp/debate.XXXXXX)
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
@@ -2270,7 +2270,7 @@ debate_build_claude_cmd() {
 # Reads hook JSON from stdin and sets shared globals (INPUT, CWD,
 # TRANSCRIPT_PATH, REPO_ROOT, SCRIPTS_DIR, LOG_FILE). Sources the
 # common libs. Called by debate_main, debate_retry_main, debate_abort_main.
-# [PENDING]
+# [MIGRATED -> debate_initHookContext @ 2026-05-05]
 init_hook_context() {
   : "${CLAUDE_PLUGIN_ROOT:?debate plugin env not set}"
   : "${CLAUDE_PLUGIN_DATA:?debate plugin env not set}"
@@ -2297,7 +2297,7 @@ init_hook_context() {
 # Prints the matching debate dir path, or empty if none. Uses cmp so
 # multi-line topics and trailing-newline edge cases work correctly.
 # Most-recent dir (lexicographic timestamp) wins.
-# [PENDING]
+# [MIGRATED -> debate_findMatching @ 2026-05-05]
 find_matching_debate() {
   local repo_root="$1" topic="$2"
   local dir match_ts="" best=""
@@ -2324,7 +2324,7 @@ find_matching_debate() {
 #     reused and the agent is re-added to AVAILABLE_AGENTS so synthesis
 #     includes them. Otherwise hard-fail: cannot run a missing agent.
 # Original composition is derived from r1_instructions_<agent>.txt filenames.
-# [PENDING]
+# [MIGRATED -> debate_checkResumeFeasibility @ 2026-05-05]
 check_resume_feasibility() {
   local -a original=()
   local f agent
@@ -2355,7 +2355,7 @@ check_resume_feasibility() {
 }
 
 # any_live_lock <debate_dir> → 0 if a live lock exists, 1 otherwise.
-# [PENDING]
+# [MIGRATED -> debate_anyLiveLock @ 2026-05-05]
 any_live_lock() {
   local dir="$1" lock pane_id
   for lock in "$dir"/.*.lock; do
@@ -2371,7 +2371,7 @@ any_live_lock() {
 # not stored on disk, we recover it by asking tmux which session owns any
 # still-live lock-file pane id. Self-healing across session renames; no
 # separate session-name artifact to keep in sync.
-# [PENDING]
+# [MIGRATED -> debate_liveSession @ 2026-05-05]
 live_debate_session() {
   local dir="$1" lock pane_id session
   for lock in "$dir"/.*.lock; do
@@ -2391,7 +2391,7 @@ live_debate_session() {
 #   stage: r1 | r2 | synthesis
 # DEBATE_AGENTS env var: space-separated list of active agents for this debate.
 # AGENT_FILTER env var (optional): emit only that agent's instruction file.
-# [PENDING]
+# [MIGRATED -> debate_buildClaudePrompts @ 2026-05-05]
 debate_build_prompts() {
   local STAGE="$1"
   local DEBATE_DIR="$2"
@@ -2674,7 +2674,7 @@ debate_retry_main() {
 
 # ── /debate-abort entry point ──
 
-# [PENDING]
+# [MIGRATED -> debateAbort_main @ 2026-05-05]
 debate_abort_main() {
   init_hook_context
   check_requirements "debate-abort" jq tmux
@@ -2709,7 +2709,7 @@ debate_abort_main() {
 #   bash <orchestrator>.sh debate-tmux-orchestrator ... &; disown
 # The argv-dispatch case routes to `debate_tmux_orchestrator` below.
 
-# [PENDING]
+# [MIGRATED -> debate_cleanup @ 2026-05-05]
 cleanup() {
   local settings_dir
   settings_dir=$(dirname "$SETTINGS_FILE")
@@ -2723,7 +2723,7 @@ _stash()  { eval "${1}_${2}=\"\$3\""; }
 # [PENDING]
 _lookup() { local _v="${1}_${2}"; eval "printf '%s' \"\${$_v:-}\""; }
 
-# [PENDING]
+# [MIGRATED -> debate_initAgentModels @ 2026-05-05]
 init_agent_models() {
   local _a
   for _a in gemini codex claude; do
@@ -2736,7 +2736,7 @@ init_agent_models() {
   _stash TRIED_MODELS  codex  "${CODEX_MODEL:-}"
 }
 
-# [PENDING]
+# [MIGRATED -> debate_agentLaunchCmd @ 2026-05-05]
 agent_launch_cmd() {
   local a="$1"
   local m; m=$(_lookup CURRENT_MODEL "$a")
@@ -2764,7 +2764,7 @@ agent_launch_cmd() {
   esac
 }
 
-# [PENDING]
+# [MIGRATED -> debate_agentReadyMarker @ 2026-05-05]
 agent_ready_marker() {
   case "$1" in
     gemini) echo "Type your message or @path/to/file" ;;
@@ -2773,7 +2773,7 @@ agent_ready_marker() {
   esac
 }
 
-# [PENDING]
+# [MIGRATED -> debate_agentErrorMarkers @ 2026-05-05]
 agent_error_markers() {
   case "$1" in
     codex)  printf '%s\n' 'Selected model is at capacity' 'model is overloaded' ;;
@@ -2782,7 +2782,7 @@ agent_error_markers() {
   esac
 }
 
-# [PENDING]
+# [MIGRATED -> debate_paneHasCapacityError @ 2026-05-05]
 pane_has_capacity_error() {
   local pane_id="$1" agent="$2"
   local cap marker
@@ -2797,7 +2797,7 @@ pane_has_capacity_error() {
   return 1
 }
 
-# [PENDING]
+# [MIGRATED -> debate_nextModel @ 2026-05-05]
 _next_model() {
   local agent="$1"
   local tried; tried=$(_lookup TRIED_MODELS "$agent")
@@ -2813,7 +2813,7 @@ _next_model() {
 }
 
 # Moved above the launch/send/wait cluster (Phase 0.1) so callees precede callers.
-# [PENDING]
+# [MIGRATED -> debate_writeFailed @ 2026-05-05]
 write_failed() {
   local stage="$1" reason="$2"
   local tmpfile
@@ -2844,13 +2844,13 @@ write_failed() {
 # so callees precede callers. Note: wait_for_outputs is intentionally placed
 # AFTER retry_pane_with_next_model below because it calls retry_pane_with_next_model;
 # placing it above (per the literal plan instruction) would create a forward ref.
-# [PENDING]
+# [MIGRATED -> debate_newEmptyPane @ 2026-05-05]
 new_empty_pane() {
   hide_output tmux_retile "$WINDOW_TARGET"
   tmux_new_pane "$WINDOW_TARGET" -c "$CWD" -P -F '#{pane_id}'
 }
 
-# [PENDING]
+# [MIGRATED -> debate_launchAgent @ 2026-05-05]
 launch_agent() {
   local pane_id="$1" stage="$2" agent="$3" launch_cmd="$4" ready_marker="$5"
   local timeout="${6:-120}"
@@ -2871,7 +2871,7 @@ launch_agent() {
   return 1
 }
 
-# [PENDING]
+# [MIGRATED -> debate_sendPromptToAgent @ 2026-05-05]
 send_prompt() {
   local pane_id="$1" stage="$2" agent="$3" instructions="$4"
   tmux_send_and_submit "$pane_id" "read $instructions and perform them"
@@ -2892,7 +2892,7 @@ send_prompt() {
   return 1
 }
 
-# [PENDING]
+# [MIGRATED -> debate_retryPaneWithNextModel @ 2026-05-05]
 retry_pane_with_next_model() {
   local panes_var="$1" i="$2" agent="$3" stage="$4"
   local next
@@ -2918,7 +2918,7 @@ retry_pane_with_next_model() {
   return 0
 }
 
-# [PENDING]
+# [MIGRATED -> debate_waitForOutputs @ 2026-05-05]
 wait_for_outputs() {
   local prefix="$1" timeout="$2" panes_var="$3"
   local reported=""
@@ -2958,7 +2958,7 @@ wait_for_outputs() {
   return 1
 }
 
-# [PENDING]
+# [MIGRATED -> debate_launchAgentsParallel @ 2026-05-05]
 launch_agents_parallel() {
   local stage="$1" panes_var="$2"
   local pids=() agents_run=() i agent pane_id fail=0
@@ -2996,7 +2996,7 @@ launch_agents_parallel() {
   return "$fail"
 }
 
-# [PENDING]
+# [MIGRATED -> debate_archive @ 2026-05-05]
 archive_debate() {
   echo "[orch] archiving intermediate files to $DEBATE_DIR/archive/"
   mkdir -p "$DEBATE_DIR/archive"
@@ -3014,7 +3014,7 @@ archive_debate() {
   [ -f "$DEBATE_DIR/orchestrator.log" ] && mv "$DEBATE_DIR/orchestrator.log" "$DEBATE_DIR/archive/"
 }
 
-# [PENDING]
+# [MIGRATED -> debate_cleanStaleLocks @ 2026-05-05]
 clean_stale_locks() {
   local stage="$1"
   local lock agent pane_id current
@@ -3032,7 +3032,7 @@ clean_stale_locks() {
   done
 }
 
-# [PENDING]
+# [MIGRATED -> shell_waitForFile @ 2026-05-05]
 wait_for_file() {
   local path="$1" timeout="$2"
   local elapsed=0
@@ -3146,7 +3146,7 @@ daemon_main() {
 # Entry-point function: argv-dispatch routes "debate-tmux-orchestrator" here.
 # Positional: DEBATE_DIR SESSION WINDOW_NAME SETTINGS_FILE CWD REPO_ROOT PLUGIN_ROOT
 # Env (caller-set): DEBATE_AGENTS, GEMINI_MODEL, CODEX_MODEL, COMPOSITION_DRIFTED
-# [PENDING]
+# [MIGRATED -> debate_tmuxOrchestrator @ 2026-05-05]
 debate_tmux_orchestrator() {
   DEBATE_DIR="$1"
   SESSION="$2"
@@ -3167,7 +3167,7 @@ debate_tmux_orchestrator() {
 
 #### debate-orchestrator.sh ####
 
-# [PENDING]
+# [MIGRATED -> debate_launch @ 2026-05-05]
 debate_launch() {
     SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PLUGIN_ROOT="$(cd "$SCRIPTS_DIR/../../.." && pwd)"
@@ -3199,7 +3199,7 @@ debate_launch() {
 # exits 0 silently so the foreground Claude can dispatch the `todo` skill
 # body (which may ask clarification questions via AskUserQuestion).
 
-# [PENDING]
+# [MIGRATED -> todo_main @ 2026-05-05]
 todo_main() {
   : "${CLAUDE_PLUGIN_DATA:?todo plugin env not set}"
 
@@ -3290,7 +3290,7 @@ JSON
 # Synchronously reads YAML frontmatter from all open TODOs under Todos/
 # (excluding Todos/done/) and emits a formatted block via emit_block.
 
-# [PENDING]
+# [MIGRATED -> todoList_main @ 2026-05-05]
 todo_list_main() {
   local REPO
   REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -3346,7 +3346,7 @@ todo_list_main() {
 
 #### end todo-list.sh ####
 #### jot-session-start.sh 
-# [PENDING]
+# [MIGRATED -> jot_sessionStart @ 2026-05-05]
 jot_session_start() {
     INPUT_FILE="${1:-}"
     TMPDIR_INV="${2:-}"
@@ -3395,7 +3395,7 @@ jot_session_start() {
 #### end jot-session-start.sh
 
 #### jot-session-end.sh ####
-# [PENDING]
+# [MIGRATED -> jot_sessionEnd @ 2026-05-05]
 jot_session_end() {
 
     TMPDIR_INV="${1:-}"
@@ -3519,7 +3519,7 @@ jot_stop(){
 #### end jot-stop.sh ####
 
 #### todo-launcher.sh ####
-# [PENDING]
+# [MIGRATED -> todo_launcher @ 2026-05-05]
 todo_launcher() {
     SESSION_ID="${1:?session_id required}"
     IDEA="${2:?refined idea required}"
@@ -3664,7 +3664,7 @@ JSON
 #### end todo-launcher.sh ####
 
 #### todo-stop.sh ####
-# [PENDING]
+# [MIGRATED -> todo_stop @ 2026-05-05]
 todo_stop() {
     # SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
     # . "$SCRIPT_DIR/tmux.sh"
@@ -3728,7 +3728,7 @@ todo_stop() {
 #### end todo-stop.sh ####
 
 #### todo-session-start.sh ####
-# [PENDING]
+# [MIGRATED -> todo_sessionStart @ 2026-05-05]
 todo_session_start() {
     # todo-session-start.sh — SessionStart hook for per-invocation claude panes.
     # Fires once when claude starts in a fresh tmux pane. Reads the pane id from
@@ -3780,7 +3780,7 @@ todo_session_start() {
 #### end todo-session-start.sh ####
 
 #### todo-session-end.sh ####
-# [PENDING]
+# [MIGRATED -> todo_sessionEnd @ 2026-05-05]
 todo_session_end() {
 # todo-session-end.sh — SessionEnd hook for per-invocation claude panes.
 # Wipes the per-invocation /tmp/todo.XXXXXX directory that held this
@@ -3806,7 +3806,7 @@ todo_session_end() {
 #### end todo-session-end.sh ####
 
 #### plate-summary-stop.sh ####
-# [PENDING]
+# [MIGRATED -> plate_summaryStop @ 2026-05-05]
 plate_summary_stop() {
     # plate-summary-stop.sh — per-invocation SessionEnd hook for the
     # spawned summary agent. Reads the agent's output file and forwards it
@@ -3850,7 +3850,7 @@ plate_summary_stop() {
 #### end plate-summary-stop.sh ####
 
 #### plate-summary-watch.sh ####
-# [PENDING]
+# [MIGRATED -> plate_summaryWatch @ 2026-05-05]
 plate_summary_watch() {
     # plate-summary-watch.sh — fire-and-forget watchdog for the spawned
     # plate-summary agent. Polls the agent's output file; when it appears
@@ -3921,7 +3921,7 @@ indent()  { sed 's/^/  /'; }
 # [MIGRATED -> jot_diagKv @ 2026-05-05]
 kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
-# [PENDING]
+# [MIGRATED -> jot_collectDiagnostics @ 2026-05-05]
 jot_diag_collect() {
   local OUT CWD REPO_ROOT PROJECT TMUX_TARGET STATE_DIR LATEST FIRST_LINE
   local FOUND_TMP _log _root p CLIENTS d cmd
