@@ -1,1 +1,0 @@
-jot-plugin-orchestrator.sh

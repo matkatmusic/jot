@@ -20,3 +20,4 @@ __pycache__
 .plate/
 
 .plate/plate-log.txt
+scripts/test_results
