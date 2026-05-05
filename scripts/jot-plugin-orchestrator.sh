@@ -161,7 +161,7 @@ tmux_set_option() {
 # usage: tmux_set_option_t <target> <option_name> <option_value>
 # Sets a tmux option scoped to <target> (session, window, or pane).
 # returns: 0 on success, nonzero if target or option is invalid
-# [PENDING]
+# [MIGRATED -> tmux_setOptionForTarget @ 2026-05-04]
 tmux_set_option_t() {
   tmux_set_option -t "$1" "$2" "$3"
 }
@@ -169,7 +169,7 @@ tmux_set_option_t() {
 # usage: tmux_set_option_g <option_name> <option_value>
 # Sets a tmux option in the global scope.
 # returns: 0 on success, nonzero if option is invalid
-# [PENDING]
+# [MIGRATED -> tmux_setOptionGlobally @ 2026-05-04]
 tmux_set_option_g() {
   tmux_set_option -g "$1" "$2"
 }
@@ -177,7 +177,7 @@ tmux_set_option_g() {
 # usage: tmux_set_option_w <window_target> <option_name> <option_value>
 # Sets a window-scoped tmux option on the given window target.
 # returns: 0 on success, nonzero if target or option is invalid
-# [PENDING]
+# [MIGRATED -> tmux_setOptionForWindow @ 2026-05-04]
 tmux_set_option_w() {
   tmux_set_option -w -t "$1" "$2" "$3"
 }
@@ -263,7 +263,7 @@ tmux_set_option_tests() {
 # ========================================================
 # usage: tmux_has_session <session_name>
 # returns: 0 if session exists, 1 if not
-# [PENDING]
+# [MIGRATED -> tmux_hasSession @ 2026-05-04]
 tmux_has_session() {
     invoke_command tmux has-session -t "$1"
 }
@@ -272,14 +272,14 @@ tmux_has_session() {
 # Creates a detached session. Extra args pass through to `tmux new-session -d -s <name>`
 # (e.g. `-n window`, `-c cwd`, trailing shell-command).
 # returns: 0 on success, 1 if creation failed (e.g. duplicate session)
-# [PENDING]
+# [MIGRATED -> tmux_newSession @ 2026-05-04]
 tmux_new_session() {
   invoke_command tmux new-session -d -s "$1" "${@:2}"
 }
 
 # usage: tmux_kill_session <session_name>
 # returns: 0 on success, 1 if kill failed (e.g. session not found)
-# [PENDING]
+# [MIGRATED -> tmux_killSession @ 2026-05-04]
 tmux_kill_session() {
   invoke_command tmux kill-session -t "$1"
 }
@@ -288,7 +288,7 @@ tmux_kill_session() {
 # Prints one line per client attached to the session. Empty output if
 # no clients are attached.
 # returns: 0 on success, nonzero if session does not exist
-# [PENDING]
+# [MIGRATED -> tmux_listClients @ 2026-05-04]
 tmux_list_clients() {
   invoke_command tmux list-clients -t "$1"
 }
@@ -374,14 +374,14 @@ tmux_session_tests() {
 # trailing shell-command). When `-P` is passed, tmux emits the new pane id
 # to stdout — callers can capture with $() to get the id back.
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_newPane @ 2026-05-04]
 tmux_new_pane() {
   invoke_command tmux split-window -t "$1" "${@:2}"
 }
 
 # usage: tmux_kill_pane <pane_target>
 # returns: 0 on success, nonzero if pane does not exist
-# [PENDING]
+# [MIGRATED -> tmux_killPane @ 2026-05-04]
 tmux_kill_pane() {
   invoke_command tmux kill-pane -t "$1"
 }
@@ -390,7 +390,7 @@ tmux_kill_pane() {
 # Prints the target pane's visible contents to stdout. If [lines] is given,
 # also includes that many lines of scrollback history before the visible area.
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_capturePane @ 2026-05-04]
 tmux_capture_pane() {
   invoke_command tmux capture-pane -p -t "$1" ${2:+-S -$2}
 }
@@ -399,7 +399,7 @@ tmux_capture_pane() {
 # Prints one line per pane. With no extra args: "<pane_id> <pane_title>".
 # Extra args pass through to `tmux list-panes` (e.g. `-F '#{pane_title}'`).
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_listPanes @ 2026-05-04]
 tmux_list_panes() {
   if [ $# -eq 1 ]; then
     invoke_command tmux list-panes -t "$1" -F '#{pane_id} #{pane_title}'
@@ -410,14 +410,14 @@ tmux_list_panes() {
 
 # usage: tmux_select_pane <pane_target>
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_selectPane @ 2026-05-04]
 tmux_select_pane() {
   invoke_command tmux select-pane -t "$1"
 }
 
 # usage: tmux_set_pane_title <pane_target> <title>
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_setPaneTitle @ 2026-05-04]
 tmux_set_pane_title() {
   invoke_command tmux select-pane -t "$1" -T "$2"
 }
@@ -553,14 +553,14 @@ tmux_pane_tests() {
 # Creates a new window. Extra args pass through to `tmux new-window -t <s> -n <w>`
 # (e.g. `-c cwd`, trailing shell-command).
 # returns: 0 on success, nonzero on failure
-# [PENDING]
+# [MIGRATED -> tmux_newWindow @ 2026-05-04]
 tmux_new_window() {
   invoke_command tmux new-window -t "$1" -n "$2" "${@:3}"
 }
 
 # usage: tmux_kill_window <window_target>
 # returns: 0 on success, nonzero if window does not exist
-# [PENDING]
+# [MIGRATED -> tmux_killWindow @ 2026-05-04]
 tmux_kill_window() {
   invoke_command tmux kill-window -t "$1"
 }
@@ -569,7 +569,7 @@ tmux_kill_window() {
 # Prints one line per window. With no extra args: "<window_index> <window_name>".
 # Extra args pass through to `tmux list-windows` (e.g. `-F '#{window_name}'`).
 # returns: 0 on success, nonzero if session does not exist
-# [PENDING]
+# [MIGRATED -> tmux_listWindows @ 2026-05-04]
 tmux_list_windows() {
   if [ $# -eq 1 ]; then
     invoke_command tmux list-windows -t "$1" -F '#{window_index} #{window_name}'
@@ -580,14 +580,14 @@ tmux_list_windows() {
 
 # usage: tmux_window_exists <session> <window_name>
 # returns: 0 if a window with exact name exists in session, 1 if not
-# [PENDING]
+# [MIGRATED -> tmux_windowExists @ 2026-05-04]
 tmux_window_exists() {
   tmux_list_windows "$1" -F '#{window_name}' | grep -qx "$2"
 }
 
 # usage: tmux_pane_has_title <target> <title>
 # returns: 0 if any pane in target has the exact title, 1 if not
-# [PENDING]
+# [MIGRATED -> tmux_paneHasTitle @ 2026-05-04]
 tmux_pane_has_title() {
   tmux_list_panes "$1" -F '#{pane_title}' | grep -qx "$2"
 }
@@ -595,7 +595,7 @@ tmux_pane_has_title() {
 # usage: tmux_split_window <target> <direction>
 # direction: h for horizontal (side-by-side), v for vertical (stacked)
 # returns: 0 on success, nonzero on failure
-# [PENDING]
+# [MIGRATED -> tmux_splitWindow @ 2026-05-04]
 tmux_split_window() {
   invoke_command tmux split-window -"$2" -t "$1"
 }
@@ -701,7 +701,7 @@ tmux_window_tests() {
 # usage: tmux_select_layout <target> <layout>
 # layout: even-horizontal | even-vertical | main-horizontal | main-vertical | tiled
 # returns: 0 on success, nonzero on failure
-# [PENDING]
+# [MIGRATED -> tmux_selectLayout @ 2026-05-04]
 tmux_select_layout() {
   invoke_command tmux select-layout -t "$1" "$2"
 }
@@ -709,7 +709,7 @@ tmux_select_layout() {
 # usage: tmux_retile <target>
 # Re-applies the `tiled` layout to the target window.
 # returns: 0 on success, nonzero on failure
-# [PENDING]
+# [MIGRATED -> tmux_retile @ 2026-05-04]
 tmux_retile() {
   tmux_select_layout "$1" tiled
 }
@@ -779,21 +779,21 @@ tmux_layout_tests() {
 # usage: tmux_send_keys <pane_target> <text>
 # Sends <text> to the pane. Does not append Enter.
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_sendKeys @ 2026-05-04]
 tmux_send_keys() {
   invoke_command tmux send-keys -t "$1" "$2"
 }
 
 # usage: tmux_send_enter <pane_target>
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_sendEnter @ 2026-05-04]
 tmux_send_enter() {
   invoke_command tmux send-keys -t "$1" Enter
 }
 
 # usage: tmux_send_Ctrl_c <pane_target>
 # returns: 0 on success, nonzero if target does not exist
-# [PENDING]
+# [MIGRATED -> tmux_sendCtrlC @ 2026-05-04]
 tmux_send_Ctrl_c() {
   invoke_command tmux send-keys -t "$1" C-c
 }
@@ -802,7 +802,7 @@ tmux_send_Ctrl_c() {
 # Sends <text> then presses Enter as a separate send-keys call, because
 # some TUIs drop Enter when it arrives in the same call as a long string.
 # returns: 0 on success, nonzero if either send fails
-# [PENDING]
+# [MIGRATED -> tmux_sendAndSubmit @ 2026-05-04]
 tmux_send_and_submit() {
   tmux_send_keys "$1" "$2"
   local result=$?
@@ -818,7 +818,7 @@ tmux_send_and_submit() {
 # marker, then types <text> and submits. Optional <label> appears in the
 # cancellation log when at least one retry was needed.
 # returns: exit code of the final tmux_send_and_submit
-# [PENDING]
+# [MIGRATED -> tmux_cancelAndSend @ 2026-05-04]
 tmux_cancel_and_send() {
   local attempt=0
   while [ $attempt -lt 5 ]; do
@@ -996,7 +996,7 @@ tmux_send_keys_tests() {
 # source "$(dirname "${BASH_SOURCE[0]}")/tmux.sh"
 
 # Moved above tmux_ensure_session (Phase 0.1) so callees precede callers.
-# [PENDING]
+# [MIGRATED -> tmux_ensureKeepalivePane @ 2026-05-04]
 tmux_ensure_keepalive_pane() {
   local target="$1" cwd="$2" keepalive_cmd="$3" title="$4"
   if tmux_pane_has_title "$target" "$title"; then
@@ -1010,7 +1010,7 @@ tmux_ensure_keepalive_pane() {
   hide_output tmux_retile "$target"
 }
 
-# [PENDING]
+# [MIGRATED -> tmux_ensureSession @ 2026-05-04]
 tmux_ensure_session() {
   local session="$1" window="$2" cwd="$3" keepalive_cmd="$4" keepalive_title="$5"
   if ! tmux_has_session "$session"; then
@@ -1030,7 +1030,7 @@ tmux_ensure_session() {
   tmux_ensure_keepalive_pane "${session}:${window}" "$cwd" "$keepalive_cmd" "$keepalive_title"
 }
 
-# [PENDING]
+# [MIGRATED -> tmux_splitWorkerPane @ 2026-05-04]
 tmux_split_worker_pane() {
   local target="$1" cwd="$2" cmd="$3"
   local pane_id
@@ -1043,7 +1043,7 @@ tmux_split_worker_pane() {
 
 # usage: tmux_wait_for_claude_readiness <pane_id> [timeout_seconds]
 # returns: 0 when the Claude Code TUI is ready for input, 1 on timeout
-# [PENDING]
+# [MIGRATED -> tmux_waitForClaudeReadiness @ 2026-05-04]
 tmux_wait_for_claude_readiness() {
   local pane_id="$1"
   local timeout="${2:-10}"
@@ -1164,7 +1164,7 @@ tmux_launcher_tests() {
 # No longer assumes jot-specific hook scripts, permissions location, or
 # SessionStart/Stop/SessionEnd wiring — callers supply those.
 
-# [PENDING]
+# [MIGRATED -> claude_buildCmd @ 2026-05-04]
 build_claude_cmd() {
   local settings_out="$1"
   local allow_json="$2"
@@ -1227,14 +1227,14 @@ JSON
 # De-nested from permissions_seed (Phase 0.0). Relies on bash dynamic scoping:
 # callers invoke this only from within permissions_seed, where $log_file and
 # $log_prefix are set as locals. The Python port will pass them explicitly.
-# [PENDING]
+# [MIGRATED -> claude_permseedLog @ 2026-05-04]
 _permseed_log() {
   [ -z "$log_file" ] && return 0
   printf '%s %s: %s\n' "$(date -Iseconds)" "$log_prefix" "$1" \
     >> "$log_file" 2>/dev/null || true
 }
 
-# [PENDING]
+# [MIGRATED -> claude_seedPermissions @ 2026-05-04]
 permissions_seed() {
   local installed="$1" default="$2" default_sha_file="$3" prior_sha_file="$4"
   local log_file="${5:-}" log_prefix="${6:-plugin}"
@@ -1286,7 +1286,7 @@ permissions_seed() {
 # ========================================================
 # usage: git_is_repo <directory>
 # returns: 0 if directory is inside a git work tree, 1 if not
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.isGitRepo @ 2026-05-04]
 git_is_repo() {
   hide_output hide_errors git -C "$1" rev-parse --is-inside-work-tree
   local result=$?
@@ -1295,7 +1295,7 @@ git_is_repo() {
 
 # usage: git_get_repo_root [directory]
 # returns: 0 on success (prints absolute repo root path), 1 if not in a git repo
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.getGitRepoRoot @ 2026-05-04]
 git_get_repo_root() {
   local dir="${1:-.}"
   local git_common_dir
@@ -1310,7 +1310,7 @@ git_get_repo_root() {
 
 # usage: git_get_branch_name <directory>
 # returns: 0 on success (prints branch name), 1 if not a git repo or detached HEAD
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.getGitBranchNameOrFail @ 2026-05-04]
 git_get_branch_name() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1327,7 +1327,7 @@ git_get_branch_name() {
 
 # usage: git_get_recent_commits <directory>
 # returns: 0 on success (prints space-separated hashes), 1 if not a git repo or no commits
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.getGitRecentCommitHashes @ 2026-05-04]
 git_get_recent_commits() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1345,7 +1345,7 @@ git_get_recent_commits() {
 # usage: git_get_uncommitted <directory>
 # returns: 0 on success (prints space-separated filenames), 1 if not a git repo
 # prints "None" and returns 0 if the working tree is clean
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.getGitUncommittedFilenames @ 2026-05-04]
 git_get_uncommitted() {
   if ! git_is_repo "$1"; then
     echo "[git] not a git repository: $1" >&2
@@ -1363,7 +1363,7 @@ git_get_uncommitted() {
 # usage: git_ensure_gitignore_entry <repo_root> <pattern>
 # returns: 0 on success, 1 if not a git repo
 # Appends <pattern> to .gitignore if not already present.
-# [PENDING]
+# [IMPORT_FROM_GIT_LIB -> git_lib.ensureGitignoreEntry @ 2026-05-04]
 git_ensure_gitignore_entry() {
   local gitignore="$1/.gitignore"
   if ! hide_errors grep -qxF "$2" "$gitignore"; then
@@ -1372,7 +1372,7 @@ git_ensure_gitignore_entry() {
 }
 
 # ========================================================
-# [PENDING]
+# [COVERED_BY_GIT_LIB_TESTS @ 2026-05-04]
 git_tests() {
   local test_dir pass=0 fail=0
 
@@ -1515,7 +1515,7 @@ git_tests() {
 # source "$(dirname "${BASH_SOURCE[0]}")/silencers.sh"
 # source "$(dirname "${BASH_SOURCE[0]}")/tmux.sh"
 
-# [PENDING]
+# [MIGRATED -> terminal_spawnIfNeeded @ 2026-05-04]
 spawn_terminal_if_needed() {
   local session="${1:?spawn_terminal_if_needed: session name required}"
   local log_file="${2:-/dev/null}"
@@ -1601,7 +1601,7 @@ OSA
 
 # usage: lock_acquire <lock_dir> [timeout_seconds] [stale_after_seconds]
 # returns: 0 on success, 1 on timeout
-# [PENDING]
+# [ABSORBED -> with FileLock(path, timeout=...) @ 2026-05-04]
 lock_acquire() {
   local timeout="${2:-10}"
   local stale_after="${3:-60}"
@@ -1632,14 +1632,14 @@ lock_acquire() {
 
 # usage: lock_release <lock_dir>
 # returns: 0 on success, 1 if lock dir didn't exist
-# [PENDING]
+# [ABSORBED -> FileLock.release() / context manager exit @ 2026-05-04]
 lock_release() {
   hide_errors rmdir "$1"
   local result=$?
   return $result
 }
 
-# [PENDING]
+# [TEST -> test_FileLock_* @ 2026-05-04]
 lock_tests() {
   local test_dir="/tmp/lock-test-$$"
   local pass=0 fail=0
@@ -1723,13 +1723,13 @@ lock_tests() {
 # source "${CLAUDE_PLUGIN_ROOT}/common/scripts/lock.sh"
 
 # Aliases for backward compat — callers use jot_lock_acquire/release.
-# [PENDING]
+# [ABSORBED -> with FileLock(path, timeout=...) @ 2026-05-04]
 jot_lock_acquire() { lock_acquire "$@"; }
-# [PENDING]
+# [ABSORBED -> FileLock.release() / context manager exit @ 2026-05-04]
 jot_lock_release() { lock_release "$@"; }
 
 # usage: jot_state_init <state_dir>
-# [PENDING]
+# [MIGRATED -> jot_initState @ 2026-05-04]
 jot_state_init() {
   mkdir -p "$1"
   touch "$1/queue.txt" "$1/active_job.txt" "$1/audit.log"
@@ -1738,7 +1738,7 @@ jot_state_init() {
 # usage: jot_queue_pop_first <state_dir>
 # returns: 0 on success (prints popped line), 1 if queue is empty
 # MUST be called while holding the queue lock.
-# [PENDING]
+# [MIGRATED -> jot_popFirstFromQueue @ 2026-05-04]
 jot_queue_pop_first() {
   local queue="$1/queue.txt"
   local active="$1/active_job.txt"
@@ -1752,14 +1752,14 @@ jot_queue_pop_first() {
 }
 
 # usage: jot_send_prompt <tmux_target> <input_file_path>
-# [PENDING]
+# [MIGRATED -> jot_sendPrompt @ 2026-05-04]
 jot_send_prompt() {
   tmux_send_and_submit "$1" \
     "Read $2 and follow the instructions at the top of that file"
 }
 
 # usage: jot_audit_rotate <audit_log> [max_lines]
-# [PENDING]
+# [MIGRATED -> jot_rotateAudit @ 2026-05-04]
 jot_audit_rotate() {
   [ -f "$1" ] || return 0
   local max="${2:-1000}"
@@ -1793,7 +1793,7 @@ jot_audit_rotate() {
 
 # usage: safe <command> [args...]
 # returns: stdout from command, or "(unavailable)" on failure
-# [PENDING]
+# [ABSORBED -> local try/except or subprocess fallback returning "(unavailable)" @ 2026-05-04]
 safe() {
   local out
   out=$(hide_errors "$@") || out="(unavailable)"
@@ -1802,7 +1802,7 @@ safe() {
 
 # usage: jot_build_claude_cmd
 # Sets globals: TMPDIR_INV, SETTINGS_FILE, CLAUDE_CMD
-# [PENDING]
+# [MIGRATED -> jot_buildClaudeCmd @ 2026-05-04]
 jot_build_claude_cmd() {
   TMPDIR_INV=$(mktemp -d /tmp/jot.XXXXXX)
   SETTINGS_FILE="$TMPDIR_INV/settings.json"
@@ -1837,7 +1837,7 @@ JSON
 
 # usage: phase2_launch_window
 # Spawns a tmux pane running claude for this jot invocation.
-# [PENDING]
+# [MIGRATED -> jot_launchPhase2Window @ 2026-05-04]
 phase2_launch_window() {
   STATE_DIR="$REPO_ROOT/Todos/.jot-state"
   jot_state_init "$STATE_DIR"
@@ -2132,7 +2132,7 @@ plate_main() {
 # SIGTERM and keep running to completion — causing the bash-level `wait` to
 # block for the agent's natural runtime (200s+) rather than the requested
 # timeout. SIGKILL cannot be caught, so the process dies within ~1s.
-# [PENDING]
+# [MIGRATED -> shell_runWithTimeout @ 2026-05-04]
 _run_with_timeout() {
   local secs=$1; shift
   "$@" &
@@ -3416,7 +3416,7 @@ jot_session_end() {
 #### end jot-session-end.sh ####
 
 #### jot-stop.sh ####
-# [PENDING]
+# [MIGRATED -> jot_stop @ 2026-05-04]
 jot_stop(){
     # jot-stop.sh — Stop hook for per-invocation claude panes.
     #
@@ -3914,11 +3914,11 @@ plate_summary_watch() {
 # diagnostic report file. Invoke via:
 #   bash scripts/jot-plugin-orchestrator.sh jot-diag-collect [output-path]
 # De-nested from jot_diag_collect (Phase 0.0). Pure helpers — no captured state.
-# [PENDING]
+# [MIGRATED -> jot_diagSection @ 2026-05-05]
 section() { printf '\n═══════════════════════════════════════════════════════════\n%s\n═══════════════════════════════════════════════════════════\n' "$1"; }
-# [PENDING]
+# [MIGRATED -> jot_diagIndent @ 2026-05-05]
 indent()  { sed 's/^/  /'; }
-# [PENDING]
+# [MIGRATED -> jot_diagKv @ 2026-05-05]
 kv()      { printf '%-28s %s\n' "$1" "$2"; }
 
 # [PENDING]
