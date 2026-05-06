@@ -4146,6 +4146,23 @@ except ImportError:
         return result.stdout.strip()
 
 
+def ensureGitignoreEntry(repo_root: str, pattern: str) -> None:
+    """Append `pattern` to <repo_root>/.gitignore if not already present."""
+    gitignore = Path(repo_root) / ".gitignore"
+    try:
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
+    except OSError:
+        existing = ""
+    lines = existing.splitlines()
+    if pattern in lines:
+        return
+    try:
+        with open(gitignore, "a", encoding="utf-8") as fh:
+            fh.write(f"\n{pattern}\n")
+    except OSError:
+        pass
+
+
 def _safe_call(fn: Callable[..., Any], *args: Any) -> str:
     """Bash `safe` wrapper: swallow failures, return '(unavailable)'."""
     try:
@@ -4582,4 +4599,787 @@ def todoList_main() -> int:
         print(hookjson_emitBlock("No open TODOs."))
     else:
         print(hookjson_emitBlock(formatted))
+    return 0
+
+
+def debate_startOrResume(
+    *,
+    debate_dir: str | Path,
+    available_agents: list[str],
+    resuming: bool,
+    cwd: str,
+    repo_root: str,
+    settings_file: str,
+    log_file: str,
+    plugin_root: str,
+    gemini_model: str,
+    codex_model: str,
+) -> None:
+    """Start or resume a debate orchestration session.
+
+    Mirrors debate_start_or_resume() from the bash original:
+    1. Detect composition drift when resuming.
+    2. Build missing per-stage instruction files (r1 / r2 / synthesis).
+    3. Build the Claude command via debate_buildClaudeCmd.
+    4. Claim a tmux session (debate-N); exit 0 with an error block on failure.
+    5. Apply session-scoped tmux options and name the keepalive pane.
+    6. Launch the daemon detached via Popen(start_new_session=True).
+    7. Spawn a terminal if needed.
+    8. Emit the final /debate <verb> block.
+    """
+    debate_dir = Path(debate_dir)
+    window_name = "main"
+
+    # Detect composition drift (resume path only).
+    composition_drifted = False
+    if resuming:
+        original_agents: set[str] = set()
+        for f in debate_dir.glob("r1_instructions_*.txt"):
+            stem = f.stem
+            agent_name = stem[len("r1_instructions_"):]
+            original_agents.add(agent_name)
+        if original_agents != set(available_agents):
+            composition_drifted = True
+
+    # Build missing per-stage instruction files.
+    agents_joined = " ".join(available_agents)
+
+    for agent in available_agents:
+        r1_path = debate_dir / f"r1_instructions_{agent}.txt"
+        if not r1_path.exists():
+            debate_buildClaudePrompts(
+                stage="r1",
+                debate_dir=str(debate_dir),
+                plugin_root=plugin_root,
+                debate_agents=agents_joined,
+                agent_filter=agent,
+            )
+
+    for agent in available_agents:
+        r2_path = debate_dir / f"r2_instructions_{agent}.txt"
+        if not r2_path.exists():
+            debate_buildClaudePrompts(
+                stage="r2",
+                debate_dir=str(debate_dir),
+                plugin_root=plugin_root,
+                debate_agents=agents_joined,
+                agent_filter=agent,
+            )
+
+    synthesis_path = debate_dir / "synthesis_instructions.txt"
+    if not synthesis_path.exists():
+        debate_buildClaudePrompts(
+            stage="synthesis",
+            debate_dir=str(debate_dir),
+            plugin_root=plugin_root,
+            debate_agents=agents_joined,
+            agent_filter=None,
+        )
+
+    # Build the Claude command.
+    debate_buildClaudeCmd(
+        debate_dir=str(debate_dir),
+        plugin_root=plugin_root,
+    )
+
+    # Claim a tmux session.
+    keepalive_cmd = (
+        "exec sh -c 'trap \"\" INT HUP TERM; "
+        "printf \"[debate keepalive]\\n\"; exec tail -f /dev/null'"
+    )
+    session = debate_claimSession(keepalive_cmd=keepalive_cmd)
+    if not session:
+        hookjson_emitBlock(
+            "/debate: could not claim debate-<N> session (1000 already in use)"
+        )
+        sys.exit(0)
+
+    # Apply session-scoped tmux options and name the keepalive pane.
+    _tmux_set = [
+        ["tmux", "set-option", "-t", session, "remain-on-exit", "off"],
+        ["tmux", "set-option", "-t", session, "mouse", "on"],
+        ["tmux", "set-option", "-t", session, "pane-border-status", "top"],
+        ["tmux", "set-option", "-t", session, "pane-border-format", " #{pane_title} "],
+    ]
+    for cmd in _tmux_set:
+        subprocess.run(cmd, stderr=subprocess.DEVNULL)
+
+    pane_title = f"keepalive:{debate_dir.name}"
+    subprocess.run(
+        ["tmux", "select-pane", "-t", f"{session}:{window_name}", "-T", pane_title],
+        stderr=subprocess.DEVNULL,
+    )
+
+    # Launch the daemon detached (replaces bash `& disown`).
+    orch_log_path = debate_dir / "orchestrator.log"
+    orch_log_handle = open(orch_log_path, "a")
+
+    daemon_env_extras = {
+        "GEMINI_MODEL": gemini_model,
+        "CODEX_MODEL": codex_model,
+        "DEBATE_AGENTS": agents_joined,
+        "COMPOSITION_DRIFTED": "1" if composition_drifted else "0",
+        "SESSION": session,
+    }
+    daemon_env = {**os.environ, **daemon_env_extras}
+
+    daemon_cmd = [
+        "bash",
+        str(Path(plugin_root) / "scripts" / "jot-plugin-orchestrator.sh"),
+        "debate-tmux-orchestrator",
+        str(debate_dir),
+        session,
+        window_name,
+        settings_file,
+        cwd,
+        repo_root,
+        plugin_root,
+    ]
+    subprocess.Popen(
+        daemon_cmd,
+        stdout=orch_log_handle,
+        stderr=orch_log_handle,
+        stdin=subprocess.DEVNULL,
+        start_new_session=True,
+        env=daemon_env,
+    )
+
+    # Spawn a terminal if needed.
+    terminal_spawnIfNeeded(
+        session=session,
+        log_file=log_file,
+        skill="debate",
+        required="yes",
+    )
+
+    # Emit the final status block.
+    agents_str = ", ".join(available_agents)
+    rel = f"Debates/{debate_dir.name}"
+    verb = "resumed" if resuming else "spawned"
+    hookjson_emitBlock(
+        f"/debate {verb} ({agents_str}) -> {rel}/synthesis.md "
+        f"(~10-30 min). View: tmux attach -t {session}"
+    )
+
+
+# Slug helpers: lowercase, replace non-alnum runs with '-', head 40, strip trailing '-'.
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(topic: str) -> str:
+    """Mirror bash: tr lower | tr -cs '[:alnum:]' '-' | head -c 40 | sed 's/-$//'."""
+    lowered = topic.lower()
+    collapsed = _NON_ALNUM_RE.sub("-", lowered)
+    return collapsed[:40].rstrip("-")
+
+
+def debate_main() -> int:
+    """Hook entry-point for the /debate slash command.
+
+    Returns 0 in all paths; failures surface via emit_block side-effects.
+    """
+    from datetime import datetime as _dt
+
+    ctx = debate_initHookContext()
+    log_file = ctx.get("LOG_FILE", "")
+    raw_input = ctx.get("INPUT", "")
+    transcript_path = ctx.get("TRANSCRIPT_PATH", "")
+    repo_root = ctx.get("REPO_ROOT", "")
+
+    hookjson_checkRequirements("debate", "jq", "python3", "tmux", "claude")
+
+    # Fast-path: ignore inputs that don't even mention "/debate.
+    if '"/debate' not in raw_input:
+        return 0
+
+    if log_file:
+        try:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as fh:
+                fh.write(f"{_dt.now().isoformat()} HOOK_INPUT {raw_input}\n")
+        except OSError:
+            pass
+
+    try:
+        payload = json.loads(raw_input) if raw_input else {}
+    except (ValueError, TypeError):
+        payload = {}
+    prompt = (payload.get("prompt") or "") if isinstance(payload, dict) else ""
+    prompt = prompt.lstrip()
+
+    if not (prompt == "/debate" or prompt.startswith("/debate ")):
+        return 0
+
+    topic = prompt[len("/debate"):]
+    if topic.startswith(" "):
+        topic = topic[1:]
+
+    if not topic:
+        hookjson_emitBlock("debate: no topic provided. Usage: /debate <topic>")
+        return 0
+    if not repo_root:
+        hookjson_emitBlock("debate requires a git repository.")
+        return 0
+
+    detect_result = debate_detectAvailableAgents()
+    available_agents: list[str] = list(detect_result.get("available", []))
+    gemini_model: str = detect_result.get("gemini_model", "")
+    codex_model: str = detect_result.get("codex_model", "")
+
+    existing = debate_findMatching(repo_root, topic)
+    resuming = False
+    debate_dir: Path
+
+    if existing:
+        existing_path = Path(existing)
+        if (existing_path / "synthesis.md").exists():
+            hookjson_emitBlock(
+                f"/debate: already complete, see {existing}/synthesis.md - "
+                f"or 'rm -rf {existing}' to re-run"
+            )
+            return 0
+        if debate_anyLiveLock(existing):
+            try:
+                live = debate_liveSession(existing) or "<unknown>"
+            except Exception:
+                live = "<unknown>"
+            hookjson_emitBlock(
+                f"/debate: already running for this topic -> tmux attach -t {live}"
+            )
+            return 0
+        debate_dir = existing_path
+        resuming = True
+    else:
+        if len(available_agents) < 2:
+            names = " ".join(available_agents)
+            hookjson_emitBlock(
+                f"/debate: needs >=2 agents, got: {names}. "
+                "All configured models for missing agents failed smoke tests. "
+                "Fix credentials/quota and re-run '/debate <topic>'."
+            )
+            return 0
+
+        timestamp = _dt.now().strftime("%Y-%m-%dT%H-%M-%S")
+        slug = _slugify(topic)
+        debate_dir = Path(repo_root) / "Debates" / f"{timestamp}_{slug}"
+        debate_dir.mkdir(parents=True, exist_ok=True)
+
+        (debate_dir / "topic.md").write_text(f"{topic}\n", encoding="utf-8")
+        if transcript_path:
+            (debate_dir / "invoking_transcript.txt").write_text(
+                f"{transcript_path}\n", encoding="utf-8"
+            )
+
+        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        capture_script = (
+            Path(plugin_root) / "skills" / "jot" / "scripts" / "capture-conversation.py"
+            if plugin_root
+            else None
+        )
+        context_path = debate_dir / "context.md"
+        if (
+            transcript_path
+            and Path(transcript_path).is_file()
+            and capture_script is not None
+            and capture_script.is_file()
+        ):
+            ok = False
+            try:
+                with context_path.open("w", encoding="utf-8") as out_fh:
+                    proc = subprocess.run(
+                        ["python3", str(capture_script), transcript_path],
+                        stdout=out_fh,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                    )
+                ok = proc.returncode == 0 and context_path.stat().st_size > 0
+            except (OSError, subprocess.SubprocessError):
+                ok = False
+            if not ok:
+                context_path.write_text("(conversation capture failed)\n", encoding="utf-8")
+        else:
+            context_path.write_text("(no conversation context available)\n", encoding="utf-8")
+
+    if resuming:
+        debate_checkResumeFeasibility(debate_dir, available_agents)
+        failed_marker = debate_dir / "FAILED.txt"
+        try:
+            failed_marker.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+
+    settings_file = os.environ.get("SETTINGS_FILE", "")
+    debate_startOrResume(
+        debate_dir=debate_dir,
+        available_agents=available_agents,
+        resuming=resuming,
+        cwd=ctx.get("CWD", ""),
+        repo_root=repo_root,
+        settings_file=settings_file,
+        log_file=log_file,
+        plugin_root=os.environ.get("CLAUDE_PLUGIN_ROOT", ""),
+        gemini_model=gemini_model,
+        codex_model=codex_model,
+    )
+
+    return 0
+
+
+def debateRetry_main() -> int:
+    """Hook entry-point for the /debate-retry slash command.
+
+    Locates the most recent debate directory in the current repo whose
+    invoking_transcript.txt matches the current hook's transcript_path,
+    then either reports its terminal state or resumes orchestration.
+    """
+    ctx = debate_initHookContext()
+    transcript_path = ctx.get("TRANSCRIPT_PATH", "")
+    repo_root = ctx.get("REPO_ROOT", "")
+    cwd = ctx.get("CWD", "")
+    log_file = ctx.get("LOG_FILE", "")
+
+    hookjson_checkRequirements("debate-retry", "jq", "python3", "tmux", "claude")
+
+    if not transcript_path:
+        hookjson_emitBlock("/debate-retry: no transcript_path in hook payload")
+        return 0
+    if not repo_root:
+        hookjson_emitBlock("/debate-retry requires a git repository")
+        return 0
+
+    debates_root = Path(repo_root) / "Debates"
+    best: Path | None = None
+    best_ts: str = ""
+
+    if debates_root.is_dir():
+        for entry in debates_root.iterdir():
+            if not entry.is_dir():
+                continue
+            marker = entry / "invoking_transcript.txt"
+            if not marker.is_file():
+                continue
+            try:
+                content = marker.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if content != transcript_path and content.rstrip("\n") != transcript_path:
+                continue
+            ts = entry.name
+            if ts > best_ts:
+                best_ts = ts
+                best = entry
+
+    if best is None:
+        hookjson_emitBlock("/debate-retry: no debate found in this conversation")
+        return 0
+
+    if (best / "synthesis.md").exists():
+        hookjson_emitBlock(
+            f"/debate-retry: already complete, see {best}/synthesis.md"
+        )
+        return 0
+
+    if debate_anyLiveLock(str(best)):
+        try:
+            live = debate_liveSession(str(best)) or "<unknown>"
+        except Exception:
+            live = "<unknown>"
+        hookjson_emitBlock(
+            f"/debate-retry: still running -> tmux attach -t {live}"
+        )
+        return 0
+
+    debate_dir = best
+    try:
+        topic = (debate_dir / "topic.md").read_text(encoding="utf-8")
+    except OSError:
+        topic = ""
+    _ = topic
+    resuming = True
+
+    detect_result = debate_detectAvailableAgents()
+    available_agents: list[str] = list(detect_result.get("available", []))
+    gemini_model: str = detect_result.get("gemini_model", "")
+    codex_model: str = detect_result.get("codex_model", "")
+
+    debate_checkResumeFeasibility(debate_dir, available_agents)
+
+    failed_marker = debate_dir / "FAILED.txt"
+    try:
+        failed_marker.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+    settings_file = os.environ.get("SETTINGS_FILE", "")
+    debate_startOrResume(
+        debate_dir=debate_dir,
+        available_agents=available_agents,
+        resuming=resuming,
+        cwd=cwd,
+        repo_root=repo_root,
+        settings_file=settings_file,
+        log_file=log_file,
+        plugin_root=os.environ.get("CLAUDE_PLUGIN_ROOT", ""),
+        gemini_model=gemini_model,
+        codex_model=codex_model,
+    )
+
+    return 0
+
+
+def debate_daemonMain(
+    *,
+    debate_dir: str | Path,
+    session: str,
+    window_target: str,
+    agents: list[str],
+    stage_timeout: int,
+    plugin_root: str,
+    composition_drifted: bool = False,
+) -> int:
+    """Drive the full R1 -> R2 -> synthesis pipeline for a debate session.
+
+    Returns 0 on success; 1 on any subordinate failure.
+    """
+    debate_dir = Path(debate_dir)
+
+    print("========================================")
+    print("[orch] DEBATE DAEMON")
+    print(f"[orch] Dir:     {debate_dir}")
+    print(f"[orch] Session: {session}")
+    print(f"[orch] Window:  {window_target}")
+    print(f"[orch] Agents:  {agents} ({len(agents)})")
+    print(f"[orch] Timeout: {stage_timeout}s per stage")
+    print(f"[orch] Drift:   {int(composition_drifted)}")
+    print("========================================")
+
+    debate_initAgentModels()
+
+    if composition_drifted:
+        print("[orch] composition drifted -- clearing r2_*.md, r2_instructions_*.txt, synthesis_instructions.txt")
+        for pattern in ("r2_*.md", "r2_instructions_*.txt", ".r2_*.lock"):
+            for f in debate_dir.glob(pattern):
+                f.unlink(missing_ok=True)
+        (debate_dir / "synthesis_instructions.txt").unlink(missing_ok=True)
+
+    debate_cleanStaleLocks("r1")
+
+    r1_panes: list[str] = []
+    for _agent in agents:
+        r1_panes.append(debate_newEmptyPane())
+
+    tmux_retile(window_target)
+    print(f"[orch] R1 panes: agents={agents}={r1_panes}")
+    time.sleep(1)
+
+    if debate_launchAgentsParallel("r1", r1_panes) != 0:
+        return 1
+
+    if debate_waitForOutputs("r1", stage_timeout, r1_panes) != 0:
+        return 1
+
+    for pane in r1_panes:
+        tmux_killPane(pane)
+    tmux_retile(window_target)
+    print("[orch] R1 agent panes closed")
+
+    debate_cleanStaleLocks("r2")
+
+    agents_str = " ".join(agents)
+    for agent in agents:
+        r2_instructions = debate_dir / f"r2_instructions_{agent}.txt"
+        if r2_instructions.exists():
+            continue
+        debate_buildClaudePrompts(
+            stage="r2",
+            debate_dir=str(debate_dir),
+            plugin_root=plugin_root,
+            debate_agents=agents_str,
+            agent_filter=agent,
+        )
+
+    r2_panes: list[str] = []
+    for _agent in agents:
+        r2_panes.append(debate_newEmptyPane())
+
+    tmux_retile(window_target)
+    print(f"[orch] R2 panes: agents={agents}={r2_panes}")
+    time.sleep(1)
+
+    if debate_launchAgentsParallel("r2", r2_panes) != 0:
+        return 1
+
+    if debate_waitForOutputs("r2", stage_timeout, r2_panes) != 0:
+        return 1
+
+    for pane in r2_panes:
+        tmux_killPane(pane)
+    tmux_retile(window_target)
+    print("[orch] R2 agent panes closed")
+
+    synthesis_md = debate_dir / "synthesis.md"
+    if synthesis_md.exists() and synthesis_md.stat().st_size > 0:
+        print("[orch] synthesis already complete, skipping launch; running archive step")
+        debate_archive()
+        print(f"[orch] DEBATE COMPLETE -- synthesis at {synthesis_md}")
+        return 0
+
+    debate_cleanStaleLocks("synthesis")
+
+    synthesis_instructions = debate_dir / "synthesis_instructions.txt"
+    if not synthesis_instructions.exists():
+        debate_buildClaudePrompts(
+            stage="synthesis",
+            debate_dir=str(debate_dir),
+            plugin_root=plugin_root,
+            debate_agents=agents_str,
+            agent_filter=None,
+        )
+
+    synth_pane = debate_newEmptyPane()
+    tmux_retile(window_target)
+    print(f"[orch] synthesis pane: {synth_pane}")
+    time.sleep(1)
+
+    launch_cmd = debate_agentLaunchCmd("claude")
+    ready_marker = debate_agentReadyMarker("claude")
+
+    if debate_launchAgent(synth_pane, "synthesis", "claude", launch_cmd, ready_marker) != 0:
+        return 1
+
+    if debate_sendPromptToAgent(synth_pane, "synthesis", "claude", str(synthesis_instructions)) != 0:
+        return 1
+
+    if shell_waitForFile(str(synthesis_md), stage_timeout) != 0:
+        return 1
+
+    tmux_killPane(synth_pane)
+    tmux_retile(window_target)
+    print("[orch] synthesis pane closed")
+
+    debate_archive()
+    print(f"[orch] DEBATE COMPLETE -- synthesis at {synthesis_md}")
+    return 0
+
+
+# Strict /plate prompt regex - mirrors bash grep -qE pattern exactly.
+_PROMPT_RE_PLATE = re.compile(
+    r"^/plate"
+    r"(\s+(--done|--drop|--trash"
+    r"|--recycle(\s+--list|\s+\S+)?"
+    r"|--show"
+    r"|--next( +[0-9A-Za-z._@#$+-]+)?"
+    r"))?$"
+)
+
+
+def plate_main(
+    *,
+    _stdin: str | None = None,
+    _environ: dict[str, str] | None = None,
+    _hookjson_emitBlock: object = None,
+    _hookjson_checkRequirements: object = None,
+    _getGitRepoRoot: object = None,
+    _ensureGitignoreEntry: object = None,
+    _subprocess_run: object = None,
+) -> int:
+    """Claude Code plugin hook entrypoint for /plate commands."""
+    emit_block = _hookjson_emitBlock or hookjson_emitBlock
+    check_reqs = _hookjson_checkRequirements or hookjson_checkRequirements
+    get_repo_root = _getGitRepoRoot or getGitRepoRoot
+    ensure_gitignore = _ensureGitignoreEntry or ensureGitignoreEntry
+    run = _subprocess_run or subprocess.run
+    env = _environ if _environ is not None else dict(os.environ)
+
+    plugin_root = env.get("CLAUDE_PLUGIN_ROOT")
+    if not plugin_root:
+        raise RuntimeError(
+            "plate plugin env not set -- not running under Claude Code plugin harness"
+            " (CLAUDE_PLUGIN_ROOT missing)"
+        )
+    plugin_data = env.get("CLAUDE_PLUGIN_DATA")
+    if not plugin_data:
+        raise RuntimeError(
+            "plate plugin env not set -- not running under Claude Code plugin harness"
+            " (CLAUDE_PLUGIN_DATA missing)"
+        )
+
+    plate_log_override = env.get("PLATE_LOG_FILE", "")
+    log_file = plate_log_override if plate_log_override else os.path.join(plugin_data, "plate-log.txt")
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+
+    raw_input = _stdin if _stdin is not None else sys.stdin.read()
+    if '/plate' not in raw_input:
+        return 0
+
+    check_reqs("plate", "python3")
+
+    try:
+        payload: dict = json.loads(raw_input)
+    except json.JSONDecodeError:
+        return 0
+
+    prompt: str = payload.get("prompt") or ""
+    prompt = prompt.lstrip()
+
+    if not _PROMPT_RE_PLATE.match(prompt):
+        return 0
+
+    session_id: str = payload.get("session_id") or "?"
+    transcript_path: str = payload.get("transcript_path") or ""
+    cwd: str = payload.get("cwd") or os.getcwd()
+
+    repo_root: str = get_repo_root(cwd) or ""
+    if not repo_root:
+        print(emit_block("plate requires a git repository. Run 'git init' in your project root."))
+        return 0
+
+    if not plate_log_override:
+        log_file = os.path.join(repo_root, ".plate", "plate-log.txt")
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        ensure_gitignore(repo_root, ".plate/plate-log.txt")
+
+    os.environ["PLATE_LOG_FILE"] = log_file
+
+    ts = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    try:
+        with open(log_file, "a") as fh:
+            fh.write(f"{ts} plate prompt=\"{prompt}\"\n")
+    except OSError:
+        pass
+
+    cli_path = os.path.join(plugin_root, "common", "scripts", "plate", "cli.py")
+
+    if prompt == "/plate":
+        args = ["push", session_id, transcript_path, repo_root]
+    elif prompt == "/plate --done":
+        args = ["done", repo_root]
+    elif prompt == "/plate --drop":
+        args = ["drop", repo_root]
+    elif prompt == "/plate --trash":
+        args = ["trash", repo_root]
+    elif prompt == "/plate --recycle":
+        args = ["recycle", repo_root]
+    elif prompt == "/plate --recycle --list":
+        args = ["recycle", repo_root, "--list"]
+    elif prompt.startswith("/plate --recycle "):
+        name = prompt[len("/plate --recycle "):]
+        args = ["recycle", repo_root, name]
+    elif prompt == "/plate --show":
+        args = ["show", repo_root]
+    elif prompt == "/plate --next":
+        args = ["next", repo_root]
+    elif prompt.startswith("/plate --next "):
+        name = prompt[len("/plate --next "):]
+        args = ["next", repo_root, name]
+    else:
+        print(emit_block(f"plate: unrecognized variant '{prompt}'"))
+        return 0
+
+    try:
+        result = run(
+            ["python3", cli_path] + args,
+            capture_output=True,
+            text=True,
+        )
+        out = (result.stdout or "") + (result.stderr or "")
+    except Exception as exc:
+        ts2 = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+        try:
+            with open(log_file, "a") as fh:
+                fh.write(f"{ts2} FAIL plate crashed: {exc}\n")
+        except OSError:
+            pass
+        out = f"plate crashed: {exc}"
+
+    print(emit_block(out))
+    return 0
+
+
+# Argv subcommand -> function map. Order mirrors the bash case block.
+_ARGV_DISPATCH: dict = {
+    "jot-session-start": jot_sessionStart,
+    "jot-session-end": jot_sessionEnd,
+    "jot-stop": jot_stop,
+    "scan-open-todos": todo_scanOpen,
+    "todo-launcher": todo_launcher,
+    "todo-stop": todo_stop,
+    "todo-session-start": todo_sessionStart,
+    "todo-session-end": todo_sessionEnd,
+    "plate-summary-stop": plate_summaryStop,
+    "plate-summary-watch": plate_summaryWatch,
+    "debate-tmux-orchestrator": debate_tmuxOrchestrator,
+    "jot-diag-collect": jot_collectDiagnostics,
+}
+
+# Prompt prefix -> stdin-mode entrypoint.
+_PROMPT_DISPATCH: tuple = (
+    ("/jot", lambda: jot_main()),
+    ("/plate", lambda: plate_main()),
+    ("/debate", lambda: debate_launch()),
+    ("/debate-retry", lambda: debateRetry_main()),
+    ("/debate-abort", lambda: debateAbort_main()),
+    ("/todo", lambda: todo_main()),
+    ("/todo-list", lambda: todoList_main()),
+)
+
+
+def _matches_prefix(prompt: str, prefix: str) -> bool:
+    """True if prompt is exactly `prefix`, `prefix `, or `prefix\\n` led."""
+    if prompt == prefix:
+        return True
+    if prompt.startswith(prefix + " "):
+        return True
+    if prompt.startswith(prefix + "\n"):
+        return True
+    return False
+
+
+def dispatch_main(argv: list[str] | None = None) -> int:
+    """Top-level entrypoint mirroring the bash dispatcher.
+
+    1. If argv[0] matches a known subcommand, route to it and exit.
+    2. Otherwise read stdin (a hook JSON blob), extract `.prompt`, lstrip,
+       normalise `/jot:<skill>` -> `/<skill>` (rewriting JSON too), and
+       dispatch to the matching prompt entrypoint via stdin piping.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv:
+        head = argv[0]
+        fn = _ARGV_DISPATCH.get(head)
+        if fn is not None:
+            rc = fn(argv[1:])
+            return int(rc) if rc is not None else 0
+
+    raw = sys.stdin.read()
+    try:
+        data = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        data = {}
+    prompt = data.get("prompt", "") if isinstance(data, dict) else ""
+    prompt = prompt.lstrip()
+
+    if prompt.startswith("/jot:"):
+        prompt = "/" + prompt[len("/jot:"):]
+        if isinstance(data, dict):
+            data["prompt"] = prompt
+            raw = json.dumps(data)
+
+    for prefix, fn in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        if _matches_prefix(prompt, prefix):
+            saved_stdin = sys.stdin
+            try:
+                sys.stdin = io.StringIO(raw)
+                rc = fn()
+            finally:
+                sys.stdin = saved_stdin
+            return int(rc) if rc is not None else 0
+
     return 0

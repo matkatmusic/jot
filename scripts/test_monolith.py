@@ -21,7 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 import pytest
 
@@ -42,6 +42,7 @@ from jot_plugin_orchestrator import (
     debate_claimSession,
     debate_cleanStaleLocks,
     debate_cleanup,
+    debate_daemonMain,
     debate_defaultModel,
     debate_detectAvailableAgents,
     debate_findMatching,
@@ -51,6 +52,7 @@ from jot_plugin_orchestrator import (
     debate_launchAgent,
     debate_launchAgentsParallel,
     debate_liveSession,
+    debate_main,
     debate_newEmptyPane,
     debate_nextModel,
     debate_paneHasCapacityError,
@@ -58,10 +60,13 @@ from jot_plugin_orchestrator import (
     debate_probeGemini,
     debate_retryPaneWithNextModel,
     debate_sendPromptToAgent,
+    debate_startOrResume,
     debate_tmuxOrchestrator,
     debate_waitForOutputs,
     debate_writeFailed,
     debateAbort_main,
+    debateRetry_main,
+    dispatch_main,
     FileLock,
     hookjson_checkRequirements,
     hookjson_emitBlock,
@@ -81,6 +86,7 @@ from jot_plugin_orchestrator import (
     jot_sessionStart,
     jot_stop,
     LockTimeout,
+    plate_main,
     plate_summaryStop,
     plate_summaryWatch,
     ResumeFeasibility,
@@ -10955,4 +10961,1635 @@ def test_setOptionForWindow_rejects_nonexistent_window(tmux_session_opts, capfd)
     # Test verification: rc nonzero.
     assert rc != 0
     capfd.readouterr()
+
+
+# =====================================================================
+# debate_startOrResume tests (migrated from _failing/test_debate_startOrResume.py)
+# =====================================================================
+
+_MOD_DEBATE_SOR = "jot_plugin_orchestrator"
+
+
+def _make_subject_sor(tmp_path: Path, *, resuming: bool = False) -> dict:
+    # Return a minimal valid kwargs dict for debate_startOrResume.
+    return dict(
+        debate_dir=tmp_path,
+        available_agents=["claude", "gemini"],
+        resuming=resuming,
+        cwd="/repo",
+        repo_root="/repo",
+        settings_file="/repo/settings.json",
+        log_file="/repo/debate.log",
+        plugin_root="/repo/plugin",
+        gemini_model="gemini-2.0",
+        codex_model="codex-001",
+    )
+
+
+class TestDebateStartOrResumeFreshStart:
+    # Scenario: A brand-new debate with no existing instruction files.
+
+    def test_all_r1_prompts_built_when_files_missing(self, tmp_path):
+        # Setup: debate_dir exists but contains no instruction files.
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action: invoke with no existing files.
+            debate_startOrResume(**kwargs)
+
+            # Test verification: r1 built for each agent.
+            r1_calls = [
+                c for c in mock_prompts.call_args_list if c.kwargs.get("stage") == "r1"
+            ]
+            assert len(r1_calls) == 2
+
+    def test_r2_prompts_built_when_files_missing(self, tmp_path):
+        # Scenario: fresh start -- r2 instruction files are absent.
+        # Setup: no files in debate_dir.
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: r2 built for each agent.
+            r2_calls = [
+                c for c in mock_prompts.call_args_list if c.kwargs.get("stage") == "r2"
+            ]
+            assert len(r2_calls) == 2
+
+    def test_synthesis_prompt_built_when_file_missing(self, tmp_path):
+        # Scenario: fresh start -- synthesis_instructions.txt is absent.
+        # Setup: empty debate_dir.
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: synthesis stage called once.
+            synth_calls = [
+                c
+                for c in mock_prompts.call_args_list
+                if c.kwargs.get("stage") == "synthesis"
+            ]
+            assert len(synth_calls) == 1
+
+    def test_daemon_launched_with_start_new_session(self, tmp_path):
+        # Scenario: daemon must be fully detached (replaces bash `& disown`).
+        # Setup: empty debate_dir, claim returns "debate-0".
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen") as mock_popen,
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: Popen called with start_new_session=True.
+            assert mock_popen.call_count == 1
+            _, pkwargs = mock_popen.call_args
+            assert pkwargs["start_new_session"] is True
+
+    def test_emit_block_says_spawned_on_fresh_start(self, tmp_path):
+        # Scenario: emit text must include "spawned" (not "resumed") on a new debate.
+        # Setup: resuming=False.
+        kwargs = _make_subject_sor(tmp_path, resuming=False)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock") as mock_emit,
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: final emit contains "spawned".
+            emit_text: str = mock_emit.call_args_list[-1].args[0]
+            assert "spawned" in emit_text
+            assert "resumed" not in emit_text
+
+
+class TestDebateStartOrResumeNoDrift:
+    # Scenario: resuming a debate where the agent roster has not changed.
+
+    def test_composition_drifted_false_when_agents_match(self, tmp_path):
+        # Setup: create r1 files that exactly match available_agents.
+        (tmp_path / "r1_instructions_claude.txt").write_text("x")
+        (tmp_path / "r1_instructions_gemini.txt").write_text("x")
+        (tmp_path / "r2_instructions_claude.txt").write_text("x")
+        (tmp_path / "r2_instructions_gemini.txt").write_text("x")
+        (tmp_path / "synthesis_instructions.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path, resuming=True)
+
+        captured_env: dict = {}
+
+        def fake_popen(cmd, **kw):
+            captured_env.update(kw.get("env", {}))
+            return MagicMock()
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-1"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen", side_effect=fake_popen),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: daemon receives COMPOSITION_DRIFTED=0.
+            assert captured_env.get("COMPOSITION_DRIFTED") == "0"
+
+    def test_prompts_skipped_when_all_files_exist(self, tmp_path):
+        # Scenario: no prompt rebuilds when all instruction files are present.
+        # Setup: pre-create every instruction file.
+        (tmp_path / "r1_instructions_claude.txt").write_text("x")
+        (tmp_path / "r1_instructions_gemini.txt").write_text("x")
+        (tmp_path / "r2_instructions_claude.txt").write_text("x")
+        (tmp_path / "r2_instructions_gemini.txt").write_text("x")
+        (tmp_path / "synthesis_instructions.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path, resuming=True)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-1"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: no prompt build calls at all.
+            assert mock_prompts.call_count == 0
+
+    def test_emit_block_says_resumed(self, tmp_path):
+        # Scenario: final emit must say "resumed" when resuming=True.
+        # Setup: pre-create files to avoid triggering prompt builds.
+        (tmp_path / "r1_instructions_claude.txt").write_text("x")
+        (tmp_path / "r1_instructions_gemini.txt").write_text("x")
+        (tmp_path / "r2_instructions_claude.txt").write_text("x")
+        (tmp_path / "r2_instructions_gemini.txt").write_text("x")
+        (tmp_path / "synthesis_instructions.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path, resuming=True)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-1"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock") as mock_emit,
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: final emit contains "resumed".
+            emit_text: str = mock_emit.call_args_list[-1].args[0]
+            assert "resumed" in emit_text
+
+
+class TestDebateStartOrResumeWithDrift:
+    # Scenario: resuming a debate where the agent roster has changed.
+
+    def test_composition_drifted_true_when_agents_differ(self, tmp_path):
+        # Setup: r1 files only have "claude" on disk, but "gemini" is new.
+        (tmp_path / "r1_instructions_claude.txt").write_text("x")
+        (tmp_path / "r2_instructions_claude.txt").write_text("x")
+        (tmp_path / "r2_instructions_gemini.txt").write_text("x")
+        (tmp_path / "synthesis_instructions.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path, resuming=True)
+
+        captured_env: dict = {}
+
+        def fake_popen(cmd, **kw):
+            captured_env.update(kw.get("env", {}))
+            return MagicMock()
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-2"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen", side_effect=fake_popen),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: daemon receives COMPOSITION_DRIFTED=1.
+            assert captured_env.get("COMPOSITION_DRIFTED") == "1"
+
+
+class TestDebateStartOrResumeClaimFailure:
+    # Scenario: debate_claimSession returns falsy -- must emit error and exit 0.
+
+    def test_exits_zero_and_emits_error_on_claim_failure(self, tmp_path):
+        # Setup: claim returns None (falsy).
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value=None),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock") as mock_emit,
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded") as mock_terminal,
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen") as mock_popen,
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action: must raise SystemExit(0).
+            with pytest.raises(SystemExit) as exc_info:
+                debate_startOrResume(**kwargs)
+
+            # Test verification: exit code is 0, error emitted, daemon NOT launched.
+            assert exc_info.value.code == 0
+            assert mock_emit.call_count == 1
+            error_text: str = mock_emit.call_args.args[0]
+            assert "could not claim" in error_text
+            mock_popen.assert_not_called()
+            mock_terminal.assert_not_called()
+
+
+class TestDebateStartOrResumePromptBuildSkipped:
+    # Scenario: only build prompts for the stages that are actually missing.
+
+    def test_only_missing_r1_is_built(self, tmp_path):
+        # Setup: claude r1 exists, gemini r1 is absent.
+        (tmp_path / "r1_instructions_claude.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: r1 called exactly once (only for gemini).
+            r1_calls = [
+                c for c in mock_prompts.call_args_list if c.kwargs.get("stage") == "r1"
+            ]
+            assert len(r1_calls) == 1
+            assert r1_calls[0].kwargs["agent_filter"] == "gemini"
+
+    def test_synthesis_not_built_when_file_exists(self, tmp_path):
+        # Scenario: synthesis_instructions.txt already present -- skip build.
+        # Setup: only synthesis file exists; r1/r2 absent.
+        (tmp_path / "synthesis_instructions.txt").write_text("x")
+
+        kwargs = _make_subject_sor(tmp_path)
+
+        with (
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudePrompts") as mock_prompts,
+            patch(f"{_MOD_DEBATE_SOR}.debate_buildClaudeCmd"),
+            patch(f"{_MOD_DEBATE_SOR}.debate_claimSession", return_value="debate-0"),
+            patch(f"{_MOD_DEBATE_SOR}.hookjson_emitBlock"),
+            patch(f"{_MOD_DEBATE_SOR}.terminal_spawnIfNeeded"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.run"),
+            patch(f"{_MOD_DEBATE_SOR}.subprocess.Popen"),
+            patch("builtins.open", mock_open()),
+        ):
+            # Test action:
+            debate_startOrResume(**kwargs)
+
+            # Test verification: no synthesis call.
+            synth_calls = [
+                c
+                for c in mock_prompts.call_args_list
+                if c.kwargs.get("stage") == "synthesis"
+            ]
+            assert len(synth_calls) == 0
+
+
+# =====================================================================
+# debate_main tests (migrated from _failing/test_debate_main.py)
+# =====================================================================
+
+# Test bodies use `mod.<name>` patches; bind mod to the monolith.
+import jot_plugin_orchestrator as _mod_dm  # noqa: E402
+
+
+def _ctx_dm(tmp_path: Path, *, prompt: str, repo_root: str | None = None,
+            transcript_path: str = "") -> dict:
+    # Build a debate_initHookContext()-shaped dict.
+    return {
+        "SCRIPTS_DIR": str(tmp_path / "scripts"),
+        "LOG_FILE": str(tmp_path / "debate-log.txt"),
+        "INPUT": json.dumps({"prompt": prompt, "cwd": str(tmp_path),
+                             "transcript_path": transcript_path}),
+        "CWD": str(tmp_path),
+        "TRANSCRIPT_PATH": transcript_path,
+        "REPO_ROOT": str(tmp_path) if repo_root is None else repo_root,
+    }
+
+
+def _detect_dm(available: list[str]) -> dict:
+    return {"available": available, "gemini_model": "gem-x", "codex_model": "cdx-y"}
+
+
+def test_debateMain_non_debate_input_returns_zero(tmp_path):
+    # Scenario: hook fires for an unrelated prompt; debate_main must no-op.
+    # Setup: context whose INPUT does not contain the literal '"/debate'.
+    ctx = {
+        "SCRIPTS_DIR": "", "LOG_FILE": "", "INPUT": '{"prompt":"hello"}',
+        "CWD": str(tmp_path), "TRANSCRIPT_PATH": "", "REPO_ROOT": str(tmp_path),
+    }
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action: invoke debate_main.
+        rc = _mod_dm.debate_main()
+    # Test verification: rc 0, no emit, no dispatch.
+    assert rc == 0
+    emit.assert_not_called()
+    start.assert_not_called()
+
+
+def test_debateMain_missing_topic_emits_usage(tmp_path):
+    # Scenario: prompt is bare '/debate' with no topic argument.
+    # Setup: build context and patch deps.
+    ctx = _ctx_dm(tmp_path, prompt="/debate")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action: run debate_main.
+        rc = _mod_dm.debate_main()
+    # Test verification: usage message emitted, no dispatch.
+    assert rc == 0
+    emit.assert_called_once_with("debate: no topic provided. Usage: /debate <topic>")
+    start.assert_not_called()
+
+
+def test_debateMain_missing_repo_emits_block(tmp_path):
+    # Scenario: caller is not inside a git repo (REPO_ROOT empty).
+    # Setup: context with REPO_ROOT="" but valid topic.
+    ctx = _ctx_dm(tmp_path, prompt="/debate should we ship", repo_root="")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    emit.assert_called_once_with("debate requires a git repository.")
+    start.assert_not_called()
+
+
+def test_debateMain_existing_with_synthesis_emits_already_complete(tmp_path):
+    # Scenario: a prior debate dir for this topic already has synthesis.md.
+    # Setup: create a debate dir with synthesis.md and stub findMatching.
+    existing = tmp_path / "Debates" / "2026-05-05T00-00-00_topic"
+    existing.mkdir(parents=True)
+    (existing / "synthesis.md").write_text("done\n")
+    ctx = _ctx_dm(tmp_path, prompt="/debate topic")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=str(existing)), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    msg = emit.call_args.args[0]
+    assert "already complete" in msg
+    assert "synthesis.md" in msg
+    start.assert_not_called()
+
+
+def test_debateMain_existing_with_live_lock_emits_already_running(tmp_path):
+    # Scenario: existing debate dir is mid-flight; tmux session still live.
+    # Setup: dir exists, no synthesis.md, anyLiveLock True, liveSession 'debate-3'.
+    existing = tmp_path / "Debates" / "2026-05-05T00-00-00_topic"
+    existing.mkdir(parents=True)
+    ctx = _ctx_dm(tmp_path, prompt="/debate topic")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=str(existing)), \
+         patch.object(_mod_dm, "debate_anyLiveLock", return_value=True), \
+         patch.object(_mod_dm, "debate_liveSession", return_value="debate-3"), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    msg = emit.call_args.args[0]
+    assert "already running" in msg
+    assert "-> tmux attach -t debate-3" in msg
+    start.assert_not_called()
+
+
+def test_debateMain_existing_without_synthesis_or_lock_resumes(tmp_path):
+    # Scenario: stale debate dir survives; resume path must engage.
+    # Setup: existing dir with no synthesis.md, anyLiveLock False, FAILED.txt present.
+    existing = tmp_path / "Debates" / "2026-05-05T00-00-00_topic"
+    existing.mkdir(parents=True)
+    (existing / "FAILED.txt").write_text("rip\n")
+    ctx = _ctx_dm(tmp_path, prompt="/debate topic")
+    feas = MagicMock()
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=str(existing)), \
+         patch.object(_mod_dm, "debate_anyLiveLock", return_value=False), \
+         patch.object(_mod_dm, "debate_checkResumeFeasibility",
+                      return_value=feas) as check, \
+         patch.object(_mod_dm, "debate_startOrResume") as start, \
+         patch.object(_mod_dm, "hookjson_emitBlock"):
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    check.assert_called_once()
+    assert not (existing / "FAILED.txt").exists()
+    assert start.call_args.kwargs["resuming"] is True
+    assert Path(start.call_args.kwargs["debate_dir"]) == existing
+
+
+def test_debateMain_fresh_under_two_agents_emits_count_block(tmp_path):
+    # Scenario: only one agent passed smoke tests; fresh debate must abort.
+    # Setup: findMatching None, available=['claude'].
+    ctx = _ctx_dm(tmp_path, prompt="/debate ship it")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=None), \
+         patch.object(_mod_dm, "hookjson_emitBlock") as emit, \
+         patch.object(_mod_dm, "debate_startOrResume") as start:
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    msg = emit.call_args.args[0]
+    assert ">=2 agents" in msg
+    assert "claude" in msg
+    start.assert_not_called()
+
+
+def test_debateMain_fresh_happy_path_creates_artifacts_and_dispatches(tmp_path):
+    # Scenario: clean repo, two agents, no transcript - 'no conversation context' branch.
+    # Setup: findMatching None, available=2, transcript_path empty.
+    ctx = _ctx_dm(tmp_path, prompt="/debate Should we Adopt Rust?")
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=None), \
+         patch.object(_mod_dm, "debate_startOrResume") as start, \
+         patch.object(_mod_dm, "hookjson_emitBlock"):
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    debates_root = tmp_path / "Debates"
+    assert debates_root.is_dir()
+    created = list(debates_root.iterdir())
+    assert len(created) == 1
+    debate_dir = created[0]
+    assert debate_dir.name.endswith("_should-we-adopt-rust")
+    assert (debate_dir / "topic.md").read_text() == "Should we Adopt Rust?\n"
+    assert (debate_dir / "context.md").read_text() == "(no conversation context available)\n"
+    assert start.call_args.kwargs["resuming"] is False
+    assert Path(start.call_args.kwargs["debate_dir"]) == debate_dir
+
+
+def test_debateMain_fresh_with_transcript_invokes_capture_subprocess(tmp_path, monkeypatch):
+    # Scenario: transcript exists and capture script exists - subprocess.run hit.
+    # Setup: create transcript file + fake capture script + plugin_root env.
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text('{"role":"user"}\n')
+    plugin_root = tmp_path / "plugin"
+    cap_dir = plugin_root / "skills" / "jot" / "scripts"
+    cap_dir.mkdir(parents=True)
+    capture_script = cap_dir / "capture-conversation.py"
+    capture_script.write_text("# stub\n")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    ctx = _ctx_dm(tmp_path, prompt="/debate topic", transcript_path=str(transcript))
+
+    def fake_run(cmd, stdout, stderr, check):
+        # Test setup: simulate capture writing useful output to context.md handle.
+        stdout.write("captured context\n")
+        return MagicMock(returncode=0)
+
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=None), \
+         patch.object(_mod_dm.subprocess, "run", side_effect=fake_run) as run_mock, \
+         patch.object(_mod_dm, "debate_startOrResume"), \
+         patch.object(_mod_dm, "hookjson_emitBlock"):
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    assert run_mock.call_count == 1
+    debate_dir = next((tmp_path / "Debates").iterdir())
+    assert (debate_dir / "context.md").read_text() == "captured context\n"
+    assert (debate_dir / "invoking_transcript.txt").read_text() == f"{transcript}\n"
+
+
+def test_debateMain_fresh_capture_failure_writes_failure_marker(tmp_path, monkeypatch):
+    # Scenario: capture-conversation.py returns non-zero -> fallback marker.
+    # Setup: transcript + script exist; subprocess returns rc=1.
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("x")
+    plugin_root = tmp_path / "plugin"
+    cap_dir = plugin_root / "skills" / "jot" / "scripts"
+    cap_dir.mkdir(parents=True)
+    (cap_dir / "capture-conversation.py").write_text("# stub\n")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    ctx = _ctx_dm(tmp_path, prompt="/debate topic", transcript_path=str(transcript))
+
+    def fake_run(cmd, stdout, stderr, check):
+        return MagicMock(returncode=1)
+
+    with patch.object(_mod_dm, "debate_initHookContext", return_value=ctx), \
+         patch.object(_mod_dm, "hookjson_checkRequirements"), \
+         patch.object(_mod_dm, "debate_detectAvailableAgents",
+                      return_value=_detect_dm(["claude", "gemini"])), \
+         patch.object(_mod_dm, "debate_findMatching", return_value=None), \
+         patch.object(_mod_dm.subprocess, "run", side_effect=fake_run), \
+         patch.object(_mod_dm, "debate_startOrResume"), \
+         patch.object(_mod_dm, "hookjson_emitBlock"):
+        # Test action.
+        rc = _mod_dm.debate_main()
+    # Test verification.
+    assert rc == 0
+    debate_dir = next((tmp_path / "Debates").iterdir())
+    assert (debate_dir / "context.md").read_text() == "(conversation capture failed)\n"
+
+
+# =====================================================================
+# debateRetry_main tests (migrated from _failing/test_debateRetry_main.py)
+# =====================================================================
+
+_mod_dr = jot_plugin_orchestrator
+
+
+def _install_stubs_dr(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    transcript_path: str,
+    repo_root: str,
+    cwd: str = "/tmp/cwd",
+    log_file: str = "",
+    available: list[str] | None = None,
+    any_live: bool = False,
+    live_session: str = "",
+) -> dict:
+    # Replace every external collaborator with a record-collecting stub.
+    calls: dict = {
+        "init": 0,
+        "requirements": [],
+        "emits": [],
+        "detect": 0,
+        "any_live_lock": [],
+        "live_session": [],
+        "check_resume": [],
+        "start_or_resume": [],
+    }
+
+    def fake_init():
+        calls["init"] += 1
+        return {
+            "TRANSCRIPT_PATH": transcript_path,
+            "REPO_ROOT": repo_root,
+            "CWD": cwd,
+            "LOG_FILE": log_file,
+            "INPUT": "",
+            "SCRIPTS_DIR": "",
+        }
+
+    def fake_check_requirements(*args):
+        calls["requirements"].append(args)
+
+    def fake_emit(msg):
+        calls["emits"].append(msg)
+
+    def fake_detect():
+        calls["detect"] += 1
+        return {
+            "available": list(available or ["claude", "gemini"]),
+            "gemini_model": "gem-x",
+            "codex_model": "",
+        }
+
+    def fake_any_live_lock(p):
+        calls["any_live_lock"].append(p)
+        return any_live
+
+    def fake_live_session(p):
+        calls["live_session"].append(p)
+        return live_session
+
+    def fake_check_resume(d, a):
+        calls["check_resume"].append((Path(d), list(a)))
+
+    def fake_start_or_resume(**kwargs):
+        calls["start_or_resume"].append(kwargs)
+
+    monkeypatch.setattr(_mod_dr, "debate_initHookContext", fake_init)
+    monkeypatch.setattr(_mod_dr, "hookjson_checkRequirements", fake_check_requirements)
+    monkeypatch.setattr(_mod_dr, "hookjson_emitBlock", fake_emit)
+    monkeypatch.setattr(_mod_dr, "debate_detectAvailableAgents", fake_detect)
+    monkeypatch.setattr(_mod_dr, "debate_anyLiveLock", fake_any_live_lock)
+    monkeypatch.setattr(_mod_dr, "debate_liveSession", fake_live_session)
+    monkeypatch.setattr(_mod_dr, "debate_checkResumeFeasibility", fake_check_resume)
+    monkeypatch.setattr(_mod_dr, "debate_startOrResume", fake_start_or_resume)
+
+    return calls
+
+
+def test_debateRetry_missing_transcript_emits_message(monkeypatch, tmp_path):
+    # Scenario: hook context has empty TRANSCRIPT_PATH; should emit and return 0.
+    # Setup: install stubs with empty transcript and a valid repo.
+    calls = _install_stubs_dr(monkeypatch, transcript_path="", repo_root=str(tmp_path))
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert calls["emits"] == ["/debate-retry: no transcript_path in hook payload"]
+    assert calls["start_or_resume"] == []
+    assert calls["check_resume"] == []
+
+
+def test_debateRetry_missing_repo_emits_message(monkeypatch):
+    # Scenario: transcript present but REPO_ROOT empty.
+    # Setup: install stubs.
+    calls = _install_stubs_dr(monkeypatch, transcript_path="/some/t.txt", repo_root="")
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert calls["emits"] == ["/debate-retry requires a git repository"]
+    assert calls["start_or_resume"] == []
+
+
+def test_debateRetry_no_matching_debate_emits_message(monkeypatch, tmp_path):
+    # Scenario: Debates dir exists but no invoking_transcript.txt matches.
+    # Setup: build a Debates dir with a non-matching transcript marker.
+    debates = tmp_path / "Debates" / "2026-01-01T00-00-00_topic"
+    debates.mkdir(parents=True)
+    (debates / "invoking_transcript.txt").write_text("/other/transcript.txt\n")
+    calls = _install_stubs_dr(
+        monkeypatch,
+        transcript_path="/this/transcript.txt",
+        repo_root=str(tmp_path),
+    )
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert calls["emits"] == ["/debate-retry: no debate found in this conversation"]
+    assert calls["start_or_resume"] == []
+
+
+def test_debateRetry_matched_with_synthesis_emits_already_complete(monkeypatch, tmp_path):
+    # Scenario: matched debate dir already has synthesis.md.
+    # Setup: matching transcript + synthesis.md present.
+    transcript = "/conv/abc.jsonl"
+    debate_dir = tmp_path / "Debates" / "2026-02-02T10-10-10_topic"
+    debate_dir.mkdir(parents=True)
+    (debate_dir / "invoking_transcript.txt").write_text(transcript + "\n")
+    (debate_dir / "synthesis.md").write_text("done\n")
+    calls = _install_stubs_dr(
+        monkeypatch, transcript_path=transcript, repo_root=str(tmp_path)
+    )
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert len(calls["emits"]) == 1
+    assert "already complete" in calls["emits"][0]
+    assert "synthesis.md" in calls["emits"][0]
+    assert calls["start_or_resume"] == []
+
+
+def test_debateRetry_matched_with_live_lock_emits_still_running(monkeypatch, tmp_path):
+    # Scenario: matched debate has no synthesis but a live lock.
+    # Setup: matching transcript; no synthesis; any_live_lock returns True.
+    transcript = "/conv/live.jsonl"
+    debate_dir = tmp_path / "Debates" / "2026-03-03T11-11-11_run"
+    debate_dir.mkdir(parents=True)
+    (debate_dir / "invoking_transcript.txt").write_text(transcript)
+    calls = _install_stubs_dr(
+        monkeypatch,
+        transcript_path=transcript,
+        repo_root=str(tmp_path),
+        any_live=True,
+        live_session="debate-7",
+    )
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert len(calls["emits"]) == 1
+    assert calls["emits"][0] == "/debate-retry: still running -> tmux attach -t debate-7"
+    assert calls["start_or_resume"] == []
+
+
+def test_debateRetry_happy_path_lex_max_wins_and_invokes_resume(monkeypatch, tmp_path):
+    # Scenario: multiple matching dirs + stale FAILED.txt; lex-max wins, FAILED.txt removed,
+    # check_resume_feasibility called, startOrResume invoked.
+    # Setup: build dirs, transcripts, topic.md, FAILED.txt.
+    transcript = "/conv/main.jsonl"
+    older = tmp_path / "Debates" / "2026-01-01T00-00-00_a"
+    newer = tmp_path / "Debates" / "2026-09-09T09-09-09_z"
+    other = tmp_path / "Debates" / "2026-05-05T05-05-05_x"
+    for d in (older, newer, other):
+        d.mkdir(parents=True)
+    (older / "invoking_transcript.txt").write_text(transcript)
+    (newer / "invoking_transcript.txt").write_text(transcript)
+    (other / "invoking_transcript.txt").write_text("/different/t.jsonl")
+    (newer / "topic.md").write_text("the topic\n")
+    failed_marker = newer / "FAILED.txt"
+    failed_marker.write_text("stale\n")
+
+    calls = _install_stubs_dr(
+        monkeypatch,
+        transcript_path=transcript,
+        repo_root=str(tmp_path),
+        available=["claude", "gemini", "codex"],
+    )
+
+    # Test action:
+    rc = _mod_dr.debateRetry_main()
+
+    # Test verification:
+    assert rc == 0
+    assert calls["emits"] == []
+    assert not failed_marker.exists()
+    assert len(calls["check_resume"]) == 1
+    chk_dir, chk_agents = calls["check_resume"][0]
+    assert chk_dir == newer
+    assert chk_agents == ["claude", "gemini", "codex"]
+    assert len(calls["start_or_resume"]) == 1
+    kwargs = calls["start_or_resume"][0]
+    assert Path(kwargs["debate_dir"]) == newer
+    assert kwargs["resuming"] is True
+    assert kwargs["available_agents"] == ["claude", "gemini", "codex"]
+    assert kwargs["repo_root"] == str(tmp_path)
+    assert len(calls["requirements"]) == 1
+    assert calls["requirements"][0][0] == "debate-retry"
+
+
+# =====================================================================
+# debate_daemonMain tests (migrated from _failing/test_debate_daemonMain.py)
+# =====================================================================
+
+_MOD_DAEMON = jot_plugin_orchestrator
+
+
+def _patch_all_daemon(monkeypatch, overrides=None):
+    # Return a dict of all patched callables with sensible defaults (rc=0).
+    targets = {
+        "debate_initAgentModels": MagicMock(return_value=None),
+        "debate_cleanStaleLocks": MagicMock(return_value=None),
+        "debate_newEmptyPane": MagicMock(side_effect=["pane-r1-0", "pane-r1-1", "pane-r2-0", "pane-r2-1", "pane-synth"]),
+        "debate_launchAgentsParallel": MagicMock(return_value=0),
+        "debate_waitForOutputs": MagicMock(return_value=0),
+        "debate_buildClaudePrompts": MagicMock(return_value=None),
+        "debate_launchAgent": MagicMock(return_value=0),
+        "debate_sendPromptToAgent": MagicMock(return_value=0),
+        "debate_agentLaunchCmd": MagicMock(return_value="claude --cmd"),
+        "debate_agentReadyMarker": MagicMock(return_value="READY"),
+        "debate_archive": MagicMock(return_value=None),
+        "shell_waitForFile": MagicMock(return_value=0),
+        "tmux_retile": MagicMock(return_value=None),
+        "tmux_killPane": MagicMock(return_value=None),
+    }
+    if overrides:
+        targets.update(overrides)
+    for name, mock in targets.items():
+        monkeypatch.setattr(_MOD_DAEMON, name, mock)
+    return targets
+
+
+def _base_kwargs_daemon(tmp_path):
+    return dict(
+        debate_dir=tmp_path,
+        session="test-session",
+        window_target="test-session:0",
+        agents=["alpha", "beta"],
+        stage_timeout=30,
+        plugin_root="/fake/plugin_root",
+    )
+
+
+class TestDaemonMainHappyPath:
+    def test_happy_path_two_agents_returns_zero(self, monkeypatch, tmp_path):
+        # Scenario: full 2-agent debate with no pre-existing synthesis.md.
+        # Setup: all deps succeed; shell_waitForFile creates synthesis.md.
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth output")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+        kwargs = _base_kwargs_daemon(tmp_path)
+
+        # Test action:
+        result = debate_daemonMain(**kwargs)
+
+        # Test verification:
+        assert result == 0
+        mocks["debate_launchAgentsParallel"].assert_any_call("r1", ["pane-r1-0", "pane-r1-1"])
+        mocks["debate_launchAgentsParallel"].assert_any_call("r2", ["pane-r2-0", "pane-r2-1"])
+        mocks["debate_launchAgent"].assert_called_once()
+        mocks["debate_archive"].assert_called_once()
+
+    def test_happy_path_calls_init_agent_models(self, monkeypatch, tmp_path):
+        # Scenario: debate_initAgentModels is always called first.
+        # Setup: standard success path.
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        mocks["debate_initAgentModels"].assert_called_once_with()
+
+
+class TestDaemonMainDriftWipesFiles:
+    def test_drift_true_unlinks_r2_and_synthesis_instructions(self, monkeypatch, tmp_path):
+        # Scenario: composition_drifted=True causes stale artifacts to be removed.
+        # Setup: create r2 and synthesis_instructions files in debate_dir.
+        (tmp_path / "r2_alpha.md").write_text("old r2")
+        (tmp_path / "r2_instructions_alpha.txt").write_text("old r2 instr")
+        (tmp_path / ".r2_alpha.lock").write_text("lock")
+        (tmp_path / "synthesis_instructions.txt").write_text("old synth instr")
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path), composition_drifted=True)
+
+        # Test verification:
+        assert not (tmp_path / "r2_alpha.md").exists()
+        assert not (tmp_path / "r2_instructions_alpha.txt").exists()
+        assert not (tmp_path / ".r2_alpha.lock").exists()
+        assert not (tmp_path / "synthesis_instructions.txt").exists()
+
+    def test_drift_false_leaves_files_intact(self, monkeypatch, tmp_path):
+        # Scenario: composition_drifted=False does not delete any artifact.
+        # Setup: r2 artifacts present; r2_instructions for both agents.
+        (tmp_path / "r2_alpha.md").write_text("kept")
+        (tmp_path / "r2_instructions_alpha.txt").write_text("kept")
+        (tmp_path / "r2_instructions_beta.txt").write_text("kept")
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path), composition_drifted=False)
+
+        # Test verification:
+        assert (tmp_path / "r2_alpha.md").exists()
+        assert (tmp_path / "r2_instructions_alpha.txt").exists()
+
+
+class TestDaemonMainMissingR2Instructions:
+    def test_missing_r2_instructions_triggers_build(self, monkeypatch, tmp_path):
+        # Scenario: agents without r2_instructions_*.txt cause build calls.
+        # Setup: only alpha has r2 instructions; beta does not.
+        (tmp_path / "r2_instructions_alpha.txt").write_text("alpha instr")
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification: build called for beta only (r2 stage).
+        r2_calls = [
+            c for c in mocks["debate_buildClaudePrompts"].call_args_list
+            if c.kwargs.get("stage") == "r2"
+        ]
+        assert len(r2_calls) == 1
+        assert r2_calls[0].kwargs["agent_filter"] == "beta"
+
+    def test_present_r2_instructions_skips_build(self, monkeypatch, tmp_path):
+        # Scenario: all agents have r2 instructions -- no r2 build call expected.
+        # Setup: r2_instructions for both agents.
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        r2_build_calls = [
+            c for c in mocks["debate_buildClaudePrompts"].call_args_list
+            if c.kwargs.get("stage") == "r2"
+        ]
+        assert len(r2_build_calls) == 0
+
+
+class TestDaemonMainSynthesisAlreadyComplete:
+    def test_nonempty_synthesis_md_skips_launch_and_returns_zero(self, monkeypatch, tmp_path):
+        # Scenario: synthesis.md exists and is non-empty -- skip synth launch, archive, return 0.
+        # Setup: write non-empty synthesis.md before calling daemon_main.
+        (tmp_path / "synthesis.md").write_text("existing synthesis")
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch)
+        mocks["debate_newEmptyPane"].side_effect = ["pane-r1-0", "pane-r1-1", "pane-r2-0", "pane-r2-1"]
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 0
+        mocks["debate_launchAgent"].assert_not_called()
+        mocks["debate_archive"].assert_called_once()
+
+    def test_empty_synthesis_md_does_not_short_circuit(self, monkeypatch, tmp_path):
+        # Scenario: synthesis.md exists but is empty (size=0) -- do NOT short-circuit.
+        # Setup: zero-byte synthesis.md.
+        (tmp_path / "synthesis.md").write_bytes(b"")
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch)
+
+        def _wait_side_effect(path, timeout):
+            Path(path).write_text("synth")
+            return 0
+        mocks["shell_waitForFile"].side_effect = _wait_side_effect
+
+        # Test action:
+        debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification: synth launch was reached.
+        mocks["debate_launchAgent"].assert_called_once()
+
+
+class TestDaemonMainLaunchFailure:
+    def test_r1_launch_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: R1 launch fails -- returns 1 immediately.
+        # Setup: debate_launchAgentsParallel returns 1 on first call.
+        mocks = _patch_all_daemon(monkeypatch, {
+            "debate_launchAgentsParallel": MagicMock(return_value=1),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+        assert mocks["debate_launchAgentsParallel"].call_count == 1
+
+    def test_r1_wait_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: R1 wait_for_outputs fails -- returns 1.
+        # Setup: wait returns 1 on first call.
+        mocks = _patch_all_daemon(monkeypatch, {
+            "debate_waitForOutputs": MagicMock(return_value=1),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+
+    def test_r2_launch_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: R2 launch fails after R1 succeeds -- returns 1.
+        # Setup: first parallel launch succeeds, second fails.
+        mocks = _patch_all_daemon(monkeypatch, {
+            "debate_launchAgentsParallel": MagicMock(side_effect=[0, 1]),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+        assert mocks["debate_launchAgentsParallel"].call_count == 2
+
+    def test_synth_launch_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: synthesis launch agent fails -- returns 1.
+        # Setup: r2 instructions present; debate_launchAgent returns 1.
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch, {
+            "debate_launchAgent": MagicMock(return_value=1),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+        mocks["debate_archive"].assert_not_called()
+
+    def test_synth_wait_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: shell_waitForFile for synthesis.md times out -- returns 1.
+        # Setup: r2 instructions present; shell_waitForFile returns 1.
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch, {
+            "shell_waitForFile": MagicMock(return_value=1),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+        mocks["debate_archive"].assert_not_called()
+
+    def test_send_prompt_failure_returns_one(self, monkeypatch, tmp_path):
+        # Scenario: send_prompt_to_agent fails for synthesis -- returns 1.
+        # Setup: r2 instructions present; debate_sendPromptToAgent returns 1.
+        (tmp_path / "r2_instructions_alpha.txt").write_text("a")
+        (tmp_path / "r2_instructions_beta.txt").write_text("b")
+        mocks = _patch_all_daemon(monkeypatch, {
+            "debate_sendPromptToAgent": MagicMock(return_value=1),
+        })
+
+        # Test action:
+        result = debate_daemonMain(**_base_kwargs_daemon(tmp_path))
+
+        # Test verification:
+        assert result == 1
+
+
+# =====================================================================
+# plate_main tests (migrated from _failing/test_plate_main.py)
+# Failing tests in the workspace location used hardcoded /fake/plugin_data
+# which mkdir cannot create on macOS. Fix: derive paths from tmp_path.
+# =====================================================================
+
+import re as _re_pm  # local alias for plate-main test re-patch  # noqa: E402
+
+
+def _base_env_pm(tmp_path) -> dict:
+    # Returns valid env dict whose plugin_data path is writable.
+    return {
+        "CLAUDE_PLUGIN_ROOT": str(tmp_path / "plugin_root"),
+        "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin_data"),
+    }
+
+
+def _make_payload_pm(**overrides) -> str:
+    base = {
+        "prompt": "/plate",
+        "session_id": "sess-abc",
+        "transcript_path": "/tmp/transcript.jsonl",
+        "cwd": "/fake/repo",
+    }
+    base.update(overrides)
+    return json.dumps(base)
+
+
+def _make_deps_pm(*, repo_root: str | None = None, tmp_path: Path | None = None,
+                  emit_return: str = "EMITTED") -> dict:
+    # repo_root defaults to a writable tmp_path-derived directory.
+    if repo_root is None:
+        if tmp_path is None:
+            raise AssertionError("_make_deps_pm requires repo_root or tmp_path")
+        repo_root_path = tmp_path / "repo"
+        repo_root_path.mkdir(parents=True, exist_ok=True)
+        repo_root = str(repo_root_path)
+    elif repo_root:
+        Path(repo_root).mkdir(parents=True, exist_ok=True)
+    emit = MagicMock(return_value=emit_return)
+    check = MagicMock(return_value=None)
+    get_root = MagicMock(return_value=repo_root)
+    ensure_gi = MagicMock(return_value=None)
+    run = MagicMock(return_value=MagicMock(stdout="ok output", stderr="", returncode=0))
+    return {
+        "_hookjson_emitBlock": emit,
+        "_hookjson_checkRequirements": check,
+        "_getGitRepoRoot": get_root,
+        "_ensureGitignoreEntry": ensure_gi,
+        "_subprocess_run": run,
+    }
+
+
+def _expected_repo_root_pm(tmp_path: Path) -> str:
+    # The default repo_root that _make_deps_pm(tmp_path=...) returns.
+    return str(tmp_path / "repo")
+
+
+# Env validation
+def test_plateMain_missing_plugin_root_raises(tmp_path):
+    # Scenario: CLAUDE_PLUGIN_ROOT is absent.
+    # Setup: env with only PLUGIN_DATA.
+    env = {"CLAUDE_PLUGIN_DATA": str(tmp_path / "data")}
+    # Test action / verification:
+    with pytest.raises(RuntimeError, match="CLAUDE_PLUGIN_ROOT missing"):
+        plate_main(_stdin=_make_payload_pm(), _environ=env, **_make_deps_pm(tmp_path=tmp_path))
+
+
+def test_plateMain_missing_plugin_data_raises(tmp_path):
+    # Scenario: CLAUDE_PLUGIN_DATA is absent.
+    # Setup: env with only PLUGIN_ROOT.
+    env = {"CLAUDE_PLUGIN_ROOT": str(tmp_path / "root")}
+    # Test action / verification:
+    with pytest.raises(RuntimeError, match="CLAUDE_PLUGIN_DATA missing"):
+        plate_main(_stdin=_make_payload_pm(), _environ=env, **_make_deps_pm(tmp_path=tmp_path))
+
+
+# Fast-path bail-out
+def test_plateMain_non_plate_input_exits_0_silently(tmp_path):
+    # Scenario: raw input has no "/plate substring.
+    # Setup: arbitrary unrelated payload.
+    raw = json.dumps({"prompt": "/jot something", "session_id": "s1", "cwd": "/r"})
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    # Test action:
+    rc = plate_main(_stdin=raw, _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    deps["_hookjson_emitBlock"].assert_not_called()
+
+
+def test_plateMain_bad_json_after_fast_path_exits_0(tmp_path):
+    # Scenario: input contains "/plate but is not valid JSON.
+    # Setup: raw string starts with "/plate but is malformed.
+    raw = '"/plate this is not json'
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    # Test action:
+    rc = plate_main(_stdin=raw, _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    deps["_hookjson_emitBlock"].assert_not_called()
+
+
+# Prompt regex filtering
+def test_plateMain_typo_prompt_exits_0_silently(tmp_path):
+    # Scenario: prompt looks like /plate but has a typo variant.
+    # Setup: regex must reject /plate --bogus-flag.
+    raw = _make_payload_pm(prompt="/plate --bogus-flag")
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    # Test action:
+    rc = plate_main(_stdin=raw, _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    deps["_hookjson_emitBlock"].assert_not_called()
+
+
+def test_plateMain_prompt_with_leading_whitespace_is_accepted(tmp_path):
+    # Scenario: prompt has leading whitespace (lstrip applied).
+    # Setup: payload with leading spaces.
+    raw = _make_payload_pm(prompt="  /plate --done")
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    # Test action:
+    rc = plate_main(_stdin=raw, _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    cmd = deps["_subprocess_run"].call_args[0][0]
+    assert cmd[2] == "done"
+
+
+# Repo-root detection
+def test_plateMain_missing_repo_root_emits_friendly_message(tmp_path):
+    # Scenario: getGitRepoRoot returns empty string.
+    # Setup: deps with repo_root="".
+    raw = _make_payload_pm()
+    deps = _make_deps_pm(repo_root="")
+    # Test action:
+    rc = plate_main(_stdin=raw, _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    deps["_hookjson_emitBlock"].assert_called_once()
+    msg = deps["_hookjson_emitBlock"].call_args[0][0]
+    assert "git repository" in msg
+    assert "git init" in msg
+
+
+# Variant -> cli.py argv dispatch
+def _get_cli_args_pm(deps, stdin_payload, env):
+    plate_main(_stdin=stdin_payload, _environ=env, **deps)
+    call_args = deps["_subprocess_run"].call_args[0][0]
+    return call_args[2:]
+
+
+def test_plateMain_dispatch_bare_plate_is_push(tmp_path):
+    # Scenario: /plate -> push with session_id, transcript, repo_root.
+    # Setup:
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    raw = _make_payload_pm(prompt="/plate", session_id="SID", transcript_path="/t.jsonl")
+    # Test action:
+    args = _get_cli_args_pm(deps, raw, _base_env_pm(tmp_path))
+    # Test verification:
+    assert args[0] == "push"
+    assert args[1] == "SID"
+    assert args[2] == "/t.jsonl"
+    assert args[3] == _expected_repo_root_pm(tmp_path)
+
+
+def test_plateMain_dispatch_done(tmp_path):
+    # Scenario: /plate --done -> done <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --done"), _base_env_pm(tmp_path))
+    assert args == ["done", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_drop(tmp_path):
+    # Scenario: /plate --drop -> drop <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --drop"), _base_env_pm(tmp_path))
+    assert args == ["drop", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_trash(tmp_path):
+    # Scenario: /plate --trash -> trash <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --trash"), _base_env_pm(tmp_path))
+    assert args == ["trash", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_recycle(tmp_path):
+    # Scenario: /plate --recycle -> recycle <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --recycle"), _base_env_pm(tmp_path))
+    assert args == ["recycle", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_recycle_list(tmp_path):
+    # Scenario: /plate --recycle --list -> recycle <repo_root> --list.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --recycle --list"), _base_env_pm(tmp_path))
+    assert args == ["recycle", _expected_repo_root_pm(tmp_path), "--list"]
+
+
+def test_plateMain_dispatch_recycle_named(tmp_path):
+    # Scenario: /plate --recycle feat/my-branch -> recycle <repo_root> feat/my-branch.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --recycle feat/my-branch"), _base_env_pm(tmp_path))
+    assert args == ["recycle", _expected_repo_root_pm(tmp_path), "feat/my-branch"]
+
+
+def test_plateMain_dispatch_show(tmp_path):
+    # Scenario: /plate --show -> show <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --show"), _base_env_pm(tmp_path))
+    assert args == ["show", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_next(tmp_path):
+    # Scenario: /plate --next -> next <repo_root>.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --next"), _base_env_pm(tmp_path))
+    assert args == ["next", _expected_repo_root_pm(tmp_path)]
+
+
+def test_plateMain_dispatch_next_named(tmp_path):
+    # Scenario: /plate --next feat.123 -> next <repo_root> feat.123.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    args = _get_cli_args_pm(deps, _make_payload_pm(prompt="/plate --next feat.123"), _base_env_pm(tmp_path))
+    assert args == ["next", _expected_repo_root_pm(tmp_path), "feat.123"]
+
+
+# Unrecognized variant
+def test_plateMain_unrecognized_variant_emits_message(tmp_path):
+    # Scenario: prompt passes regex but falls through all dispatch branches.
+    # Setup: temporarily relax the module-level regex to admit /plate --unknown.
+    original_re = jot_plugin_orchestrator._PROMPT_RE_PLATE
+    try:
+        jot_plugin_orchestrator._PROMPT_RE_PLATE = _re_pm.compile(r"^/plate( --unknown)?$")
+        deps = _make_deps_pm(tmp_path=tmp_path)
+        # Test action:
+        rc = plate_main(
+            _stdin=_make_payload_pm(prompt="/plate --unknown"),
+            _environ=_base_env_pm(tmp_path),
+            **deps,
+        )
+        # Test verification:
+        assert rc == 0
+        call_msg = deps["_hookjson_emitBlock"].call_args[0][0]
+        assert "unrecognized variant" in call_msg
+        assert "/plate --unknown" in call_msg
+    finally:
+        jot_plugin_orchestrator._PROMPT_RE_PLATE = original_re
+
+
+# cli.py output forwarded
+def test_plateMain_cli_output_forwarded_via_emit_block(tmp_path):
+    # Scenario: cli.py produces stdout; it should be passed to emit_block.
+    # Setup: subprocess returns stdout="branch pushed".
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    deps["_subprocess_run"].return_value = MagicMock(
+        stdout="branch pushed\n", stderr="", returncode=0
+    )
+    # Test action:
+    rc = plate_main(_stdin=_make_payload_pm(), _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    emitted = deps["_hookjson_emitBlock"].call_args[0][0]
+    assert "branch pushed" in emitted
+
+
+def test_plateMain_cli_stderr_included_in_emit_block(tmp_path):
+    # Scenario: cli.py writes to stderr; stderr should also be captured.
+    # Setup: subprocess returns stderr text only.
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    deps["_subprocess_run"].return_value = MagicMock(
+        stdout="", stderr="warning: detached HEAD\n", returncode=1
+    )
+    # Test action:
+    rc = plate_main(_stdin=_make_payload_pm(), _environ=_base_env_pm(tmp_path), **deps)
+    # Test verification:
+    assert rc == 0
+    emitted = deps["_hookjson_emitBlock"].call_args[0][0]
+    assert "warning: detached HEAD" in emitted
+
+
+# Log-file promotion
+def test_plateMain_log_file_promoted_to_per_repo_path_when_no_override(tmp_path):
+    # Scenario: PLATE_LOG_FILE not set -> log path moved under REPO_ROOT/.plate/.
+    # Setup: env without PLATE_LOG_FILE; repo_root resolves under tmp_path.
+    env = {**_base_env_pm(tmp_path), "CLAUDE_PLUGIN_DATA": str(tmp_path)}
+    repo_root = str(tmp_path / "myrepo")
+    (tmp_path / "myrepo").mkdir()
+    deps = _make_deps_pm(repo_root=repo_root)
+    # Test action:
+    plate_main(_stdin=_make_payload_pm(), _environ=env, **deps)
+    # Test verification:
+    deps["_ensureGitignoreEntry"].assert_called_once_with(
+        repo_root, ".plate/plate-log.txt"
+    )
+
+
+def test_plateMain_log_file_override_respected(tmp_path):
+    # Scenario: PLATE_LOG_FILE set explicitly -> gitignore ensure not called.
+    # Setup: env with explicit override.
+    override_log = str(tmp_path / "custom.log")
+    env = {**_base_env_pm(tmp_path), "PLATE_LOG_FILE": override_log}
+    deps = _make_deps_pm(tmp_path=tmp_path)
+    # Test action:
+    plate_main(_stdin=_make_payload_pm(), _environ=env, **deps)
+    # Test verification:
+    deps["_ensureGitignoreEntry"].assert_not_called()
+
+
+# =====================================================================
+# dispatch_main tests (migrated from _failing/test_dispatch_main.py)
+# =====================================================================
+
+import io as _io_dispatch  # noqa: E402
+
+_dm = jot_plugin_orchestrator
+
+
+def _stub_argv(monkeypatch, name, recorder, key):
+    # Replace _dm.<name> with a stub and rewire _ARGV_DISPATCH.
+    def _fn(*args, **kwargs):
+        recorder.append((key, args, kwargs))
+        return 0
+    monkeypatch.setattr(_dm, name, _fn)
+    if key in _dm._ARGV_DISPATCH:
+        # monkeypatch the dict entry so cleanup restores it.
+        monkeypatch.setitem(_dm._ARGV_DISPATCH, key, _fn)
+
+
+def _stub_prompt_disp(monkeypatch, name, recorder, key):
+    # Stub a stdin-mode entrypoint and rebuild the prompt dispatch tuple.
+    def _fn(*args, **kwargs):
+        recorder.append((key, sys.stdin.read()))
+        return 0
+    monkeypatch.setattr(_dm, name, _fn)
+    rebuilt = []
+    for prefix, original_fn in _dm._PROMPT_DISPATCH:
+        if prefix == key:
+            rebuilt.append((prefix, lambda f=_fn: f()))
+        else:
+            rebuilt.append((prefix, original_fn))
+    monkeypatch.setattr(_dm, "_PROMPT_DISPATCH", tuple(rebuilt))
+
+
+@pytest.mark.parametrize(
+    "subcmd,fn_name",
+    [
+        ("jot-session-start", "jot_sessionStart"),
+        ("jot-session-end", "jot_sessionEnd"),
+        ("jot-stop", "jot_stop"),
+        ("scan-open-todos", "todo_scanOpen"),
+        ("todo-launcher", "todo_launcher"),
+        ("todo-stop", "todo_stop"),
+        ("todo-session-start", "todo_sessionStart"),
+        ("todo-session-end", "todo_sessionEnd"),
+        ("plate-summary-stop", "plate_summaryStop"),
+        ("plate-summary-watch", "plate_summaryWatch"),
+        ("debate-tmux-orchestrator", "debate_tmuxOrchestrator"),
+        ("jot-diag-collect", "jot_collectDiagnostics"),
+    ],
+)
+def test_dispatchMain_argv_subcommand_routes_to_function(monkeypatch, subcmd, fn_name):
+    # Scenario: argv[0] is a known subcommand; dispatcher routes to it.
+    # Setup: stub the target function and rewire the argv map; stdin empty.
+    calls: list = []
+    _stub_argv(monkeypatch, fn_name, calls, subcmd)
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(""))
+    # Test action:
+    rc = dispatch_main([subcmd, "alpha", "beta"])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0][0] == subcmd
+    assert calls[0][1] == (["alpha", "beta"],)
+
+
+def test_dispatchMain_unknown_argv_falls_through_to_stdin_mode(monkeypatch):
+    # Scenario: argv[0] is not known -> read stdin, route by prompt.
+    # Setup: stub jot_main; provide stdin JSON with /jot prompt.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, "jot_main", calls, "/jot")
+    payload = json.dumps({"prompt": "/jot hello"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main(["not-a-subcommand", "x"])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0][0] == "/jot"
+
+
+@pytest.mark.parametrize(
+    "prefix,fn_name",
+    [
+        ("/jot", "jot_main"),
+        ("/plate", "plate_main"),
+        ("/debate", "debate_launch"),
+        ("/debate-retry", "debateRetry_main"),
+        ("/debate-abort", "debateAbort_main"),
+        ("/todo", "todo_main"),
+        ("/todo-list", "todoList_main"),
+    ],
+)
+def test_dispatchMain_prompt_prefix_routes_to_entrypoint(monkeypatch, prefix, fn_name):
+    # Scenario: stdin .prompt starts with a known slash command; dispatch routes.
+    # Setup: stub the entrypoint; feed JSON with prefix + tail.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, fn_name, calls, prefix)
+    payload = json.dumps({"prompt": f"{prefix} arg-tail"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main([])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0][0] == prefix
+
+
+def test_dispatchMain_default_prompt_exits_zero(monkeypatch):
+    # Scenario: prompt matches none of the known prefixes -> exit 0.
+    # Setup: non-matching prompt; stub jot_main as a tripwire.
+    tripwire: list = []
+    _stub_prompt_disp(monkeypatch, "jot_main", tripwire, "/jot")
+    payload = json.dumps({"prompt": "hello world no slash"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main([])
+    # Test verification:
+    assert rc == 0
+    assert tripwire == []
+
+
+def test_dispatchMain_jot_namespace_normalises_to_bare_skill(monkeypatch):
+    # Scenario: prompt "/jot:todo-list ..." -> rewritten to "/todo-list ...".
+    # Setup: stub todoList_main; namespaced prompt.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, "todoList_main", calls, "/todo-list")
+    payload = json.dumps({"prompt": "/jot:todo-list show me"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main([])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
+    forwarded = json.loads(calls[0][1])
+    assert forwarded["prompt"] == "/todo-list show me"
+
+
+def test_dispatchMain_leading_whitespace_in_prompt_tolerated(monkeypatch):
+    # Scenario: prompt has leading whitespace; lstrip lets it match.
+    # Setup: stub jot_main; prompt with spaces and tab.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, "jot_main", calls, "/jot")
+    payload = json.dumps({"prompt": "   \t/jot foo"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main([])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
+
+
+def test_dispatchMain_newline_after_slashcommand_tolerated(monkeypatch):
+    # Scenario: prompt is "/plate\n..." -> matches.
+    # Setup: stub plate_main; literal newline after /plate.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, "plate_main", calls, "/plate")
+    payload = json.dumps({"prompt": "/plate\nbody line"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action:
+    rc = dispatch_main([])
+    # Test verification:
+    assert rc == 0
+    assert len(calls) == 1
 
