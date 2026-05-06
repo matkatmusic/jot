@@ -5571,7 +5571,7 @@ def test_returns_session_name_when_lock_resolves(tmp_path: Path) -> None:
     # Scenario: debate dir has one live lock whose pane resolves to a tmux session
     # Setup: write .agent.lock with pane_id %1; mock tmux to return "debate-1"
     lock = tmp_path / ".agent.lock"
-    _write_lock(lock, "%1")
+    _write_lock_at_path(lock, "%1")
 
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="debate-1\n", stderr="")
@@ -5610,7 +5610,7 @@ def test_returns_empty_when_tmux_fails(tmp_path: Path) -> None:
     # Scenario: lock file has valid pane_id but tmux display-message returns non-zero
     # Setup: write valid lock; mock tmux to return rc=1
     lock = tmp_path / ".agent.lock"
-    _write_lock(lock, "%5")
+    _write_lock_at_path(lock, "%5")
 
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="no server running")
@@ -5625,7 +5625,7 @@ def test_returns_empty_when_tmux_returns_empty_session(tmp_path: Path) -> None:
     # Scenario: tmux succeeds (rc=0) but returns empty session name (pane gone)
     # Setup: write valid lock; mock tmux stdout to empty string
     lock = tmp_path / ".agent.lock"
-    _write_lock(lock, "%9")
+    _write_lock_at_path(lock, "%9")
 
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -5650,8 +5650,8 @@ def test_returns_first_resolved_session_from_multiple_locks(tmp_path: Path) -> N
     # Setup: two lock files; first resolves to "debate-2", second would give "debate-3"
     lock_a = tmp_path / ".a.lock"
     lock_b = tmp_path / ".b.lock"
-    _write_lock(lock_a, "%2")
-    _write_lock(lock_b, "%3")
+    _write_lock_at_path(lock_a, "%2")
+    _write_lock_at_path(lock_b, "%3")
 
     call_responses = [
         MagicMock(returncode=0, stdout="debate-2\n", stderr=""),
@@ -5673,8 +5673,8 @@ def test_falls_through_to_second_lock_when_first_tmux_fails(tmp_path: Path) -> N
     # Setup: two locks; tmux fails for first pane, succeeds for second
     lock_a = tmp_path / ".a.lock"
     lock_b = tmp_path / ".b.lock"
-    _write_lock(lock_a, "%10")
-    _write_lock(lock_b, "%11")
+    _write_lock_at_path(lock_a, "%10")
+    _write_lock_at_path(lock_b, "%11")
 
     call_responses = [
         MagicMock(returncode=1, stdout="", stderr=""),

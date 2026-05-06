@@ -3500,15 +3500,6 @@ def debate_anyLiveLock(debate_dir: str | os.PathLike[str]) -> bool:
     return False
 
 
-# Forward dependency placeholder; real debate_writeFailed is still in bash.
-# Tests monkeypatch this symbol; production wiring will replace it when the
-# debate-cluster failure-writer is migrated.
-def debate_writeFailed(stage: str, reason: str) -> None:  # pragma: no cover
-    raise NotImplementedError(
-        "debate_writeFailed not yet migrated; tests must monkeypatch this stub."
-    )
-
-
 # Sends a "read <instructions> and perform them" prompt to the agent's pane via
 # tmux_sendAndSubmit, then polls the pane (capture-pane with 2000 lines of
 # scrollback, ANSI-stripped, fixed-string match against basename(instructions))
