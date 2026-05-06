@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
 
-import jot_plugin_orchestrator
+from common.scripts import todo_lib as jot_plugin_orchestrator
 from common.scripts.todo_lib import (
     todoList_main,
     todo_launcher,
@@ -75,9 +75,9 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
     
     calls = []
     
-    monkeypatch.setattr("common.scripts.git_lib.getGitBranchNameOrFail", lambda p: "main-branch")
-    monkeypatch.setattr("common.scripts.git_lib.getGitRecentCommitHashes", lambda p: ["commit1", "commit2"])
-    monkeypatch.setattr("common.scripts.git_lib.getGitUncommittedFilenames", lambda p: ["file1.txt"])
+    monkeypatch.setattr("common.scripts.todo_lib.getGitBranchNameOrFail", lambda p: "main-branch")
+    monkeypatch.setattr("common.scripts.todo_lib.getGitRecentCommitHashes", lambda p: ["commit1", "commit2"])
+    monkeypatch.setattr("common.scripts.todo_lib.getGitUncommittedFilenames", lambda p: ["file1.txt"])
     monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", lambda p: [str(repo_root / "Todos" / "todo1.md")])
     
     def mock_run(cmd, *args, **kwargs):
@@ -90,8 +90,8 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", mock_run)
     monkeypatch.setattr(jot_plugin_orchestrator.subprocess, "run", mock_run)
     
-    monkeypatch.setattr("common.scripts.claude_lib.claude_seedPermissions", lambda *args: calls.append(["claude_seedPermissions"]))
-    monkeypatch.setattr("common.scripts.claude_lib.claude_buildCmd", lambda *args: "mock claude cmd")
+    monkeypatch.setattr("common.scripts.todo_lib.claude_seedPermissions", lambda *args: calls.append(["claude_seedPermissions"]))
+    monkeypatch.setattr("common.scripts.todo_lib.claude_buildCmd", lambda *args: "mock claude cmd")
     
     class MockFileLock:
         def __init__(self, path, timeout):
@@ -102,13 +102,13 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
         def __exit__(self, *args):
             calls.append(["lock_release"])
             
-    monkeypatch.setattr("common.scripts.util_lib.FileLock", MockFileLock)
+    monkeypatch.setattr("common.scripts.todo_lib.FileLock", MockFileLock)
     
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_ensureSession", lambda *args: calls.append(["tmux_ensureSession"]))
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_splitWorkerPane", lambda *args: "%123")
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_setPaneTitle", lambda *args: calls.append(["tmux_setPaneTitle"]))
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_retile", lambda *args: calls.append(["tmux_retile"]))
-    monkeypatch.setattr("common.scripts.util_lib.terminal_spawnIfNeeded", lambda *args: calls.append(["terminal_spawnIfNeeded"]))
+    monkeypatch.setattr("common.scripts.todo_lib.tmux_ensureSession", lambda *args: calls.append(["tmux_ensureSession"]))
+    monkeypatch.setattr("common.scripts.todo_lib.tmux_splitWorkerPane", lambda *args: "%123")
+    monkeypatch.setattr("common.scripts.todo_lib.tmux_setPaneTitle", lambda *args: calls.append(["tmux_setPaneTitle"]))
+    monkeypatch.setattr("common.scripts.todo_lib.tmux_retile", lambda *args: calls.append(["tmux_retile"]))
+    monkeypatch.setattr("common.scripts.todo_lib.terminal_spawnIfNeeded", lambda *args: calls.append(["terminal_spawnIfNeeded"]))
     
     # Test action:
     result = jot_plugin_orchestrator.todo_launcher(session_id, idea, str(pending_file))
@@ -267,7 +267,7 @@ def _base_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 
 def _patch_repo_root(monkeypatch: pytest.MonkeyPatch, root: str) -> None:
-    monkeypatch.setattr("common.scripts.git_lib._git_get_repo_root", lambda cwd: root)
+    monkeypatch.setattr("common.scripts.todo_lib._git_get_repo_root", lambda cwd: root)
 
 
 def test_missing_plugin_data_raises(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -425,7 +425,7 @@ def base_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 def _stub_passing_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     # Setup: bypass real tool checks + tmux probe.
     monkeypatch.setattr("common.scripts.hookjson_lib.hookjson_checkRequirements", lambda *a, **k: None)
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_requireVersion", lambda _m: 0)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_requireVersion", lambda _m: 0)
 
 
 def _stdin(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
@@ -433,6 +433,10 @@ def _stdin(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
 
 
 # --------- tests ---------
+
+# Bind a local alias for the jot_main section (these tests target jot_lib).
+from common.scripts import jot_lib as _jot_mod  # noqa: E402
+
 
 def test_missing_plugin_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     # Scenario: harness env vars unset.
@@ -442,7 +446,7 @@ def test_missing_plugin_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _stdin(monkeypatch, "")
     # Test action + verification: jot_main raises RuntimeError.
     with pytest.raises(RuntimeError):
-        mod.jot_main()
+        _jot_mod.jot_main()
 
 
 def test_non_jot_input_exits_zero_silently(
@@ -452,7 +456,7 @@ def test_non_jot_input_exits_zero_silently(
     # Setup: arbitrary non-jot payload.
     _stdin(monkeypatch, '{"prompt": "/other thing"}')
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     # Test verification: rc=0, no JSON emitted.
     assert rc == 0
     assert capsys.readouterr().out == ""
@@ -466,7 +470,7 @@ def test_prompt_not_strict_jot_exits_zero(
     _stub_passing_deps(monkeypatch)
     _stdin(monkeypatch, json.dumps({"prompt": "/jotsomething"}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     # Test verification: rc=0 with no block emission (strict-prefix branch).
     assert rc == 0
     assert capsys.readouterr().out == ""
@@ -480,7 +484,7 @@ def test_empty_idea_emits_block(
     _stub_passing_deps(monkeypatch)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot"}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     out = capsys.readouterr().out
     # Test verification: rc=0 + block decision mentioning "no idea provided".
     assert rc == 0
@@ -500,9 +504,9 @@ def test_missing_repo_emits_block(
     def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(args=[], returncode=128, stdout="", stderr="fatal")
 
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(_jot_mod.subprocess, "run", fake_run)
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     out = capsys.readouterr().out
     # Test verification: rc=0 + git-required block.
     assert rc == 0
@@ -518,10 +522,10 @@ def test_happy_path_writes_input_file_with_all_sections(
     _stub_passing_deps(monkeypatch)
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.git_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.git_lib.getGitRecentCommitHashes", lambda c: "abc123 init")
-    monkeypatch.setattr("common.scripts.git_lib.getGitUncommittedFilenames", lambda c: "M file.py")
-    monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", lambda r: "todo1\ntodo2")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "abc123 init")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "M file.py")
+    monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "todo1\ntodo2")
     launched = {"called": False}
 
     def fake_launch() -> int:
@@ -538,10 +542,10 @@ def test_happy_path_writes_input_file_with_all_sections(
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="RENDERED-INSTRUCTIONS", stderr="")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(_jot_mod.subprocess, "run", fake_run)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot fix the bug", "cwd": str(repo)}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     # Test verification: rc=0, exactly one input file with expected sections.
     assert rc == 0
     files = list((repo / "Todos").glob("*_input.txt"))
@@ -565,10 +569,10 @@ def test_skip_launch_does_not_call_phase2(
     monkeypatch.setenv("JOT_SKIP_LAUNCH", "1")
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.git_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.git_lib.getGitRecentCommitHashes", lambda c: "")
-    monkeypatch.setattr("common.scripts.git_lib.getGitUncommittedFilenames", lambda c: "")
-    monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", lambda r: "")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "")
     launched = {"called": False}
     monkeypatch.setattr("common.scripts.jot_lib.jot_launchPhase2Window", lambda: launched.__setitem__("called", True) or 0)
 
@@ -577,10 +581,10 @@ def test_skip_launch_does_not_call_phase2(
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=str(repo) + "\n", stderr="")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="X", stderr="")
 
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(_jot_mod.subprocess, "run", fake_run)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot do thing", "cwd": str(repo)}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     out = capsys.readouterr().out
     # Test verification: phase2 NOT called, block-decision contains "(launch skipped)".
     assert rc == 0
@@ -596,10 +600,10 @@ def test_phase2_called_on_happy_path(
     _stub_passing_deps(monkeypatch)
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.git_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.git_lib.getGitRecentCommitHashes", lambda c: "")
-    monkeypatch.setattr("common.scripts.git_lib.getGitUncommittedFilenames", lambda c: "")
-    monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", lambda r: "")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "")
     calls = {"n": 0}
 
     def fake_launch() -> int:
@@ -613,10 +617,10 @@ def test_phase2_called_on_happy_path(
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=str(repo) + "\n", stderr="")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="OK", stderr="")
 
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(_jot_mod.subprocess, "run", fake_run)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot launch me", "cwd": str(repo)}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     out = capsys.readouterr().out
     # Test verification: phase2 called once, success block emitted.
     assert rc == 0
@@ -636,10 +640,10 @@ def test_safe_wrapper_falls_back_to_unavailable(
     def boom(*_: object) -> str:
         raise RuntimeError("nope")
 
-    monkeypatch.setattr("common.scripts.git_lib.getGitBranchNameOrFail", boom)
-    monkeypatch.setattr("common.scripts.git_lib.getGitRecentCommitHashes", boom)
-    monkeypatch.setattr("common.scripts.git_lib.getGitUncommittedFilenames", boom)
-    monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", boom)
     monkeypatch.setattr("common.scripts.jot_lib.jot_launchPhase2Window", lambda: 0)
 
     def fake_run(cmd: list[str], *args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -647,10 +651,10 @@ def test_safe_wrapper_falls_back_to_unavailable(
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=str(repo) + "\n", stderr="")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="INSTR", stderr="")
 
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(_jot_mod.subprocess, "run", fake_run)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot recover", "cwd": str(repo)}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = _jot_mod.jot_main()
     # Test verification: rc=0 + every safe-wrapped value rendered as "(unavailable)".
     assert rc == 0
     files = list((repo / "Todos").glob("*_input.txt"))
@@ -800,6 +804,14 @@ def test_missing_args_returns_early(tmp_path: Path, capsys) -> None:
     assert "[todo-stop] missing args" in captured.err
 
 
+def _make_tmpdir(tmp_path: Path, tmux_target: str = "%42") -> Path:
+    """Write a minimal per-invocation tmpdir with tmux_target sidecar."""
+    d = tmp_path / "todo.XXXX"
+    d.mkdir()
+    (d / "tmux_target").write_text(f"{tmux_target}\n")
+    return d
+
+
 def test_missing_state_dir_returns_early(tmp_path: Path, capsys) -> None:
     # Scenario: input_file and tmpdir_inv present but state_dir empty
     # Setup:
@@ -829,7 +841,7 @@ def test_empty_sidecar_logs_and_returns(tmp_path: Path, capsys) -> None:
     input_file = tmp_path / "input.txt"
     input_file.write_text("PROCESSED: done\n")
     # Test action: patch time.sleep so test is fast
-    with patch("jot_plugin_orchestrator.time.sleep"):
+    with patch("common.scripts.todo_lib.time.sleep"):
         rc = todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
     captured = capsys.readouterr()
@@ -847,7 +859,7 @@ def test_missing_sidecar_file_logs_and_returns(tmp_path: Path, capsys) -> None:
     input_file = tmp_path / "input.txt"
     input_file.write_text("PROCESSED: done\n")
     # Test action:
-    with patch("jot_plugin_orchestrator.time.sleep"):
+    with patch("common.scripts.todo_lib.time.sleep"):
         rc = todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
     captured = capsys.readouterr()
@@ -869,9 +881,9 @@ def test_processed_marker_writes_success_to_audit(tmp_path: Path) -> None:
     input_file.write_text("PROCESSED: done\nsome other content\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         rc = todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -890,9 +902,9 @@ def test_processed_marker_removes_input_file(tmp_path: Path) -> None:
     input_file.write_text("PROCESSED: done\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification: file must be gone
@@ -913,9 +925,9 @@ def test_no_processed_marker_writes_fail_to_audit(tmp_path: Path) -> None:
     input_file.write_text("still pending\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -933,9 +945,9 @@ def test_no_processed_marker_does_not_remove_input_file(tmp_path: Path) -> None:
     input_file.write_text("still pending\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -950,9 +962,9 @@ def test_missing_input_file_writes_fail_missing_to_audit(tmp_path: Path) -> None
     input_file = tmp_path / "nonexistent_input.txt"
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -979,9 +991,9 @@ def test_audit_rotated_when_over_1000_lines(tmp_path: Path) -> None:
     input_file.write_text("PROCESSED: done\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification: line count must be <= 1000
@@ -1005,9 +1017,9 @@ def test_kill_pane_called_with_correct_target(tmp_path: Path) -> None:
     retile_mock = MagicMock(return_value=0)
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane", kill_mock),
-        patch("jot_plugin_orchestrator.tmux_retile", retile_mock),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane", kill_mock),
+        patch("common.scripts.todo_lib.tmux_retile", retile_mock),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -1024,9 +1036,9 @@ def test_retile_called_with_todo_todos_window(tmp_path: Path) -> None:
     retile_mock = MagicMock(return_value=0)
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile", retile_mock),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile", retile_mock),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -1043,9 +1055,9 @@ def test_state_dir_created_if_absent(tmp_path: Path) -> None:
     input_file.write_text("PROCESSED: done\n")
     # Test action:
     with (
-        patch("jot_plugin_orchestrator.time.sleep"),
-        patch("jot_plugin_orchestrator.tmux_killPane"),
-        patch("jot_plugin_orchestrator.tmux_retile"),
+        patch("common.scripts.todo_lib.time.sleep"),
+        patch("common.scripts.todo_lib.tmux_killPane"),
+        patch("common.scripts.todo_lib.tmux_retile"),
     ):
         todo_stop(str(input_file), str(inv), str(state_dir))
     # Test verification:
@@ -1060,6 +1072,11 @@ def test_returns_empty_list_when_todos_dir_missing(tmp_path: Path) -> None:
     result = todo_scanOpen(tmp_path)
     # Test verification: returns empty list, never raises.
     assert result == []
+
+
+def _write(path: Path, body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
 
 
 def test_returns_empty_list_when_todos_dir_has_no_markdown(tmp_path: Path) -> None:
@@ -1200,7 +1217,7 @@ def test_missing_sidecar_returns_0(tmp_path, capsys):
     tmpdir = tmp_path / "inv"
     tmpdir.mkdir()
     # Test action: patch sleep to avoid 1s delay (5 * 0.2)
-    with patch("jot_plugin_orchestrator.time.sleep"):
+    with patch("common.scripts.todo_lib.time.sleep"):
         rc = todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification:
     assert rc == 0
@@ -1216,7 +1233,7 @@ def test_empty_sidecar_returns_0(tmp_path, capsys):
     tmpdir.mkdir()
     (tmpdir / "tmux_target").write_text("")
     # Test action:
-    with patch("jot_plugin_orchestrator.time.sleep"):
+    with patch("common.scripts.todo_lib.time.sleep"):
         rc = todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification:
     assert rc == 0
@@ -1236,7 +1253,7 @@ def test_claude_not_ready_returns_1(tmp_path, capsys):
     tmpdir.mkdir()
     (tmpdir / "tmux_target").write_text("%42\n")
     # Test action:
-    with patch("jot_plugin_orchestrator.tmux_waitForClaudeReadiness", return_value=1):
+    with patch("common.scripts.todo_lib.tmux_waitForClaudeReadiness", return_value=1):
         rc = todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification:
     assert rc == 1
@@ -1256,8 +1273,8 @@ def test_happy_path_sends_prompt(tmp_path):
     tmpdir.mkdir()
     (tmpdir / "tmux_target").write_text("%42\n")
     # Test action:
-    with patch("jot_plugin_orchestrator.tmux_waitForClaudeReadiness", return_value=0), \
-         patch("jot_plugin_orchestrator.jot_sendPrompt", return_value=0) as mock_send:
+    with patch("common.scripts.todo_lib.tmux_waitForClaudeReadiness", return_value=0), \
+         patch("common.scripts.todo_lib.jot_sendPrompt", return_value=0) as mock_send:
         rc = todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification:
     assert rc == 0
@@ -1273,8 +1290,8 @@ def test_happy_path_propagates_send_rc(tmp_path):
     tmpdir.mkdir()
     (tmpdir / "tmux_target").write_text("%99\n")
     # Test action:
-    with patch("jot_plugin_orchestrator.tmux_waitForClaudeReadiness", return_value=0), \
-         patch("jot_plugin_orchestrator.jot_sendPrompt", return_value=3):
+    with patch("common.scripts.todo_lib.tmux_waitForClaudeReadiness", return_value=0), \
+         patch("common.scripts.todo_lib.jot_sendPrompt", return_value=3):
         rc = todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification:
     assert rc == 3
@@ -1289,8 +1306,8 @@ def test_sidecar_read_strips_whitespace(tmp_path):
     tmpdir.mkdir()
     (tmpdir / "tmux_target").write_text("  %7  \n")
     # Test action:
-    with patch("jot_plugin_orchestrator.tmux_waitForClaudeReadiness", return_value=0) as mock_wait, \
-         patch("jot_plugin_orchestrator.jot_sendPrompt", return_value=0):
+    with patch("common.scripts.todo_lib.tmux_waitForClaudeReadiness", return_value=0) as mock_wait, \
+         patch("common.scripts.todo_lib.jot_sendPrompt", return_value=0):
         todo_sessionStart(str(input_file), str(tmpdir))
     # Test verification: pane id passed to readiness check must be stripped
     mock_wait.assert_called_once_with("%7")

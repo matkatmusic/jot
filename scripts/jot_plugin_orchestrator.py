@@ -76,6 +76,10 @@ from common.scripts.claude_lib import (
     claude_buildCmd
 )
 
+from common.scripts.util_lib import (
+    _matches_prefix,
+)
+
 from common.scripts.jot_lib import (
     jot_initState,
     jot_popFirstFromQueue,
@@ -123,6 +127,7 @@ from common.scripts.plate_lib import (
 )
 
 from common.scripts.todo_lib import (
+    todoList_main,
     todo_launcher,
     todo_main,
     todo_scanOpen,

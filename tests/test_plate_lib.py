@@ -8,11 +8,72 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import io as _io_dispatch
+import sys
+
+import jot_plugin_orchestrator
+from jot_plugin_orchestrator import dispatch_main
+from common.scripts import plate_lib as _plate_mod
 from common.scripts.plate_lib import (
     plate_main,
     plate_summaryStop,
     plate_summaryWatch,
 )
+
+_dm = jot_plugin_orchestrator
+
+
+class FakeClock:
+    """Deterministic sleep replacement that advances a virtual clock and
+    optionally mutates the filesystem at scheduled tick counts."""
+
+    def __init__(self, on_tick=None):
+        self.elapsed = 0.0
+        self.calls = 0
+        self._on_tick = on_tick or (lambda n: None)
+
+    def __call__(self, secs: float) -> None:
+        self.calls += 1
+        self.elapsed += secs
+        self._on_tick(self.calls)
+
+
+class FakeTmux:
+    """Records every (pane, keys) tuple sent."""
+
+    def __init__(self, raise_on_call: bool = False):
+        self.sent: list[tuple[str, str]] = []
+        self.raise_on_call = raise_on_call
+
+    def __call__(self, pane: str, keys: str) -> None:
+        if self.raise_on_call:
+            raise RuntimeError("pane gone")
+        self.sent.append((pane, keys))
+
+
+def _stub_argv(monkeypatch, name, recorder, key):
+    # Replace _dm.<name> with a stub and rewire _ARGV_DISPATCH.
+    def _fn(*args, **kwargs):
+        recorder.append((key, args, kwargs))
+        return 0
+    monkeypatch.setattr(_dm, name, _fn)
+    if key in _dm._ARGV_DISPATCH:
+        monkeypatch.setitem(_dm._ARGV_DISPATCH, key, _fn)
+
+
+def _stub_prompt_disp(monkeypatch, name, recorder, key):
+    # Stub a stdin-mode entrypoint and rebuild the prompt dispatch tuple.
+    def _fn(*args, **kwargs):
+        recorder.append((key, sys.stdin.read()))
+        return 0
+    monkeypatch.setattr(_dm, name, _fn)
+    rebuilt = []
+    for prefix, original_fn in _dm._PROMPT_DISPATCH:
+        if prefix == key:
+            rebuilt.append((prefix, lambda f=_fn: f()))
+        else:
+            rebuilt.append((prefix, original_fn))
+    monkeypatch.setattr(_dm, "_PROMPT_DISPATCH", tuple(rebuilt))
 
 
 # =====================================================================
@@ -247,9 +308,9 @@ def test_plateMain_dispatch_next_named(tmp_path):
 def test_plateMain_unrecognized_variant_emits_message(tmp_path):
     # Scenario: prompt passes regex but falls through all dispatch branches.
     # Setup: temporarily relax the module-level regex to admit /plate --unknown.
-    original_re = jot_plugin_orchestrator._PROMPT_RE_PLATE
+    original_re = _plate_mod._PROMPT_RE_PLATE
     try:
-        jot_plugin_orchestrator._PROMPT_RE_PLATE = _re_pm.compile(r"^/plate( --unknown)?$")
+        _plate_mod._PROMPT_RE_PLATE = _re_pm.compile(r"^/plate( --unknown)?$")
         deps = _make_deps_pm(tmp_path=tmp_path)
         # Test action:
         rc = plate_main(
@@ -263,7 +324,7 @@ def test_plateMain_unrecognized_variant_emits_message(tmp_path):
         assert "unrecognized variant" in call_msg
         assert "/plate --unknown" in call_msg
     finally:
-        jot_plugin_orchestrator._PROMPT_RE_PLATE = original_re
+        _plate_mod._PROMPT_RE_PLATE = original_re
 
 
 # cli.py output forwarded
@@ -493,7 +554,7 @@ def test_missing_repo_arg_is_noop(tmp_path):
     # Setup: empty repo/branch; valid output_file path that exists.
     out = tmp_path / "summary.txt"
     out.write_text("body")
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         # Test action:
         rc = plate_summaryStop("", "main", str(out))
         # Test verification: cli.py never invoked when args missing.
@@ -506,7 +567,7 @@ def test_missing_branch_arg_is_noop(tmp_path):
     # Setup: valid repo, empty branch, existing output file.
     out = tmp_path / "summary.txt"
     out.write_text("body")
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         # Test action:
         rc = plate_summaryStop(str(tmp_path), "", str(out))
         # Test verification:
@@ -517,7 +578,7 @@ def test_missing_branch_arg_is_noop(tmp_path):
 def test_missing_output_file_arg_is_noop(tmp_path):
     # Scenario: empty output_file arg short-circuits.
     # Setup: valid repo, valid branch, empty output_file.
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         # Test action:
         rc = plate_summaryStop(str(tmp_path), "main", "")
         # Test verification:
@@ -529,7 +590,7 @@ def test_nonexistent_output_file_is_noop(tmp_path):
     # Scenario: output_file does not exist on disk -> early exit, no cli call.
     # Setup: a path that points nowhere.
     missing = tmp_path / "nope.txt"
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         # Test action:
         rc = plate_summaryStop(str(tmp_path), "main", str(missing))
         # Test verification:
@@ -542,7 +603,7 @@ def test_invokes_cli_set_plate_summary_with_args(tmp_path):
     # Setup: existing repo dir + output file; capture subprocess.run call.
     out = tmp_path / "summary.txt"
     out.write_text("agent summary")
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         run.return_value = MagicMock(stdout="ok\n", returncode=0)
         # Test action:
         rc = plate_summaryStop(str(tmp_path), "feature-x", str(out))
@@ -563,7 +624,7 @@ def test_writes_audit_log_line(tmp_path, monkeypatch):
     monkeypatch.setenv("PLATE_LOG_FILE", str(log))
     out = tmp_path / "summary.txt"
     out.write_text("body")
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         run.return_value = MagicMock(stdout="ok", returncode=0)
         # Test action:
         plate_summaryStop(str(tmp_path), "main", str(out))
@@ -581,7 +642,7 @@ def test_cli_failure_is_swallowed(tmp_path, monkeypatch):
     monkeypatch.setenv("PLATE_LOG_FILE", str(log))
     out = tmp_path / "summary.txt"
     out.write_text("body")
-    with patch("jot_plugin_orchestrator.subprocess.run") as run:
+    with patch("common.scripts.plate_lib.subprocess.run") as run:
         run.side_effect = RuntimeError("boom")
         # Test action: must not raise.
         rc = plate_summaryStop(str(tmp_path), "main", str(out))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -9,9 +10,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from common.scripts.git_lib import getGitRepoRoot, ensureGitignoreEntry
+from common.scripts.git_lib import GitError, getGitRepoRoot, ensureGitignoreEntry
 from common.scripts.hookjson_lib import hookjson_checkRequirements, hookjson_emitBlock
 from common.scripts.tmux_lib import _default_tmux_send
+
+
+# Strict /plate prompt regex - mirrors bash grep -qE pattern exactly.
+_PROMPT_RE_PLATE = re.compile(
+    r"^/plate"
+    r"(\s+(--done|--drop|--trash"
+    r"|--recycle(\s+--list|\s+\S+)?"
+    r"|--show"
+    r"|--next( +[0-9A-Za-z._@#$+-]+)?"
+    r"))?$"
+)
 
 
 def plate_summaryStop(repo: str, branch: str, output_file: str) -> int:
@@ -199,7 +211,10 @@ def plate_main(
     transcript_path: str = payload.get("transcript_path") or ""
     cwd: str = payload.get("cwd") or os.getcwd()
 
-    repo_root: str = get_repo_root(cwd) or ""
+    try:
+        repo_root: str = str(get_repo_root(cwd) or "")
+    except GitError:
+        repo_root = ""
     if not repo_root:
         print(emit_block("plate requires a git repository. Run 'git init' in your project root."))
         return 0

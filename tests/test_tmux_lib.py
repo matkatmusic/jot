@@ -1,6 +1,7 @@
 """Tests for tmux_lib (and tmux-related orchestrator functions)."""
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
@@ -13,6 +14,7 @@ import pytest
 from unittest.mock import call, patch
 
 import jot_plugin_orchestrator
+from common.scripts import tmux_lib as _tmux_lib_mod
 from common.scripts.tmux_lib import (
     tmux_cancelAndSend,
     tmux_capturePane,
@@ -52,6 +54,11 @@ from common.scripts.jot_lib import jot_main
 
 # Bind module alias used throughout the test bodies.
 mod = jot_plugin_orchestrator
+
+
+def _stdin(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
+    # Helper: replace sys.stdin with an in-memory buffer carrying the JSON payload.
+    monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
 
 
 # --- tmux_requireVersion ---
@@ -1512,10 +1519,10 @@ def test_tmux_waitForClaudeReadiness_passes_pane_id_and_five_line_window(monkeyp
 def test_tmux_ensureKeepalivePane_returns_early_when_pane_with_title_exists():
     # Scenario: the target window already hosts a pane with the requested title.
     # Setup: stub tmux_paneHasTitle to return rc 0 and spy on creation helpers.
-    with patch.object(jot_plugin_orchestrator, "tmux_paneHasTitle", return_value=0) as has_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_splitWorkerPane") as split_worker, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_retile") as retile:
+    with patch.object(_tmux_lib_mod, "tmux_paneHasTitle", return_value=0) as has_title, \
+         patch.object(_tmux_lib_mod, "tmux_splitWorkerPane") as split_worker, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_retile") as retile:
         # Test action: invoke the ensurer.
         result = tmux_ensureKeepalivePane("sess:win", "/tmp", "sleep 9999", "keepalive")
     # Test verification: no creation calls fired.
@@ -1529,10 +1536,10 @@ def test_tmux_ensureKeepalivePane_returns_early_when_pane_with_title_exists():
 def test_tmux_ensureKeepalivePane_creates_pane_sets_title_and_retiles_when_absent():
     # Scenario: no keepalive pane exists; one must be spawned, titled, and retiled.
     # Setup: pane title probe returns rc 1 and split helper returns a pane id.
-    with patch.object(jot_plugin_orchestrator, "tmux_paneHasTitle", return_value=1), \
-         patch.object(jot_plugin_orchestrator, "tmux_splitWorkerPane", return_value="%42") as split_worker, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_retile") as retile:
+    with patch.object(_tmux_lib_mod, "tmux_paneHasTitle", return_value=1), \
+         patch.object(_tmux_lib_mod, "tmux_splitWorkerPane", return_value="%42") as split_worker, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_retile") as retile:
         # Test action: ensure on an empty window.
         tmux_ensureKeepalivePane("sess:win", "/work", "sleep 9999", "keepalive")
     # Test verification: pane created with cwd and command; title/retile invoked.
@@ -1544,10 +1551,10 @@ def test_tmux_ensureKeepalivePane_creates_pane_sets_title_and_retiles_when_absen
 def test_tmux_ensureKeepalivePane_skips_set_title_when_split_returns_none():
     # Scenario: split helper fails and yields no pane id.
     # Setup: pane absent; split returns None.
-    with patch.object(jot_plugin_orchestrator, "tmux_paneHasTitle", return_value=1), \
-         patch.object(jot_plugin_orchestrator, "tmux_splitWorkerPane", return_value=None) as split_worker, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_retile") as retile:
+    with patch.object(_tmux_lib_mod, "tmux_paneHasTitle", return_value=1), \
+         patch.object(_tmux_lib_mod, "tmux_splitWorkerPane", return_value=None) as split_worker, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_retile") as retile:
         # Test action: invoke ensurer where pane creation fails.
         tmux_ensureKeepalivePane("sess:win", "/work", "sleep 9999", "keepalive")
     # Test verification: no title set, but retile still called for parity with bash.
@@ -1561,13 +1568,13 @@ def test_tmux_ensureKeepalivePane_skips_set_title_when_split_returns_none():
 def test_tmux_ensureSession_creates_session_when_absent():
     # Scenario: session does not yet exist, so full session creation path runs.
     # Setup: tmux_hasSession returns rc 1 for absent.
-    with patch.object(jot_plugin_orchestrator, "tmux_hasSession", return_value=1) as has_session, \
-         patch.object(jot_plugin_orchestrator, "tmux_newSession") as new_session, \
-         patch.object(jot_plugin_orchestrator, "tmux_setOptionForTarget") as set_option, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_windowExists") as window_exists, \
-         patch.object(jot_plugin_orchestrator, "tmux_newWindow") as new_window, \
-         patch.object(jot_plugin_orchestrator, "tmux_ensureKeepalivePane") as ensure_keepalive:
+    with patch.object(_tmux_lib_mod, "tmux_hasSession", return_value=1) as has_session, \
+         patch.object(_tmux_lib_mod, "tmux_newSession") as new_session, \
+         patch.object(_tmux_lib_mod, "tmux_setOptionForTarget") as set_option, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_windowExists") as window_exists, \
+         patch.object(_tmux_lib_mod, "tmux_newWindow") as new_window, \
+         patch.object(_tmux_lib_mod, "tmux_ensureKeepalivePane") as ensure_keepalive:
         # Test action: invoke ensure-session with fresh-session inputs.
         rc = tmux_ensureSession("sess", "win", "/tmp", "sleep 9999", "KA")
     # Test verification: new session created; window and keepalive existing-session paths skipped.
@@ -1589,13 +1596,13 @@ def test_tmux_ensureSession_creates_session_when_absent():
 def test_tmux_ensureSession_creates_window_when_session_exists_but_window_absent():
     # Scenario: session present, window missing; window-creation branch runs.
     # Setup: hasSession rc 0, windowExists rc 1.
-    with patch.object(jot_plugin_orchestrator, "tmux_hasSession", return_value=0), \
-         patch.object(jot_plugin_orchestrator, "tmux_windowExists", return_value=1), \
-         patch.object(jot_plugin_orchestrator, "tmux_newSession") as new_session, \
-         patch.object(jot_plugin_orchestrator, "tmux_setOptionForTarget") as set_option, \
-         patch.object(jot_plugin_orchestrator, "tmux_newWindow") as new_window, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_ensureKeepalivePane") as ensure_keepalive:
+    with patch.object(_tmux_lib_mod, "tmux_hasSession", return_value=0), \
+         patch.object(_tmux_lib_mod, "tmux_windowExists", return_value=1), \
+         patch.object(_tmux_lib_mod, "tmux_newSession") as new_session, \
+         patch.object(_tmux_lib_mod, "tmux_setOptionForTarget") as set_option, \
+         patch.object(_tmux_lib_mod, "tmux_newWindow") as new_window, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_ensureKeepalivePane") as ensure_keepalive:
         # Test action: invoke ensure-session.
         rc = tmux_ensureSession("sess", "win", "/work", "sleep 1", "KA2")
     # Test verification: window created, title set; session creation skipped.
@@ -1610,13 +1617,13 @@ def test_tmux_ensureSession_creates_window_when_session_exists_but_window_absent
 def test_tmux_ensureSession_delegates_to_keepalive_pane_when_both_exist():
     # Scenario: session and window both exist; only keepalive-pane ensure runs.
     # Setup: hasSession and windowExists both return rc 0.
-    with patch.object(jot_plugin_orchestrator, "tmux_hasSession", return_value=0), \
-         patch.object(jot_plugin_orchestrator, "tmux_windowExists", return_value=0), \
-         patch.object(jot_plugin_orchestrator, "tmux_newSession") as new_session, \
-         patch.object(jot_plugin_orchestrator, "tmux_newWindow") as new_window, \
-         patch.object(jot_plugin_orchestrator, "tmux_setOptionForTarget") as set_option, \
-         patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle") as set_title, \
-         patch.object(jot_plugin_orchestrator, "tmux_ensureKeepalivePane") as ensure_keepalive:
+    with patch.object(_tmux_lib_mod, "tmux_hasSession", return_value=0), \
+         patch.object(_tmux_lib_mod, "tmux_windowExists", return_value=0), \
+         patch.object(_tmux_lib_mod, "tmux_newSession") as new_session, \
+         patch.object(_tmux_lib_mod, "tmux_newWindow") as new_window, \
+         patch.object(_tmux_lib_mod, "tmux_setOptionForTarget") as set_option, \
+         patch.object(_tmux_lib_mod, "tmux_setPaneTitle") as set_title, \
+         patch.object(_tmux_lib_mod, "tmux_ensureKeepalivePane") as ensure_keepalive:
         # Test action: invoke ensure-session.
         rc = tmux_ensureSession("sess", "win", "/d", "sleep 2", "KA3")
     # Test verification: only ensureKeepalivePane invoked with target sess:win.
@@ -1634,7 +1641,7 @@ def test_tmux_too_old_emits_block(
     # Scenario: tmux_requireVersion("2.9") returns nonzero.
     # Setup: stub checkRequirements OK, tmux_requireVersion fail.
     monkeypatch.setattr("common.scripts.hookjson_lib.hookjson_checkRequirements", lambda *a, **k: None)
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_requireVersion", lambda _m: 1)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_requireVersion", lambda _m: 1)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot something"}))
     # Test action: invoke.
     rc = mod.jot_main()

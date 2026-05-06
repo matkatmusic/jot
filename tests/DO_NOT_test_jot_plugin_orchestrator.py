@@ -20,7 +20,7 @@ from types import ModuleType
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODULE_PATH = REPO_ROOT / "scripts" / "jot-plugin-orchestrator.py"
+MODULE_PATH = REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
 
 SUBORCHESTRATORS = {
     "/jot":          "skills/jot/scripts/jot-orchestrator.sh",

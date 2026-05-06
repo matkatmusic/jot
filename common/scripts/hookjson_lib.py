@@ -1,5 +1,6 @@
 
-
+import shutil
+import sys
 import json
 
 # Emit a Claude Code hook JSON block decision: {"decision":"block","reason":<reason>}.

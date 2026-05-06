@@ -1,6 +1,7 @@
 """Tests for jot_lib (and jot-related orchestrator functions)."""
 from __future__ import annotations
 
+import io as _io_dispatch
 import json
 import os
 import sys
@@ -11,7 +12,9 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, patch
 
-import jot_plugin_orchestrator
+import jot_plugin_orchestrator as _orchestrator
+from jot_plugin_orchestrator import dispatch_main
+from common.scripts import jot_lib as jot_plugin_orchestrator
 from common.scripts.jot_lib import (
     jot_buildClaudeCmd,
     jot_collectDiagnostics,
@@ -19,6 +22,7 @@ from common.scripts.jot_lib import (
     jot_diagKv,
     jot_diagSection,
     jot_initState,
+    jot_launchPhase2Window,
     jot_main,
     jot_popFirstFromQueue,
     jot_rotateAudit,
@@ -1053,6 +1057,25 @@ def test_jot_stop_rotatesAuditLogToOneThousandLines(jot_dirs, kill_calls):
     assert any(" SUCCESS " in line for line in final)
 
 
+def _stub_prompt_disp(monkeypatch, name, recorder, key):
+    # Stub a stdin-mode entrypoint and rebuild the prompt dispatch tuple.
+    # Operates on the real orchestrator module (where _PROMPT_DISPATCH lives).
+    _dm = _orchestrator
+
+    def _fn(*args, **kwargs):
+        recorder.append((key, sys.stdin.read()))
+        return 0
+
+    monkeypatch.setattr(_dm, name, _fn)
+    rebuilt = []
+    for prefix, original_fn in _dm._PROMPT_DISPATCH:
+        if prefix == key:
+            rebuilt.append((prefix, lambda f=_fn: f()))
+        else:
+            rebuilt.append((prefix, original_fn))
+    monkeypatch.setattr(_dm, "_PROMPT_DISPATCH", tuple(rebuilt))
+
+
 def test_dispatchMain_leading_whitespace_in_prompt_tolerated(monkeypatch):
     # Scenario: prompt has leading whitespace; lstrip lets it match.
     # Setup: stub jot_main; prompt with spaces and tab.
@@ -1110,6 +1133,21 @@ def test_dispatchMain_unknown_argv_falls_through_to_stdin_mode(monkeypatch):
     assert rc == 0
     assert len(calls) == 1
     assert calls[0][0] == "/jot"
+
+
+def _writeSidecar(tmpdir_inv: Path, pane_id: str) -> None:
+    (tmpdir_inv / "tmux_target").write_text(pane_id + "\n")
+
+
+@pytest.fixture
+def kill_calls(monkeypatch):
+    # Test seam: capture pane-id + retile-target instead of touching tmux.
+    calls: list[tuple[str, str]] = []
+
+    def _fake_bg(pane_target: str, retile_target: str) -> None:
+        calls.append((pane_target, retile_target))
+
+    return calls, _fake_bg
 
 
 @pytest.fixture
@@ -1288,7 +1326,7 @@ def test_readiness_timeout_returns_1(tmp_path, monkeypatch, capsys):
     # Setup: write valid sidecar; stub readiness probe to return 1 (timeout).
     (tmp_path / "tmux_target").write_text("%42\n")
     sent: list[tuple[str, str]] = []
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_waitForClaudeReadiness", lambda pane: 1)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_waitForClaudeReadiness", lambda pane: 1)
     monkeypatch.setattr(
         mod, "tmux_sendAndSubmit",
         lambda pane, text: sent.append((pane, text)) or 0,
@@ -1307,7 +1345,7 @@ def test_happy_path_sends_read_prompt_to_resolved_pane(tmp_path, monkeypatch):
     # Setup: write pane id "%99" into sidecar; stub readiness to 0; capture sends.
     (tmp_path / "tmux_target").write_text("%99\nignored-extra\n")
     sent: list[tuple[str, str]] = []
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_waitForClaudeReadiness", lambda pane: 0)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_waitForClaudeReadiness", lambda pane: 0)
     monkeypatch.setattr(
         mod, "tmux_sendAndSubmit",
         lambda pane, text: sent.append((pane, text)) or 0,
@@ -1326,7 +1364,7 @@ def test_sidecar_first_line_only_used(tmp_path, monkeypatch):
     # Setup: multi-line sidecar; stub readiness OK; capture send target.
     (tmp_path / "tmux_target").write_text("%first\n%second\n")
     sent: list[tuple[str, str]] = []
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_waitForClaudeReadiness", lambda pane: 0)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_waitForClaudeReadiness", lambda pane: 0)
     monkeypatch.setattr(
         mod, "tmux_sendAndSubmit",
         lambda pane, text: sent.append((pane, text)) or 0,
@@ -1345,7 +1383,7 @@ def test_readiness_called_with_resolved_pane_id(tmp_path, monkeypatch):
     def fake_ready(pane: str) -> int:
         seen.append(pane)
         return 0
-    monkeypatch.setattr("common.scripts.tmux_lib.tmux_waitForClaudeReadiness", fake_ready)
+    monkeypatch.setattr("common.scripts.jot_lib.tmux_waitForClaudeReadiness", fake_ready)
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit", lambda p, t: 0)
     # Test action: invoke jot_sessionStart.
     jot_sessionStart("/x/in.md", str(tmp_path))
@@ -1356,6 +1394,10 @@ def test_readiness_called_with_resolved_pane_id(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # Section 1 — report header
 # ---------------------------------------------------------------------------
+
+def _read(path: str) -> str:
+    return Path(path).read_text()
+
 
 class TestReportHeader:
     def test_report_file_created_at_default_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

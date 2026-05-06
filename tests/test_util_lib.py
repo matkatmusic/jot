@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import signal
 import sys
 import time
@@ -17,6 +18,7 @@ from common.scripts.tmux_lib import (
     tmux_capturePane,
     tmux_sendAndSubmit,
 )
+from common.scripts import util_lib as jot_plugin_orchestrator
 from common.scripts.util_lib import (
     FileLock,
     LockTimeout,

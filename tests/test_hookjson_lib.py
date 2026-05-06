@@ -55,6 +55,15 @@ def test_hookjson_emitBlock_empty_reason_still_produces_valid_block_json():
     assert json.loads(hookjson_emitBlock("")) == {"decision": "block", "reason": ""}
 
 
+@pytest.mark.parametrize(
+    "cmd,expected",
+    [
+        ("jq", "jq (brew install jq)"),
+        ("python3", "python3 (brew install python)"),
+        ("tmux", "tmux (brew install tmux)"),
+        ("claude", "claude (https://claude.com/claude-code)"),
+    ],
+)
 def test_hookjson_installHint_returns_canonical_hint_for_each_known_dependency(cmd: str, expected: str) -> None:
     # Scenario: each of the four canonical dependency names maps to its documented
     # human-readable install hint string.

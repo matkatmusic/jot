@@ -31,6 +31,7 @@ from common.scripts.tmux_lib import (
     _default_tmux_runner,
     _kill_pane,
     _listLivePaneIds,
+    _live_pane_ids,
     _paneCurrentCommand,
     tmux_capturePane,
     tmux_killPane,
@@ -49,6 +50,8 @@ from common.scripts.util_lib import (
 _MAX_SESSIONS = 999
 
 _LOCK_PANE_RE = re.compile(r"^debate:(%\d+)$", re.MULTILINE)
+
+_LOCK_LINE_RE = re.compile(r"^debate:(%[0-9]+)$", re.MULTILINE)
 
 # Agents in the order the bash loop initializes them.
 _AGENTS = ("gemini", "codex", "claude")

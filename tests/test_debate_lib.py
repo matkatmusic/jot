@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, mock_open, patch
 from common.scripts.util_lib import (
     _valid_kwargs
 )
+from tests.test_util_lib import _make_lock
 
 import jot_plugin_orchestrator
 from common.scripts.debate_lib import (
@@ -2373,7 +2374,7 @@ def fake_tmux(monkeypatch):
     def _fake() -> set[str]:
         return set(state["live"])
 
-    monkeypatch.setattr("common.scripts.tmux_lib._live_pane_ids", _fake)
+    monkeypatch.setattr("common.scripts.debate_lib._live_pane_ids", _fake)
     return state
 
 
