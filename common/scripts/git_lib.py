@@ -58,6 +58,11 @@ def currentTimestampMs() -> str:
 
 
 # ── Git helpers ───────────────────────────────────────────────────────
+def makeGitRepo(path: Path) -> Path:
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    return path.resolve()
+
+
 def isGitRepo(path: Path) -> bool:
     completed = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
@@ -409,3 +414,82 @@ def ensureGitignoreEntry(repo_root: Path, pattern: str) -> None:
         return
     with gitignore.open("a") as fh:
         fh.write(f"\n{pattern}\n")
+
+# Resolve the git repo root for a given cwd via `git -C <cwd> rev-parse
+# --show-toplevel`. Returns None when not inside a git checkout.
+def _gitRepoRoot(cwd: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+    out = result.stdout.strip()
+    return out or None
+
+
+# Resolves the git repo root for `cwd` via `git -C <cwd> rev-parse --show-toplevel`.
+# Returns the path string on success, or "" on any failure (non-git dir, missing git).
+def _git_get_repo_root(cwd: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def ensureGitignoreEntry(repo_root: str, pattern: str) -> None:
+    """Append `pattern` to <repo_root>/.gitignore if not already present."""
+    gitignore = Path(repo_root) / ".gitignore"
+    try:
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
+    except OSError:
+        existing = ""
+    lines = existing.splitlines()
+    if pattern in lines:
+        return
+    try:
+        with open(gitignore, "a", encoding="utf-8") as fh:
+            fh.write(f"\n{pattern}\n")
+    except OSError:
+        pass
+
+def getGitBranchNameOrFail(cwd: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+def getGitRecentCommitHashes(cwd: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", cwd, "log", "-n", "5", "--pretty=format:%h %s"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+def getGitUncommittedFilenames(cwd: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", cwd, "status", "--porcelain"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+def getGitRepoRoot(cwd: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()

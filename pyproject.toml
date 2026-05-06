@@ -1,6 +1,6 @@
 [tool.pytest.ini_options]
-testpaths = ["scripts"]
-python_files = ["test_monolith.py"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
 python_functions = ["test_*"]
 markers = [
     "live: tests that exercise real external systems (tmux, filesystem, network) rather than mocks",

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from git_lib import (
+from common.scripts.git_lib import (
     GITIGNORE_CONTENTS,
     USER_EMAIL_KEY,
     USER_EMAIL_VALUE,
@@ -67,7 +67,7 @@ from git_lib import (
     writeGitIgnore,
     writeGitTree,
 )
-from plate_lib import (
+from common.scripts.plate.plate_lib import (
     TEST_COMMIT_MESSAGE,
     TEST_FILE_CONTENTS,
     TEST_FILENAME,
@@ -551,3 +551,5 @@ def test_ensureGitignoreEntry_is_idempotent(tmp_path: Path):
     ensureGitignoreEntry(tmp_path, ".plate/")
     lines = (tmp_path / ".gitignore").read_text().splitlines()
     assert lines.count(".plate/") == 1
+
+from common.scripts.git_lib import makeGitRepo as _make_repo
