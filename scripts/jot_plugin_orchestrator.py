@@ -3662,9 +3662,9 @@ def todo_launcher(session_id: str, idea: str, pending_file_path: str) -> int:
         print(f"todo-launcher: pending file not found at {pending_file}", file=sys.stderr)
         return 1
 
-    scripts_dir = Path(__file__).resolve().parent.parent
-    plugin_root = scripts_dir.parent
-    
+    plugin_root = Path(__file__).resolve().parent.parent
+    scripts_dir = plugin_root / "skills" / "todo" / "scripts"
+
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     claude_plugin_data = os.environ.get("CLAUDE_PLUGIN_DATA", str(Path.home() / ".claude" / "plugins" / "data" / "jot-matkatmusic-jot"))
     os.environ["CLAUDE_PLUGIN_DATA"] = claude_plugin_data

@@ -4812,7 +4812,7 @@ def test_both_probes_available_preserves_order_claude_gemini_codex():
 
 
 
-def _make_debate(repo_root: Path, ts: str, topic_text: str) -> Path:
+def _make_topic_debate(repo_root: Path, ts: str, topic_text: str) -> Path:
     # Helper: create Debates/<ts>/topic.md with given text. Returns dir path.
     d = repo_root / "Debates" / ts
     d.mkdir(parents=True)
@@ -4834,7 +4834,7 @@ def test_returns_none_when_no_topic_matches(tmp_path):
     # Scenario: Debates/ has dirs but none has matching topic.md content.
     # Setup: one debate dir with different topic text.
     repo = tmp_path
-    _make_debate(repo, "2026-01-01_120000_a", "different topic\n")
+    _make_topic_debate(repo, "2026-01-01_120000_a", "different topic\n")
     # Test action: search for unrelated topic.
     result = debate_findMatching(str(repo), "looking for this\n")
     # Test verification: returns None.
@@ -4846,7 +4846,7 @@ def test_returns_dir_path_for_single_match(tmp_path):
     # Setup: matching topic written verbatim (incl. trailing newline appended by printf '%s\n').
     repo = tmp_path
     topic = "Discuss async patterns"
-    d = _make_debate(repo, "2026-02-02_100000_x", topic + "\n")
+    d = _make_topic_debate(repo, "2026-02-02_100000_x", topic + "\n")
     # Test action: query with the same topic (function appends \n internally like `printf '%s\n'`).
     result = debate_findMatching(str(repo), topic)
     # Test verification: returns that debate dir as a string, no trailing slash.
@@ -4858,7 +4858,7 @@ def test_skips_dirs_missing_topic_md(tmp_path):
     # Setup: one dir without topic.md, one with matching topic.md.
     repo = tmp_path
     (repo / "Debates" / "2026-03-03_111111_no_topic").mkdir(parents=True)
-    d_match = _make_debate(repo, "2026-03-03_222222_yes", "hello\n")
+    d_match = _make_topic_debate(repo, "2026-03-03_222222_yes", "hello\n")
     # Test action.
     result = debate_findMatching(str(repo), "hello")
     # Test verification: skips topic-less dir, returns the one with topic.md.
@@ -4870,9 +4870,9 @@ def test_most_recent_timestamp_wins_on_multiple_matches(tmp_path):
     # Setup: three matching debates with sortable timestamps.
     repo = tmp_path
     topic = "shared topic"
-    _make_debate(repo, "2025-01-01_000000_a", topic + "\n")
-    _make_debate(repo, "2026-06-15_120000_b", topic + "\n")
-    d_newest = _make_debate(repo, "2027-12-31_235959_c", topic + "\n")
+    _make_topic_debate(repo, "2025-01-01_000000_a", topic + "\n")
+    _make_topic_debate(repo, "2026-06-15_120000_b", topic + "\n")
+    d_newest = _make_topic_debate(repo, "2027-12-31_235959_c", topic + "\n")
     # Test action.
     result = debate_findMatching(str(repo), topic)
     # Test verification: returns lexicographically-greatest (newest) match.
@@ -4884,7 +4884,7 @@ def test_multiline_topic_byte_exact_match(tmp_path):
     # Setup: write multi-line topic with embedded newlines.
     repo = tmp_path
     topic = "line one\nline two\nline three"
-    d = _make_debate(repo, "2026-04-04_090000_m", topic + "\n")
+    d = _make_topic_debate(repo, "2026-04-04_090000_m", topic + "\n")
     # Test action: pass same multi-line topic.
     result = debate_findMatching(str(repo), topic)
     # Test verification: matches despite multi-line content.
@@ -4895,7 +4895,7 @@ def test_partial_substring_does_not_match(tmp_path):
     # Scenario: topic.md contains query as substring but is not byte-equal.
     # Setup: topic.md is a superstring.
     repo = tmp_path
-    _make_debate(repo, "2026-05-05_100000_p", "prefix hello suffix\n")
+    _make_topic_debate(repo, "2026-05-05_100000_p", "prefix hello suffix\n")
     # Test action: query a substring.
     result = debate_findMatching(str(repo), "hello")
     # Test verification: byte-exact match required, returns None.
@@ -8816,11 +8816,9 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
     
     calls = []
     
-    import common.scripts.git_lib as git_lib
-
-    monkeypatch.setattr(git_lib, "getGitBranchNameOrFail", lambda p: "main-branch")
-    monkeypatch.setattr(git_lib, "getGitRecentCommitHashes", lambda p: ["commit1", "commit2"])
-    monkeypatch.setattr(git_lib, "getGitUncommittedFilenames", lambda p: ["file1.txt"])
+    monkeypatch.setattr(jot_plugin_orchestrator, "getGitBranchNameOrFail", lambda p: "main-branch")
+    monkeypatch.setattr(jot_plugin_orchestrator, "getGitRecentCommitHashes", lambda p: ["commit1", "commit2"])
+    monkeypatch.setattr(jot_plugin_orchestrator, "getGitUncommittedFilenames", lambda p: ["file1.txt"])
     monkeypatch.setattr(jot_plugin_orchestrator, "todo_scanOpen", lambda p: [str(repo_root / "Todos" / "todo1.md")])
     
     def mock_run(cmd, *args, **kwargs):
@@ -9284,7 +9282,7 @@ from jot_plugin_orchestrator import tmux_killSession, tmux_newSession, tmux_list
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def tmux_session():
+def tmux_session_newpane():
     # Setup: create a detached tmux session; teardown kills it unconditionally.
     name = f"tmux-py-newemptypane-{os.getpid()}"
     tmux_killSession(name)
@@ -9447,10 +9445,10 @@ def test_newEmptyPane_retileRcIgnored_doesNotPreventSplit():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.live
-def test_newEmptyPane_addsPaneToWindow(tmux_session):
+def test_newEmptyPane_addsPaneToWindow(tmux_session_newpane):
     # Scenario: calling debate_newEmptyPane on an existing window creates a new pane.
     # Setup: session has one pane (from fixture); form window target.
-    window_target = f"{tmux_session}:0"
+    window_target = f"{tmux_session_newpane}:0"
     before = tmux_listPanes(window_target, "-F", "#{pane_id}")
     # Test action: create a new empty pane.
     pane_id = debate_newEmptyPane(window_target, "/tmp")
@@ -9462,10 +9460,10 @@ def test_newEmptyPane_addsPaneToWindow(tmux_session):
 
 
 @pytest.mark.live
-def test_newEmptyPane_returnedIdInPaneList(tmux_session):
+def test_newEmptyPane_returnedIdInPaneList(tmux_session_newpane):
     # Scenario: the pane id returned by debate_newEmptyPane is present in the live pane list.
     # Setup: form window target.
-    window_target = f"{tmux_session}:0"
+    window_target = f"{tmux_session_newpane}:0"
     # Test action: create a new pane.
     pane_id = debate_newEmptyPane(window_target, "/tmp")
     # Test verification: pane id appears in listPanes output.
@@ -10320,7 +10318,7 @@ def _kill(name: str) -> None:
 
 
 @pytest.fixture
-def tmux_session():
+def tmux_session_clean():
     # Provide a unique session name and clean up after the test.
     name = f"tmux-sh-launcher-test-{os.getpid()}"
     _kill(name)
@@ -10331,69 +10329,69 @@ def tmux_session():
 # ---------- tests ----------
 
 @pytest.mark.live
-def test_ensure_session_creates_new_session(tmux_session):
+def test_ensure_session_creates_new_session(tmux_session_clean):
     # Scenario: ensure_session on a missing session creates it (Path 1).
     # Setup: session name guaranteed absent by fixture.
     # Test action: invoke tmux_ensureSession with main window + keepalive.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test verification: tmux now reports the session exists.
-    assert _tmux_has_session(tmux_session)
+    assert _tmux_has_session(tmux_session_clean)
 
 
 @pytest.mark.live
-def test_ensure_session_sets_keepalive_pane_title(tmux_session):
+def test_ensure_session_sets_keepalive_pane_title(tmux_session_clean):
     # Scenario: keepalive pane created by ensure_session has the requested title.
     # Setup: create the session via ensure_session.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test action: read pane_title for main window.
     # Test verification: title equals "keepalive".
-    assert _tmux_pane_has_title(f"{tmux_session}:main", "keepalive")
+    assert _tmux_pane_has_title(f"{tmux_session_clean}:main", "keepalive")
 
 
 @pytest.mark.live
-def test_ensure_session_applies_pane_border_status_top(tmux_session):
+def test_ensure_session_applies_pane_border_status_top(tmux_session_clean):
     # Scenario: ensure_session sets pane-border-status=top via set_option_t.
     # Setup: create session.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test action: read tmux option.
-    border = _tmux_show_option(tmux_session, "pane-border-status")
+    border = _tmux_show_option(tmux_session_clean, "pane-border-status")
     # Test verification: option is "top".
     assert border == "top"
 
 
 @pytest.mark.live
-def test_split_worker_pane_returns_pane_id(tmux_session):
+def test_split_worker_pane_returns_pane_id(tmux_session_clean):
     # Scenario: split_worker_pane creates a pane and returns its %id.
     # Setup: ensure session exists first.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test action: split a worker pane in main window.
-    worker = tmux_splitWorkerPane(f"{tmux_session}:main", "/tmp", "sleep 30")
+    worker = tmux_splitWorkerPane(f"{tmux_session_clean}:main", "/tmp", "sleep 30")
     # Test verification: returned id is non-empty and starts with '%'.
     assert worker
     assert str(worker).startswith("%")
 
 
 @pytest.mark.live
-def test_ensure_session_idempotent_on_existing_session(tmux_session):
+def test_ensure_session_idempotent_on_existing_session(tmux_session_clean):
     # Scenario: re-calling ensure_session on existing session+window is a no-op (Path 3).
     # Setup: create session once.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test action: call ensure_session a second time with same args.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     # Test verification: session still exists, not destroyed by second call.
-    assert _tmux_has_session(tmux_session)
+    assert _tmux_has_session(tmux_session_clean)
 
 
 @pytest.mark.live
-def test_ensure_session_adds_new_window_to_existing_session(tmux_session):
+def test_ensure_session_adds_new_window_to_existing_session(tmux_session_clean):
     # Scenario: ensure_session on existing session with new window name adds the window (Path 2).
     # Setup: create session with main window.
-    tmux_ensureSession(tmux_session, "main", "/tmp", "sleep 30", "keepalive")
+    tmux_ensureSession(tmux_session_clean, "main", "/tmp", "sleep 30", "keepalive")
     second = f"secondwin-{os.getpid()}"
     # Test action: call ensure_session with a different window name.
-    tmux_ensureSession(tmux_session, second, "/tmp", "sleep 30", "keepalive-2")
+    tmux_ensureSession(tmux_session_clean, second, "/tmp", "sleep 30", "keepalive-2")
     # Test verification: new window now present in the session.
-    assert _tmux_window_exists(tmux_session, second)
+    assert _tmux_window_exists(tmux_session_clean, second)
 
 
 
@@ -10480,7 +10478,7 @@ import pytest
 # Real-tmux fixture: creates a detached session, yields its name, kills on teardown.
 # Marked `live` because it spawns an actual tmux server.
 @pytest.fixture
-def tmux_session():
+def tmux_session_panes():
     name = f"tmux-py-pane-test-{os.getpid()}"
     tmux_killSession(name)  # Setup: ensure no stale session of the same name
     rc = tmux_newSession(name)
@@ -10496,41 +10494,41 @@ def _first_pane_id(session: str) -> str:
 
 
 @pytest.mark.live
-def test_listPanes_newSession_hasOnePane(tmux_session):
+def test_listPanes_newSession_hasOnePane(tmux_session_panes):
     # Scenario: A freshly created session contains exactly one pane.
     # Setup: fixture created the session.
     # Test action: list panes.
-    panes = tmux_listPanes(tmux_session)
+    panes = tmux_listPanes(tmux_session_panes)
     # Test verification: exactly one pane reported.
     assert len(panes) == 1
 
 
 @pytest.mark.live
-def test_newPane_addsPaneToSession(tmux_session):
+def test_newPane_addsPaneToSession(tmux_session_panes):
     # Scenario: tmux_newPane on an existing session succeeds (rc=0).
     # Setup: session exists via fixture.
     # Test action: split a new pane.
-    rc = tmux_newPane(tmux_session)
+    rc = tmux_newPane(tmux_session_panes)
     # Test verification: rc 0 means tmux accepted the split.
     assert rc == 0
 
 
 @pytest.mark.live
-def test_listPanes_afterNewPane_hasTwoPanes(tmux_session):
+def test_listPanes_afterNewPane_hasTwoPanes(tmux_session_panes):
     # Scenario: After splitting once, list_panes reports two panes.
     # Setup: session + one extra pane.
-    assert tmux_newPane(tmux_session) == 0
+    assert tmux_newPane(tmux_session_panes) == 0
     # Test action: list panes.
-    panes = tmux_listPanes(tmux_session)
+    panes = tmux_listPanes(tmux_session_panes)
     # Test verification: two panes present.
     assert len(panes) == 2
 
 
 @pytest.mark.live
-def test_selectPane_byKnownPaneId_succeeds(tmux_session):
+def test_selectPane_byKnownPaneId_succeeds(tmux_session_panes):
     # Scenario: select_pane targets an existing pane id and succeeds.
     # Setup: capture id of the only pane.
-    pid = _first_pane_id(tmux_session)
+    pid = _first_pane_id(tmux_session_panes)
     assert pid, "precondition: a pane id must exist"
     # Test action: select that pane.
     rc = tmux_selectPane(pid)
@@ -10539,10 +10537,10 @@ def test_selectPane_byKnownPaneId_succeeds(tmux_session):
 
 
 @pytest.mark.live
-def test_setPaneTitle_succeeds(tmux_session):
+def test_setPaneTitle_succeeds(tmux_session_panes):
     # Scenario: set_pane_title returns rc 0 on a known pane.
     # Setup: known pane id.
-    pid = _first_pane_id(tmux_session)
+    pid = _first_pane_id(tmux_session_panes)
     # Test action: set a title.
     rc = tmux_setPaneTitle(pid, f"titletest-{os.getpid()}")
     # Test verification: rc 0.
@@ -10550,23 +10548,23 @@ def test_setPaneTitle_succeeds(tmux_session):
 
 
 @pytest.mark.live
-def test_setPaneTitle_roundTripsThroughListPanes(tmux_session):
+def test_setPaneTitle_roundTripsThroughListPanes(tmux_session_panes):
     # Scenario: Title set via setPaneTitle is visible via listPanes default -F.
     # Setup: pid + unique title.
-    pid = _first_pane_id(tmux_session)
+    pid = _first_pane_id(tmux_session_panes)
     title = f"titletest-{os.getpid()}"
     assert tmux_setPaneTitle(pid, title) == 0
     # Test action: list panes (default format includes pane_title).
-    rows = tmux_listPanes(tmux_session)
+    rows = tmux_listPanes(tmux_session_panes)
     # Test verification: at least one row contains the new title.
     assert any(title in row for row in rows)
 
 
 @pytest.mark.live
-def test_capturePane_returnsContent(tmux_session):
+def test_capturePane_returnsContent(tmux_session_panes):
     # Scenario: capture_pane succeeds on a live pane (returns string, possibly empty).
     # Setup: known pane id.
-    pid = _first_pane_id(tmux_session)
+    pid = _first_pane_id(tmux_session_panes)
     # Test action: capture pane content.
     captured = tmux_capturePane(pid)
     # Test verification: returns a str (capture succeeded; bash test only checked rc=0).
@@ -10596,11 +10594,11 @@ def test_selectPane_failsOnNonexistentTarget():
 
 
 @pytest.mark.live
-def test_killPane_removesLivePane(tmux_session):
+def test_killPane_removesLivePane(tmux_session_panes):
     # Scenario: kill_pane on the second live pane returns rc 0.
     # Setup: ensure two panes exist; capture id of the second pane.
-    assert tmux_newPane(tmux_session) == 0
-    ids = tmux_listPanes(tmux_session, "-F", "#{pane_id}")
+    assert tmux_newPane(tmux_session_panes) == 0
+    ids = tmux_listPanes(tmux_session_panes, "-F", "#{pane_id}")
     assert len(ids) >= 2, "precondition: need at least 2 panes"
     second_id = ids[1]
     # Test action: kill the second pane.
@@ -10610,14 +10608,14 @@ def test_killPane_removesLivePane(tmux_session):
 
 
 @pytest.mark.live
-def test_listPanes_afterKillPane_hasOnePane(tmux_session):
+def test_listPanes_afterKillPane_hasOnePane(tmux_session_panes):
     # Scenario: After killing the added pane, listPanes reports one pane.
     # Setup: add then kill the second pane.
-    assert tmux_newPane(tmux_session) == 0
-    ids = tmux_listPanes(tmux_session, "-F", "#{pane_id}")
+    assert tmux_newPane(tmux_session_panes) == 0
+    ids = tmux_listPanes(tmux_session_panes, "-F", "#{pane_id}")
     assert tmux_killPane(ids[1]) == 0
     # Test action: list panes.
-    rows = tmux_listPanes(tmux_session)
+    rows = tmux_listPanes(tmux_session_panes)
     # Test verification: down to one pane.
     assert len(rows) == 1
 
@@ -10857,7 +10855,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def tmux_session():
+def tmux_session_opts():
     # Provide a unique, isolated tmux session for one test; tear it down on exit.
     name = f"tmux-py-opt-test-{os.getpid()}"
     subprocess.run(["tmux", "kill-session", "-t", name],
@@ -10870,10 +10868,10 @@ def tmux_session():
 
 
 @pytest.mark.live
-def test_setOptionForTarget_accepts_valid_session_option(tmux_session):
+def test_setOptionForTarget_accepts_valid_session_option(tmux_session_opts):
     # Scenario: setting a real session-scoped option on a live session returns rc=0.
-    # Setup: tmux_session fixture provides a fresh detached session.
-    session = tmux_session
+    # Setup: tmux_session_opts fixture provides a fresh detached session.
+    session = tmux_session_opts
     # Test action: set the session-scoped `remain-on-exit` option to `off`.
     rc = tmux_setOptionForTarget(session, "remain-on-exit", "off")
     # Test verification: tmux accepted it; rc must be 0.
@@ -10881,10 +10879,10 @@ def test_setOptionForTarget_accepts_valid_session_option(tmux_session):
 
 
 @pytest.mark.live
-def test_setOptionForTarget_rejects_invalid_option(tmux_session, capfd):
+def test_setOptionForTarget_rejects_invalid_option(tmux_session_opts, capfd):
     # Scenario: setting an unknown option name on a live session returns nonzero.
     # Setup: live session from fixture.
-    session = tmux_session
+    session = tmux_session_opts
     # Test action: attempt to set a fabricated option name.
     rc = tmux_setOptionForTarget(session, "not-a-real-option", "foo")
     # Test verification: tmux rejects unknown option; rc nonzero.
@@ -10933,10 +10931,10 @@ def test_setOptionGlobally_rejects_invalid_option(capfd):
 
 
 @pytest.mark.live
-def test_setOptionForWindow_accepts_valid_window_option(tmux_session):
+def test_setOptionForWindow_accepts_valid_window_option(tmux_session_opts):
     # Scenario: setting a window-scoped option on a real window succeeds.
     # Setup: create a named window inside the fixture session.
-    session = tmux_session
+    session = tmux_session_opts
     win = f"optwin-{os.getpid()}"
     rc_new = tmux_newWindow(session, win)
     assert rc_new == 0, "precondition: tmux_newWindow should succeed"
@@ -10947,10 +10945,10 @@ def test_setOptionForWindow_accepts_valid_window_option(tmux_session):
 
 
 @pytest.mark.live
-def test_setOptionForWindow_rejects_nonexistent_window(tmux_session, capfd):
+def test_setOptionForWindow_rejects_nonexistent_window(tmux_session_opts, capfd):
     # Scenario: setting a window option against a missing window fails.
     # Setup: live session exists, but target window does not.
-    session = tmux_session
+    session = tmux_session_opts
     bogus_win = f"nosuch-{os.getpid()}"
     # Test action: attempt to set the option against the absent window.
     rc = tmux_setOptionForWindow(f"{session}:{bogus_win}", "aggressive-resize", "on")
