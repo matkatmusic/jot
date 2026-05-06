@@ -87,3 +87,140 @@ Audit trail for the bash-to-Python migration of `scripts/jot-plugin-orchestrator
 | jot_diagSection | section | `(title: str) -> str` | RELAXED_COVERAGE; de-nested helper; pure string formatter; 59-char ═ rule | 2026-05-05 |
 | jot_diagIndent | indent | `(text: str) -> str` | RELAXED_COVERAGE; de-nested helper; argument-taking replacement for sed-stdin filter; preserves trailing newline | 2026-05-05 |
 | jot_diagKv | kv | `(key: str, value: object) -> str` | RELAXED_COVERAGE; de-nested helper; printf %-28s parity; long keys not truncated | 2026-05-05 |
+| debate_agentReadyMarker | agent_ready_marker | debate_agentReadyMarker(agent: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_agentErrorMarkers | agent_error_markers | debate_agentErrorMarkers(agent: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_agentLaunchCmd | agent_launch_cmd | debate_agentLaunchCmd(*,
+    agent: str,
+    current_model: dict[str, str],
+    debate_dir: str,
+    cwd: str,
+    repo_root: str,
+    home: str,
+    settings_file: str,) |  | 2026-05-05 |
+| debate_archive | archive_debate | debate_archive(debate_dir: Path | str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_buildClaudeCmd | debate_build_claude_cmd | debate_buildClaudeCmd(cwd: str,
+    repo_root: str,
+    log_file: str,
+    permissions_seed_fn,
+    expand_permissions_fn,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_buildClaudePrompts | debate_build_prompts | debate_buildClaudePrompts(stage: str,
+    debate_dir: Path,
+    plugin_root: Path,
+    agents: list[str],
+    agent_filter: str = "",) |  | 2026-05-05 |
+| debate_checkResumeFeasibility | check_resume_feasibility | debate_checkResumeFeasibility(debate_dir: Path,
+    available_agents: list[str],) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_claimSession | debate_claim_session | debate_claimSession(keepalive_cmd: str,
+    *,
+    tmux_runner: Callable[[List[str]], int] = _default_tmux_runner,) |  | 2026-05-05 |
+| debate_cleanStaleLocks | clean_stale_locks | debate_cleanStaleLocks(debate_dir: Path,
+    stage: str,
+    window_target: str = "",) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_defaultModel | _default_model | debate_defaultModel(agent: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_detectAvailableAgents | detect_available_agents | debate_detectAvailableAgents() | RELAXED_COVERAGE | 2026-05-05 |
+| debate_findMatching | find_matching_debate | debate_findMatching(repo_root: str, topic: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_initAgentModels | init_agent_models | debate_initAgentModels(env: Mapping[str, str] | None = None) |  | 2026-05-05 |
+| debate_initHookContext | init_hook_context | debate_initHookContext(stdin: IO[str] | None = None) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_launch | debate_launch | debate_launch(*,
+    scripts_dir: Path | None = None,
+    plugin_root: Path | None = None,
+    _debate_main_fn: object = None,
+    _is_darwin: bool | None = None,
+    _terminal_running_fn: object = None,
+    _launch_terminal_fn: object = None,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_launchAgent | launch_agent | debate_launchAgent(*,
+    pane_id: str,
+    stage: str,
+    agent: str,
+    launch_cmd: str,
+    ready_marker: str,
+    debate_dir: str,
+    timeout: int = 120,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_liveSession | live_debate_session | debate_liveSession(debate_dir: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_nextModel | _next_model | debate_nextModel(agent: str,
+    tried_models: dict[str, str],
+    models_json_path: str,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_paneHasCapacityError | pane_has_capacity_error | debate_paneHasCapacityError(pane_id: str, agent: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_probeCodex | _probe_codex | debate_probeCodex() | RELAXED_COVERAGE | 2026-05-05 |
+| debate_retryPaneWithNextModel | retry_pane_with_next_model | debate_retryPaneWithNextModel(*,
+    pane_index: int,
+    agent: str,
+    stage: str,
+    current_pane_id: str,
+    current_model: dict[str, str],
+    tried_models: dict[str, str],
+    window_target: str,
+    cwd: str,
+    repo_root: str,
+    home: str,
+    settings_file: str,
+    debate_dir: str,
+    models_json_path: str,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_tmuxOrchestrator | debate_tmux_orchestrator | debate_tmuxOrchestrator(debate_dir: str,
+    session: str,
+    window_name: str,
+    settings_file: str,
+    cwd: str,
+    repo_root: str,
+    plugin_root: str,
+    *,
+    debate_agents: str = "",
+    cleanup_fn: object = None,
+    daemon_main_fn: object = None,) |  | 2026-05-05 |
+| debate_waitForOutputs | wait_for_outputs | debate_waitForOutputs(*,
+    prefix: str,
+    timeout: int,
+    panes: Mapping[int, str],
+    agents: Sequence[str],
+    debate_dir: Path,
+    pane_capacity_error: Callable[[str, str], bool],
+    retry_pane: Callable[..., object],
+    sleep_fn: Callable[[float], None],
+    poll_interval: int = 5,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_writeFailed | write_failed | debate_writeFailed(debate_dir: Path,
+    stage: str,
+    reason: str,
+    agents: Iterable[str],
+    *,
+    pane_capture: Callable[[str], str] | None = None,
+    now: Callable[[], datetime] | None = None,) | RELAXED_COVERAGE | 2026-05-05 |
+| jot_collectDiagnostics | jot_diag_collect | jot_collectDiagnostics(out_path: str | None = None) | RELAXED_COVERAGE | 2026-05-05 |
+| plate_summaryStop | plate_summary_stop | plate_summaryStop(repo: str, branch: str, output_file: str) | RELAXED_COVERAGE | 2026-05-05 |
+| plate_summaryWatch | plate_summary_watch | plate_summaryWatch(pane: str,
+    output_file: str,
+    timeout: Optional[int] = None,
+    interval: Optional[int] = None,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    tmux_send: Callable[[str, str], None] = _default_tmux_send,) | RELAXED_COVERAGE | 2026-05-05 |
+| shell_waitForFile | wait_for_file | shell_waitForFile(path: str, timeout: float, poll_interval: float = 5.0) | RELAXED_COVERAGE | 2026-05-05 |
+| todo_scanOpen | scan_open_todos | todo_scanOpen(target_dir: str | Path = ".") | RELAXED_COVERAGE | 2026-05-05 |
+| todo_sessionStart | todo_session_start | todo_sessionStart(input_file: str, tmpdir_inv: str) | RELAXED_COVERAGE | 2026-05-05 |
+| todo_stop | todo_stop | todo_stop(input_file: str,
+    tmpdir_inv: str,
+    state_dir: str,) |  | 2026-05-05 |
+| debate_cleanup | cleanup | debate_cleanup(settings_file: str | Path) |  | 2026-05-05 |
+| jot_sessionEnd | jot_session_end | jot_sessionEnd(tmpdir_inv: str | None) | RELAXED_COVERAGE | 2026-05-05 |
+| jot_sessionStart | jot_session_start | jot_sessionStart(input_file: str | None, tmpdir_inv: str | None) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_anyLiveLock | any_live_lock | debate_anyLiveLock(debate_dir: str | os.PathLike[str]) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_sendPromptToAgent | send_prompt | debate_sendPromptToAgent(pane_id: str,
+    stage: str,
+    agent: str,
+    instructions: str,) | RELAXED_COVERAGE | 2026-05-05 |
+| todo_launcher | todo_launcher | todo_launcher(session_id: str, idea: str, pending_file_path: str) |  | 2026-05-05 |
+| jot_stop | jot_stop | jot_stop(input_file: str,
+    tmpdir_inv: str,
+    state_dir: str,
+    *,
+    background_kill: Callable[[str, str], None] | None = None,) | RELAXED_COVERAGE | 2026-05-05 |
+| debate_probeGemini | _probe_gemini | debate_probeGemini() | RELAXED_COVERAGE | 2026-05-05 |
+| todo_sessionEnd | todo_session_end | todo_sessionEnd(tmpdir_inv: str) |  | 2026-05-05 |
+| debate_launchAgentsParallel | launch_agents_parallel | debate_launchAgentsParallel(stage: str,
+    panes: list[str],
+    agents: list[str],
+    debate_dir: str | Path,) |  | 2026-05-05 |
+| debate_newEmptyPane | new_empty_pane | debate_newEmptyPane(window_target: str, cwd: str) | RELAXED_COVERAGE | 2026-05-05 |
+| debateAbort_main | debate_abort_main | debateAbort_main() |  | 2026-05-05 |
+| jot_main | jot_main | jot_main() | RELAXED_COVERAGE | 2026-05-05 |
+| todo_main | todo_main | todo_main() |  | 2026-05-05 |
+| todoList_main | todo_list_main | todoList_main() |  | 2026-05-05 |

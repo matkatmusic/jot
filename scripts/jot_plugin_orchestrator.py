@@ -6,6 +6,7 @@ Canonical Python monolith for the jot plugin. Replaces
 """
 from __future__ import annotations
 
+import glob
 import json
 import hashlib
 import errno
@@ -17,9 +18,13 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Callable, Optional, Sequence, Type, TypedDict
@@ -1425,6 +1430,7 @@ def _build_synthesis(debate_dir: Path, agents: list[str]) -> None:
     (debate_dir / "synthesis_instructions.txt").write_text(buf.getvalue())
 
 
+@dataclass
 class ResumeFeasibility:
     """Result of a resume feasibility check.
 
@@ -2017,7 +2023,7 @@ def debate_launchAgent(
         f"[orch] TIMEOUT: {stage}/{agent} not ready within {timeout}s",
         file=sys.stderr,
     )
-    write_failed(stage, f"launch_agent timeout for {agent} after {timeout}s")
+    debate_writeFailed(stage, f"launch_agent timeout for {agent} after {timeout}s")
     return False
 
 
@@ -2188,7 +2194,7 @@ def debate_probeCodex() -> str:
         return ""
 
     # Gate 3: resolve model name; fall back to "present" sentinel if empty.
-    model: Optional[str] = _default_model("codex")
+    model: Optional[str] = debate_defaultModel("codex")
     return model if model else "present"
 
 
@@ -2366,6 +2372,17 @@ def debate_retryPaneWithNextModel(
     return new_pane
 
 
+def _debate_daemon_main_default(ctx: "DebateContext") -> None:
+    """Placeholder daemon entrypoint used when debate_tmuxOrchestrator caller does not inject daemon_main_fn.
+
+    Production callers always inject; tests inject mocks. Raising here keeps
+    accidental misuse loud rather than silently no-op'ing the orchestrator.
+    """
+    raise NotImplementedError(
+        "debate_tmuxOrchestrator requires daemon_main_fn or a migrated daemon implementation"
+    )
+
+
 class DebateContext:
     """Holds all mutable orchestrator state, replacing bash globals."""
 
@@ -2443,8 +2460,8 @@ def debate_tmuxOrchestrator(
         ValueError: If session or debate_agents is empty (mirrors bash `:?` guards).
     """
     # --- Resolve injected callees (test seam) ---
-    _cleanup_fn = cleanup_fn if cleanup_fn is not None else _workspace_cleanup
-    _daemon_fn = daemon_main_fn if daemon_main_fn is not None else _workspace_daemon_main
+    _cleanup_fn = cleanup_fn if cleanup_fn is not None else debate_cleanup
+    _daemon_fn = daemon_main_fn if daemon_main_fn is not None else _debate_daemon_main_default
 
     # --- Guard: SESSION required (mirrors `: "${SESSION:?SESSION required}"`) ---
     if not session:

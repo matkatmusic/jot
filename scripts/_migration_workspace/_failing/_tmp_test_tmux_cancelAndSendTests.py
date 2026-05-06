@@ -4,88 +4,75 @@ from jot_plugin_orchestrator import *
 
 import os
 import time
-import subprocess
 import pytest
 
 
-def _tmux(*args: str) -> subprocess.CompletedProcess:
-    # Helper: invoke real tmux binary; used only by fixture lifecycle.
-    return subprocess.run(["tmux", *args], capture_output=True, text=True)
-
-
+# Real-tmux fixture: creates a detached session, yields its name, kills on teardown.
+# Marked `live` because it spawns an actual tmux server.
 @pytest.fixture
-def live_tmux_session():
-    # Real tmux session fixture; yields session name, kills on teardown.
-    name = f"tmux-py-cancel-test-{os.getpid()}-{int(time.time()*1000)}"
-    _tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "50")
-    try:
-        yield name
-    finally:
-        _tmux("kill-session", "-t", name)
+def tmux_session():
+    name = f"tmux-py-cancel-and-send-{os.getpid()}"
+    tmux_killSession(name)  # Setup: ensure no stale session of the same name
+    rc = tmux_newSession(name)
+    assert rc == 0, "fixture precondition: new session must succeed"
+    yield name
+    tmux_killSession(name)
 
 
 @pytest.mark.live
-def test_tmux_cancelAndSend_logs_label_after_cancellation(live_tmux_session):
-    # Scenario: when a label is supplied, cancelAndSend emits a log line containing the label.
-    # Setup: start a long-running sleep so Ctrl-C has something to cancel.
-    session = live_tmux_session
+def test_cancelAndSend_withLabel_logsLabel(tmux_session):
+    # Scenario: tmux_cancelAndSend with a label includes that label in its return value.
+    # Setup: start a blocking command so Ctrl-C has something to cancel.
+    tmux_sendKeys(tmux_session, "sleep 10")
+    tmux_sendEnter(tmux_session)
+    time.sleep(0.2)
     label = f"work-{os.getpid()}"
-    tmux_sendAndSubmit(session, "sleep 10")
-    time.sleep(0.2)
-
-    # Test action: invoke cancelAndSend with label, capture returned log string.
-    log = tmux_cancelAndSend(session, f"echo replaced-{os.getpid()}", label)
-
-    # Test verification: log contains the label.
-    assert label in log, f"label missing from log: {log!r}"
+    # Test action: cancel and send a replacement command with a label.
+    log = tmux_cancelAndSend(tmux_session, f"echo replaced-{os.getpid()}", label)
+    # Test verification: log string contains the label we passed.
+    assert label in log
 
 
 @pytest.mark.live
-def test_tmux_cancelAndSend_actually_cancels_and_delivers_replacement(live_tmux_session):
-    # Scenario: cancelAndSend interrupts the running sleep and the replacement command runs promptly.
-    # Setup: start sleep 10; without working Ctrl-C the replacement echo would queue ~10s.
-    session = live_tmux_session
-    marker = f"replaced-{os.getpid()}"
-    tmux_sendAndSubmit(session, "sleep 10")
+def test_cancelAndSend_withLabel_replacementRunsAfterCancel(tmux_session):
+    # Scenario: The replacement command appears in pane output, proving sleep was cancelled.
+    # Setup: start sleep 10 and cancel it via tmux_cancelAndSend.
+    tag = f"replaced-{os.getpid()}"
+    tmux_sendKeys(tmux_session, "sleep 10")
+    tmux_sendEnter(tmux_session)
     time.sleep(0.2)
-
-    # Test action: cancel-and-send a replacement echo, then wait briefly for output.
-    tmux_cancelAndSend(session, f"echo {marker}", f"work-{os.getpid()}")
+    tmux_cancelAndSend(tmux_session, f"echo {tag}", f"work-{os.getpid()}")
     time.sleep(0.5)
-
-    # Test verification: replacement marker visible in pane (proves sleep was killed).
-    pane = tmux_capturePane(session)
-    assert marker in pane, f"replacement text not visible; cancel may have failed: {pane!r}"
-
-
-@pytest.mark.live
-def test_tmux_cancelAndSend_stays_quiet_without_label(live_tmux_session):
-    # Scenario: when no label is provided, cancelAndSend must not emit the 'cancelled in-progress' log line.
-    # Setup: start a sleep so a real cancellation path is exercised.
-    session = live_tmux_session
-    tmux_sendAndSubmit(session, "sleep 10")
-    time.sleep(0.2)
-
-    # Test action: invoke cancelAndSend with no label argument.
-    log = tmux_cancelAndSend(session, f"echo second-{os.getpid()}")
-
-    # Test verification: log does not contain the 'cancelled in-progress' phrase.
-    assert "cancelled in-progress" not in (log or ""), f"unexpected log emitted: {log!r}"
+    # Test action: capture pane content.
+    content = tmux_capturePane(tmux_session)
+    # Test verification: replacement text visible (fast arrival proves sleep was cancelled).
+    assert tag in content
 
 
 @pytest.mark.live
-def test_tmux_cancelAndSend_delivers_replacement_without_label(live_tmux_session):
-    # Scenario: replacement command is delivered to the pane even when label is omitted.
-    # Setup: start sleep 10 to require cancellation before the echo can run.
-    session = live_tmux_session
-    marker = f"second-{os.getpid()}"
-    tmux_sendAndSubmit(session, "sleep 10")
+def test_cancelAndSend_withoutLabel_logsNothing(tmux_session):
+    # Scenario: tmux_cancelAndSend called without a label does not log a cancellation line.
+    # Setup: start sleep 10.
+    tmux_sendKeys(tmux_session, "sleep 10")
+    tmux_sendEnter(tmux_session)
     time.sleep(0.2)
+    # Test action: cancel without passing a label.
+    log = tmux_cancelAndSend(tmux_session, f"echo second-{os.getpid()}")
+    # Test verification: no "cancelled in-progress" text in returned log.
+    assert "cancelled in-progress" not in log
 
-    # Test action: cancel-and-send with no label, wait for pane to settle.
-    tmux_cancelAndSend(session, f"echo {marker}")
+
+@pytest.mark.live
+def test_cancelAndSend_withoutLabel_replacementRunsAfterCancel(tmux_session):
+    # Scenario: Replacement command appears in pane output even when no label is given.
+    # Setup: start sleep 10, cancel without label.
+    tag = f"second-{os.getpid()}"
+    tmux_sendKeys(tmux_session, "sleep 10")
+    tmux_sendEnter(tmux_session)
+    time.sleep(0.2)
+    tmux_cancelAndSend(tmux_session, f"echo {tag}")
     time.sleep(0.5)
-
-    # Test verification: marker text appears in pane capture.
-    pane = tmux_capturePane(session)
-    assert marker in pane, f"second replacement not visible: {pane!r}"
+    # Test action: capture pane content.
+    content = tmux_capturePane(tmux_session)
+    # Test verification: replacement text visible.
+    assert tag in content
