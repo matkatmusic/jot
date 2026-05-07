@@ -18,7 +18,7 @@ from common.scripts.tmux_lib import (
     tmux_capturePane,
     tmux_sendAndSubmit,
 )
-from common.scripts import util_lib as jot_plugin_orchestrator
+from common.scripts import util_lib as mod
 from common.scripts.util_lib import (
     FileLock,
     LockTimeout,
@@ -105,9 +105,9 @@ def test_terminal_spawnIfNeeded_empty_session_raises_value_error():
 def test_terminal_spawnIfNeeded_skips_spawn_when_clients_attached():
     # Scenario: tmux session already has an attached client.
     # Setup: stub tmux list to return a non-empty client line.
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value="/dev/ttys001 ...\n"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen") as popen, \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "darwin"):
+    with patch.object(mod, "_terminalListTmuxClients", return_value="/dev/ttys001 ...\n"), \
+         patch.object(mod.subprocess, "Popen") as popen, \
+         patch.object(mod.sys, "platform", "darwin"):
         # Test action: call function on darwin.
         rc = terminal_spawnIfNeeded("sess1")
     # Test verification: osascript is not spawned and success is returned.
@@ -120,10 +120,10 @@ def test_terminal_spawnIfNeeded_darwin_spawns_osascript_with_attach_command():
     # Setup: stub list_clients empty, which() finds osascript, mock Popen.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.shutil, "which", return_value="/usr/bin/osascript"), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "darwin"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen", return_value=fake_proc) as popen:
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.shutil, "which", return_value="/usr/bin/osascript"), \
+         patch.object(mod.sys, "platform", "darwin"), \
+         patch.object(mod.subprocess, "Popen", return_value=fake_proc) as popen:
         # Test action: call with default maximize="".
         rc = terminal_spawnIfNeeded("mySess")
     # Test verification: Popen called with osascript; script contains attach command and no maximize block.
@@ -140,10 +140,10 @@ def test_terminal_spawnIfNeeded_darwin_maximize_yes_includes_full_desktop_block(
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.shutil, "which", return_value="/x/osascript"), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "darwin"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen", return_value=fake_proc):
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.shutil, "which", return_value="/x/osascript"), \
+         patch.object(mod.sys, "platform", "darwin"), \
+         patch.object(mod.subprocess, "Popen", return_value=fake_proc):
         # Test action: invoke with maximize="yes".
         terminal_spawnIfNeeded("s", "/dev/null", "tmux", "yes")
     # Test verification: AppleScript stdin contains full-screen bounds assignment.
@@ -157,10 +157,10 @@ def test_terminal_spawnIfNeeded_darwin_maximize_compact_includes_centred_1000x70
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.shutil, "which", return_value="/x/osascript"), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "darwin"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen", return_value=fake_proc):
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.shutil, "which", return_value="/x/osascript"), \
+         patch.object(mod.sys, "platform", "darwin"), \
+         patch.object(mod.subprocess, "Popen", return_value=fake_proc):
         # Test action: invoke with maximize="compact".
         terminal_spawnIfNeeded("s", "/dev/null", "tmux", "compact")
     # Test verification: stdin includes 1000x700 centering math.
@@ -173,10 +173,10 @@ def test_terminal_spawnIfNeeded_darwin_missing_osascript_writes_advisory_and_ret
     # Scenario: darwin host but osascript binary is not on PATH.
     # Setup: which() returns None; real tmp log file.
     log = tmp_path / "spawn.log"
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.shutil, "which", return_value=None), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "darwin"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen") as popen:
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.shutil, "which", return_value=None), \
+         patch.object(mod.sys, "platform", "darwin"), \
+         patch.object(mod.subprocess, "Popen") as popen:
         # Test action: invoke with log_file pointing at tmp file.
         rc = terminal_spawnIfNeeded("abc", str(log), "myprefix")
     # Test verification: Popen never called, advisory line appended.
@@ -191,9 +191,9 @@ def test_terminal_spawnIfNeeded_non_darwin_writes_advisory_and_does_not_spawn(tm
     # Scenario: linux host invokes the spawner.
     # Setup: sys.platform stubbed to linux; real tmp log file.
     log = tmp_path / "spawn.log"
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "linux"), \
-         patch.object(jot_plugin_orchestrator.subprocess, "Popen") as popen:
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.sys, "platform", "linux"), \
+         patch.object(mod.subprocess, "Popen") as popen:
         # Test action: invoke with custom log_prefix.
         rc = terminal_spawnIfNeeded("zzz", str(log), "plate")
     # Test verification: Popen never called, advisory contains non-Darwin.
@@ -208,8 +208,8 @@ def test_terminal_spawnIfNeeded_dev_null_log_does_not_create_file(tmp_path, monk
     # Scenario: caller passes default /dev/null log on non-darwin.
     # Setup: cwd switched to tmp_path so any accidental write would land here.
     monkeypatch.chdir(tmp_path)
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "linux"):
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.sys, "platform", "linux"):
         # Test action: invoke with log_file="/dev/null".
         rc = terminal_spawnIfNeeded("s", "/dev/null", "tmux")
     # Test verification: no spurious files created in cwd; rc 0.
@@ -220,8 +220,8 @@ def test_terminal_spawnIfNeeded_dev_null_log_does_not_create_file(tmp_path, monk
 def test_terminal_spawnIfNeeded_advisory_write_failure_is_swallowed():
     # Scenario: log file path is unwritable.
     # Setup: monkeypatch open() to raise OSError.
-    with patch.object(jot_plugin_orchestrator, "_terminalListTmuxClients", return_value=""), \
-         patch.object(jot_plugin_orchestrator.sys, "platform", "linux"), \
+    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+         patch.object(mod.sys, "platform", "linux"), \
          patch("builtins.open", side_effect=OSError("EACCES")):
         # Test action + verification: function returns 0, no exception escapes.
         assert terminal_spawnIfNeeded("s", "/some/real/path.log", "tmux") == 0
@@ -489,33 +489,6 @@ def test_terminal_launch_before_debate_main() -> None:
     )
 
 
-def _patch_all(
-    pane_content: str = "",
-    *,
-    ready_after: int | None = 0,
-):
-    """Return a context-manager stack that patches all I/O callees.
-
-    ready_after: iteration index (0-based) at which pane shows the ready marker.
-                 None => never shows ready (simulate timeout).
-    """
-    captured_lines: list[str] = []
-    call_count = 0
-
-    def fake_capture(pane_id, scrollback_lines=2000):
-        nonlocal call_count
-        result = _READY if (ready_after is not None and call_count >= ready_after) else ""
-        call_count += 1
-        return result
-
-    return (
-        patch("jot_plugin_orchestrator.tmux_sendAndSubmit"),
-        patch("jot_plugin_orchestrator.tmux_capturePane", side_effect=fake_capture),
-        patch("jot_plugin_orchestrator.debate_writeFailed"),
-        patch("jot_plugin_orchestrator.time_sleep"),
-    )
-
-
 def _write_lock_at_path(lock_path: Path, pane_id: str) -> None:
     """Write a lock file with the canonical debate:<pane_id> format."""
     lock_path.write_text(f"debate:{pane_id}\n")
@@ -581,7 +554,7 @@ def test_returns_true_when_file_appears_during_polling(tmp_path, monkeypatch):
         if calls["n"] == 3:
             target.write_text("ready")
 
-    monkeypatch.setattr("jot_plugin_orchestrator.time.sleep", fake_sleep)
+    monkeypatch.setattr("time.sleep", fake_sleep)
     # Test action: poll with timeout large enough to allow 3 fake sleeps.
     result = shell_waitForFile(str(target), timeout=10, poll_interval=1)
     # Test verification: helper observed the late-arriving file and returned True.

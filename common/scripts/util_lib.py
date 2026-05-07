@@ -192,51 +192,6 @@ def _tail_lines(path: Path, n: int) -> str:
 
 
 
-def _launch_agent(
-    *,
-    pane_id: str,
-    stage: str,
-    agent: str,
-    launch_cmd: str,
-    debate_dir: str,
-) -> bool:
-    """Thin shim; real implementation delegates to the monolith launch_agent.
-
-    Returns True if the agent reached its ready marker within the timeout.
-    In production this is replaced by the real launch_agent; here we import
-    it from the monolith if available.
-    """
-    # Attempt to call the real function if available on sys.modules.
-    try:
-        import jot_plugin_orchestrator as _mono  # type: ignore[import]
-        return bool(
-            _mono.launch_agent(  # type: ignore[attr-defined]
-                pane_id, stage, agent, launch_cmd,
-                _mono.agent_ready_marker(agent),  # type: ignore[attr-defined]
-            )
-        )
-    except (AttributeError, ImportError):
-        return False
-
-
-def _send_prompt(
-    *,
-    pane_id: str,
-    stage: str,
-    agent: str,
-    debate_dir: str,
-) -> bool:
-    """Thin shim; delegates to monolith send_prompt if available."""
-    instructions = f"{debate_dir}/{stage}_instructions_{agent}.txt"
-    try:
-        import jot_plugin_orchestrator as _mono  # type: ignore[import]
-        return bool(
-            _mono.send_prompt(pane_id, stage, agent, instructions)  # type: ignore[attr-defined]
-        )
-    except (AttributeError, ImportError):
-        return False
-
-
 def _launch_terminal_background() -> None:
     """Fire-and-forget: launch Terminal.app via osascript without activating."""
     subprocess.Popen(

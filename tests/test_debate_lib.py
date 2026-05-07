@@ -20,7 +20,6 @@ from common.scripts.util_lib import (
 )
 from tests.test_util_lib import _make_lock
 
-import jot_plugin_orchestrator
 from common.scripts.debate_lib import (
     DebateContext,
     ResumeFeasibility,

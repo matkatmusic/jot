@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch
 
-from common.scripts import todo_lib as jot_plugin_orchestrator
+from common.scripts import todo_lib as mod
 from common.scripts.todo_lib import (
     todoList_main,
     todo_launcher,
@@ -46,9 +46,8 @@ from common.scripts.git_lib import (
 )
 from common.scripts.util_lib import FileLock, terminal_spawnIfNeeded
 
-# Bind module aliases used throughout the test bodies.
-mod = jot_plugin_orchestrator
-sut = jot_plugin_orchestrator
+# Bind module alias used throughout the test bodies.
+sut = mod
 
 
 def test_todo_launcher_success(monkeypatch, tmp_path):
@@ -88,7 +87,7 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
         return MockResult()
         
     monkeypatch.setattr(subprocess, "run", mock_run)
-    monkeypatch.setattr(jot_plugin_orchestrator.subprocess, "run", mock_run)
+    monkeypatch.setattr(mod.subprocess, "run", mock_run)
     
     monkeypatch.setattr("common.scripts.todo_lib.claude_seedPermissions", lambda *args: calls.append(["claude_seedPermissions"]))
     monkeypatch.setattr("common.scripts.todo_lib.claude_buildCmd", lambda *args: "mock claude cmd")
@@ -111,7 +110,7 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
     monkeypatch.setattr("common.scripts.todo_lib.terminal_spawnIfNeeded", lambda *args: calls.append(["terminal_spawnIfNeeded"]))
     
     # Test action:
-    result = jot_plugin_orchestrator.todo_launcher(session_id, idea, str(pending_file))
+    result = mod.todo_launcher(session_id, idea, str(pending_file))
 
     # Test verification:
     assert result == 0

@@ -40,8 +40,6 @@ from common.scripts.tmux_lib import (
     tmux_splitWorkerPane,
 )
 from common.scripts.util_lib import (
-    _launch_agent,
-    _send_prompt,
     _slugify,
     shell_waitForFile,
     terminal_spawnIfNeeded,
@@ -1539,6 +1537,36 @@ def debate_sendPromptToAgent(
     )
     debate_writeFailed(stage, f"send_prompt timeout for {agent} after 30s")
     return 1
+
+
+def _launch_agent(
+    *,
+    pane_id: str,
+    stage: str,
+    agent: str,
+    launch_cmd: str,
+    debate_dir: str,
+) -> bool:
+    return debate_launchAgent(
+        pane_id=pane_id,
+        stage=stage,
+        agent=agent,
+        launch_cmd=launch_cmd,
+        ready_marker=debate_agentReadyMarker(agent),
+        debate_dir=debate_dir,
+    )
+
+
+def _send_prompt(
+    *,
+    pane_id: str,
+    stage: str,
+    agent: str,
+    debate_dir: str,
+) -> bool:
+    instructions = f"{debate_dir}/{stage}_instructions_{agent}.txt"
+    return debate_sendPromptToAgent(pane_id, stage, agent, instructions) == 0
+
 
 def debate_probeGemini() -> str:
     """Probe whether the gemini agent is usable; return model name or "".

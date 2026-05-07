@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import jot_plugin_orchestrator as _orchestrator
 from jot_plugin_orchestrator import dispatch_main
-from common.scripts import jot_lib as jot_plugin_orchestrator
+from common.scripts import jot_lib as mod
 from common.scripts.jot_lib import (
     jot_buildClaudeCmd,
     jot_collectDiagnostics,
@@ -42,10 +42,6 @@ from common.scripts.tmux_lib import (
 )
 from common.scripts.todo_lib import todoList_main
 from common.scripts.util_lib import FileLock, LockTimeout, terminal_spawnIfNeeded
-
-# Bind module alias used throughout the test bodies.
-mod = jot_plugin_orchestrator
-
 
 # --- jot_initState ---
 
@@ -547,10 +543,10 @@ def _phase2_patches(tmp_path: Path):
     return {
         "tmpdir_inv": tmpdir_inv,
         "lock_obj": lock_obj,
-        "file_lock": patch.object(jot_plugin_orchestrator, "FileLock", return_value=lock_obj),
-        "state_init": patch.object(jot_plugin_orchestrator, "jot_initState"),
+        "file_lock": patch.object(mod, "FileLock", return_value=lock_obj),
+        "state_init": patch.object(mod, "jot_initState"),
         "build_cmd": patch.object(
-            jot_plugin_orchestrator,
+            mod,
             "jot_buildClaudeCmd",
             return_value={
                 "TMPDIR_INV": str(tmpdir_inv),
@@ -558,11 +554,11 @@ def _phase2_patches(tmp_path: Path):
                 "CLAUDE_CMD": "claude --foo",
             },
         ),
-        "ensure": patch.object(jot_plugin_orchestrator, "tmux_ensureSession", return_value=0),
-        "split": patch.object(jot_plugin_orchestrator, "tmux_splitWorkerPane", return_value="%42"),
-        "title": patch.object(jot_plugin_orchestrator, "tmux_setPaneTitle", return_value=0),
-        "retile": patch.object(jot_plugin_orchestrator, "tmux_retile", return_value=0),
-        "spawn": patch.object(jot_plugin_orchestrator, "terminal_spawnIfNeeded", return_value=0),
+        "ensure": patch.object(mod, "tmux_ensureSession", return_value=0),
+        "split": patch.object(mod, "tmux_splitWorkerPane", return_value="%42"),
+        "title": patch.object(mod, "tmux_setPaneTitle", return_value=0),
+        "retile": patch.object(mod, "tmux_retile", return_value=0),
+        "spawn": patch.object(mod, "terminal_spawnIfNeeded", return_value=0),
     }
 
 
@@ -616,10 +612,10 @@ def test_jot_launchPhase2Window_acquires_global_tmux_lock_with_10s_timeout(phase
 def test_jot_launchPhase2Window_returns_1_if_lock_acquire_times_out(phase2_env):
     # Scenario: lock contention prevents tmux launch.
     # Setup: FileLock construction raises LockTimeout.
-    with patch.object(jot_plugin_orchestrator, "FileLock", side_effect=LockTimeout), \
-         patch.object(jot_plugin_orchestrator, "tmux_ensureSession") as ensure, \
-         patch.object(jot_plugin_orchestrator, "tmux_splitWorkerPane") as split, \
-         patch.object(jot_plugin_orchestrator, "jot_buildClaudeCmd") as build_cmd:
+    with patch.object(mod, "FileLock", side_effect=LockTimeout), \
+         patch.object(mod, "tmux_ensureSession") as ensure, \
+         patch.object(mod, "tmux_splitWorkerPane") as split, \
+         patch.object(mod, "jot_buildClaudeCmd") as build_cmd:
         # Test action: launch phase 2.
         rc = jot_launchPhase2Window()
     # Test verification: returns failure and does not reach tmux/build calls.
@@ -918,7 +914,7 @@ def test_jot_stop_missingArgsReturnsZeroAndLogsToStderr(capsys):
 def test_jot_stop_emptySidecarRetriesThenReturnsZero(jot_dirs, capsys, monkeypatch):
     # Scenario: tmux_target sidecar never gets written (split-window failed).
     # Setup: leave tmpdir_inv empty; stub time.sleep so retries are instant.
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda _s: None)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
     # Test action: call jot_stop; sidecar reader will exhaust retries.
     rc = jot_stop(
         str(jot_dirs["input_file"]),

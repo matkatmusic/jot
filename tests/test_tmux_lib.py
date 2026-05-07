@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 from unittest.mock import call, patch
 
-import jot_plugin_orchestrator
 from common.scripts import tmux_lib as _tmux_lib_mod
 from common.scripts.tmux_lib import (
     tmux_cancelAndSend,
@@ -53,7 +52,7 @@ from common.scripts.hookjson_lib import hookjson_checkRequirements
 from common.scripts.jot_lib import jot_main
 
 # Bind module alias used throughout the test bodies.
-mod = jot_plugin_orchestrator
+mod = _tmux_lib_mod
 
 
 def _stdin(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
@@ -1212,7 +1211,7 @@ def test_tmux_sendAndSubmit_calls_sendKeys_then_sendEnter_with_same_target(monke
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendEnter",
                         lambda p: calls.append(("sendEnter", p)) or 0)
     # Setup: stub sleep to avoid real delay.
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     tmux_sendAndSubmit("sess:0.1", "hello")
     # Test verification: order and shared pane_target.
@@ -1223,7 +1222,7 @@ def test_tmux_sendAndSubmit_returns_zero_when_both_sends_succeed(monkeypatch):
     # Scenario: both sub-calls return 0; function returns 0.
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendKeys", lambda p, t: 0)
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendEnter", lambda p: 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action + verification: rc 0 on full success.
     assert tmux_sendAndSubmit("p", "x") == 0
 
@@ -1236,7 +1235,7 @@ def test_tmux_sendAndSubmit_short_circuits_when_sendKeys_fails(monkeypatch):
     # Setup: sendEnter records if called (it must not be).
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendEnter",
                         lambda p: enter_calls.append(p) or 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     rc = tmux_sendAndSubmit("p", "x")
     # Test verification: short-circuit rc propagation.
@@ -1250,7 +1249,7 @@ def test_tmux_sendAndSubmit_returns_sendEnter_rc_when_only_sendEnter_fails(monke
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendKeys", lambda p, t: 0)
     # Setup: sendEnter returns failure rc 3.
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendEnter", lambda p: 3)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action + verification: rc equals sendEnter's rc.
     assert tmux_sendAndSubmit("p", "x") == 3
 
@@ -1262,7 +1261,7 @@ def test_tmux_sendAndSubmit_sleeps_between_sendKeys_and_sendEnter(monkeypatch):
                         lambda p, t: events.append("sendKeys") or 0)
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendEnter",
                         lambda p: events.append("sendEnter") or 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep",
+    monkeypatch.setattr("time.sleep",
                         lambda s: events.append(("sleep", s)))
     # Test action.
     tmux_sendAndSubmit("p", "x")
@@ -1286,7 +1285,7 @@ def test_tmux_cancelAndSend_stops_retrying_once_marker_seen(monkeypatch):
                         lambda p, scrollback_lines=None: next(cap_iter))
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit",
                         lambda p, t: submit_calls.append((p, t)) or 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     rc = tmux_cancelAndSend("pane0", "echo replaced", "work-1")
     # Test verification: 2 Ctrl-Cs + 1 submit + rc 0.
@@ -1305,7 +1304,7 @@ def test_tmux_cancelAndSend_caps_at_five_attempts_and_still_submits(monkeypatch)
                         lambda p, scrollback_lines=None: "busy")
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit",
                         lambda p, t: submit_calls.append((p, t)) or 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     rc = tmux_cancelAndSend("p", "cmd")
     # Test verification: 5 Ctrl-Cs, 1 submit, rc 0.
@@ -1320,7 +1319,7 @@ def test_tmux_cancelAndSend_returns_rc_from_final_send(monkeypatch):
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda p, scrollback_lines=None: "Ctrl-C")
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit", lambda p, t: 2)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action + verification.
     assert tmux_cancelAndSend("p", "x") == 2
 
@@ -1332,7 +1331,7 @@ def test_tmux_cancelAndSend_logs_label_when_retry_needed(monkeypatch, capsys):
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda p, scrollback_lines=None: next(cap_iter))
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit", lambda p, t: 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     tmux_cancelAndSend("p", "x", "work-99")
     # Test verification: label and "Ctrl-C" appear on stdout.
@@ -1347,7 +1346,7 @@ def test_tmux_cancelAndSend_omits_log_when_first_attempt_succeeds(monkeypatch, c
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda p, scrollback_lines=None: "Ctrl-C done")
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_sendAndSubmit", lambda p, t: 0)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     tmux_cancelAndSend("p", "x", "work-42")
     # Test verification: log suppressed.
@@ -1428,7 +1427,7 @@ def test_tmux_waitForClaudeReadiness_returns_zero_when_glyph_present_immediately
     sleep_calls = []
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda pid, lines=None: f"banner\n{_READY_GLYPH} ready\n")
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep",
+    monkeypatch.setattr("time.sleep",
                         lambda s: sleep_calls.append(s))
     # Test action.
     rc = tmux_waitForClaudeReadiness("%42", timeout=1)
@@ -1442,7 +1441,7 @@ def test_tmux_waitForClaudeReadiness_returns_one_on_timeout_and_logs_stderr(monk
     sleep_calls = []
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda pid, lines=None: "still loading")
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep",
+    monkeypatch.setattr("time.sleep",
                         lambda s: sleep_calls.append(s))
     # Test action.
     rc = tmux_waitForClaudeReadiness("%7", timeout=2)
@@ -1461,7 +1460,7 @@ def test_tmux_waitForClaudeReadiness_polls_until_ready(monkeypatch):
     sleep_count = {"n": 0}
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane",
                         lambda pid, lines=None: next(seq))
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep",
+    monkeypatch.setattr("time.sleep",
                         lambda s: sleep_count.__setitem__("n", sleep_count["n"] + 1))
     # Test action.
     rc = tmux_waitForClaudeReadiness("%1", timeout=5)
@@ -1479,7 +1478,7 @@ def test_tmux_waitForClaudeReadiness_swallows_capture_errors(monkeypatch):
             raise RuntimeError("transient")
         return _READY_GLYPH
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane", fake_capture)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action + verification.
     assert tmux_waitForClaudeReadiness("%9", timeout=2) == 0
     assert calls["n"] == 2
@@ -1492,7 +1491,7 @@ def test_tmux_waitForClaudeReadiness_default_timeout_is_ten_seconds(monkeypatch)
         attempts["n"] += 1
         return ""
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane", fake_capture)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     rc = tmux_waitForClaudeReadiness("%2")
     # Test verification.
@@ -1507,7 +1506,7 @@ def test_tmux_waitForClaudeReadiness_passes_pane_id_and_five_line_window(monkeyp
         seen.append((pid, lines))
         return _READY_GLYPH
     monkeypatch.setattr("common.scripts.tmux_lib.tmux_capturePane", fake_capture)
-    monkeypatch.setattr(jot_plugin_orchestrator.time, "sleep", lambda s: None)
+    monkeypatch.setattr("time.sleep", lambda s: None)
     # Test action.
     tmux_waitForClaudeReadiness("%55", timeout=1)
     # Test verification.
@@ -1644,7 +1643,7 @@ def test_tmux_too_old_emits_block(
     monkeypatch.setattr("common.scripts.jot_lib.tmux_requireVersion", lambda _m: 1)
     _stdin(monkeypatch, json.dumps({"prompt": "/jot something"}))
     # Test action: invoke.
-    rc = mod.jot_main()
+    rc = jot_main()
     out = capsys.readouterr().out
     # Test verification: rc=0 + tmux block.
     assert rc == 0
