@@ -1078,10 +1078,10 @@ def test_plate_recycle_no_branch(tmp_path: Path, capsys):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_recycle_no_branch_warns_and_exits(repo, capsys)
 
-def test_plate_done_conflict(tmp_path: Path, capsys):
-    """Per-function: plate_done's cherry-pick conflict aborts cleanly."""
+def test_plate_done_resolves_content_conflict_in_plate_favor(tmp_path: Path, capsys):
+    """Per-function: plate_done auto-resolves content conflicts in plate's favor."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    _check_plate_done_conflict_aborts_and_restores(repo, capsys)
+    _check_plate_done_resolves_content_conflict_in_plate_favor(repo, capsys)
 
 def test_drop_patch_cross_repo_portability(tmp_path: Path):
     """Per-function: drop patch from repoA applies in a separate repoB."""
@@ -1150,7 +1150,7 @@ def test_setup_repo_checks_out_non_main_branch(repo: Path) -> None:
 
 def test_setup_repo_branch_name_is_varied(tmp_path: Path) -> None:
     """Two fresh repos in succession should pick different branch names."""
-    from plate_lib import setup_repo
+    from plate_lib import setup_git_plate_test_repo as setup_repo
 
     seen = set()
     for i in range(10):
@@ -1241,7 +1241,7 @@ def test_performRandomEdit_seeded_is_deterministic(repo: Path, tmp_path: Path) -
     """Same seed → same action."""
     a = performRandomEdit(repo, seed=12345)
     # Reset by setting up a parallel repo from the same fixture base
-    from plate_lib import setup_repo
+    from plate_lib import setup_git_plate_test_repo as setup_repo
 
     other = setup_repo(tmp_path / "other")
     b = performRandomEdit(other, seed=12345)
@@ -1517,19 +1517,20 @@ def test_sequence_17_plate_recycle_with_no_trashed_session_warns_and_exits(
     _check_plate_recycle_no_branch_warns_and_exits(repo, capsys)
 
 
-def test_sequence_18_plate_done_aborts_cleanly_on_cherry_pick_conflict(
+def test_sequence_18_plate_done_resolves_content_conflict_in_plate_favor(
     repo: Path, capsys
 ) -> None:
     # 1. User edits a tracked file and plate_pushes (P1 captures "plate
     #    version").
-    # 2. User resets WT and commits a CONFLICTING edit ("branch version")
-    #    on the working branch HEAD — the same line is now divergent.
-    # 3. User runs plate_done(repo). Cherry-pick conflicts on the shared
-    #    line.
-    # 4. plate_done aborts the cherry-pick, restores HEAD/WT to pre-call
-    #    state, preserves <branch>-plate so the original plate tip is
-    #    still reachable, and warns on stderr. No CHERRY_PICK_HEAD lingers.
-    _check_plate_done_conflict_aborts_and_restores(repo, capsys)
+    # 2. User resets WT and commits a parent-branch edit ("branch version")
+    #    on the working branch HEAD that overlaps the same line.
+    # 3. User runs plate_done(repo). Cherry-pick uses -X theirs, so the
+    #    plate's version wins the content overlap.
+    # 4. plate_done advances HEAD with the plate commit applied on top,
+    #    deletes <branch>-plate, leaves no CHERRY_PICK_HEAD, emits no
+    #    conflict warning. The plate tip's working state is preserved
+    #    because it represents the verified, tested code state.
+    _check_plate_done_resolves_content_conflict_in_plate_favor(repo, capsys)
 
 
 def test_sequence_19_drop_patch_is_portable_across_repos(tmp_path: Path) -> None:

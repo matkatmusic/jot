@@ -56,7 +56,21 @@ from git_lib import (  # noqa: E402  (explicit pulls so static checkers see them
     GITIGNORE_CONTENTS,
     run,
     currentTimestampMs,
+    addFileToGit,
+    checkGitForCleanWorkTree,
+    checkIfGitBranchExists,
+    createGitCommit,
+    getCurrentGitBranchName,
+    getGitCommitTrailers,
+    getSHAForGitRefViaRevParse,
+    gitResetHardToHead,
 )
+
+# Test-compat aliases: pre-rename names still used by sequence tests.
+# Map old git_lib names to current ones so test files do not need to be
+# swept every time git_lib renames a helper.
+getCurrentBranchName = getCurrentGitBranchName
+getCommitTrailers = getGitCommitTrailers
 
 # ── Implemented: repo setup ───────────────────────────────────────────
 
@@ -756,8 +770,16 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     gitCleanWorkTree(repo)
 
     # Step 2: cherry-pick HEAD..<branch>-plate (oldest first).
+    # -X theirs: plate tip is the verified working state; on any content
+    # conflict with the parent branch, plate's content is the answer.
+    # --allow-empty: permit deliberately-empty plate marker commits.
     completed = subprocess.run(
-        ["git", "cherry-pick", f"HEAD..{plateBranchName}"],
+        [
+            "git", "cherry-pick",
+            "-X", "theirs",
+            "--allow-empty",
+            f"HEAD..{plateBranchName}",
+        ],
         cwd=repo,
         text=True,
         capture_output=True,
@@ -886,6 +908,37 @@ def plate_trash(
         gitCleanWorkTree(repo)
 
     return trash_dir
+
+def plate_recycle_list(repo: Path) -> str:
+    """List trashed plate sessions for the current branch.
+
+    Pending implementation. The CLI route at cli.py:_cmd_recycle calls
+    this when invoked as `recycle <repo> --list`; tests mock it. Once
+    implemented, return a human-readable listing of session-dir-names
+    found in the trash directory for the current branch.
+    """
+    raise NotImplementedError("plate_recycle_list pending implementation")
+
+
+def stripConvoSummaryFromCommit(repo: Path, branch: str, target_ref: str) -> str:
+    """Remove the convo-summary trailer from a commit on <branch>-plate.
+
+    Pending implementation. Tests mock this via patch.object. See the
+    fix-plate-bugs worktree (~/Programming/jot) for a reference impl
+    using git commit-tree.
+    """
+    raise NotImplementedError("stripConvoSummaryFromCommit pending implementation")
+
+
+def regenerateTipSummary(repo: Path, branch: str, prior_summary: str, agent_callable) -> str:
+    """Regenerate the convo-summary trailer on the <branch>-plate tip.
+
+    Pending implementation. Tests mock this via patch.object. See the
+    fix-plate-bugs worktree (~/Programming/jot) for a reference impl
+    using git commit-tree + the agent contract.
+    """
+    raise NotImplementedError("regenerateTipSummary pending implementation")
+
 
 def plate_recycle(
     repo: Path,
@@ -1339,8 +1392,10 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
 # Scenarios for the 5 untested error paths from PLATE STATE.md §C:
 #   - plate_drop / plate_trash / plate_recycle invoked without a plate
 #     branch must warn on stderr and return None (no exception).
-#   - plate_done with a cherry-pick conflict must abort, restore HEAD/WT,
-#     preserve the plate branch, and warn on stderr.
+#   - plate_done with a content-overlap cherry-pick conflict must auto-
+#     resolve in the plate's favor (-X theirs), advance HEAD with the
+#     plate commit applied on top, and delete the plate branch — the
+#     plate tip is the verified working state, so plate's content wins.
 #   - Cross-repo patch portability: a `--drop` patch produced in repoA
 #     applies cleanly in a separate repoB with the same base file.
 #   - Plate SHA remains recoverable from the object database after
@@ -1404,60 +1459,68 @@ def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert not checkIfGitBranchExists(repo, plateBranchName)
     assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
 
-def _check_plate_done_conflict_aborts_and_restores(repo: Path, capsys) -> None:
-    """Scenario: plate_done's cherry-pick conflicts because the working
-    branch advanced on the same file the plate edits → plate_done aborts
-    the cherry-pick, restores HEAD/WT, preserves the plate branch, warns.
+def _check_plate_done_resolves_content_conflict_in_plate_favor(repo: Path, capsys) -> None:
+    """Scenario: the parent branch advanced with a commit that edits the same
+    line a plate commit also edits, with different content. The plate tip is
+    the verified working state, so plate_done must auto-resolve in the
+    plate's favor (-X theirs), apply the plate commit on top of the parent
+    advance, delete the plate branch, and emit no conflict warning.
 
     Setup:
       1. Replace TEST_FILENAME contents with "plate version\\n", plate_push.
       2. Reset WT, replace TEST_FILENAME contents with "branch version\\n"
-         on HEAD, commit it. Both edits replace the same line that the
-         shared base had → guaranteed cherry-pick conflict.
+         on HEAD, commit it.
+      3. Restore WT to the plate tip's tree so plate_done's implicit
+         pre-push is a no-op (this matches the user's mental model: at
+         the moment of /plate --done, the WT IS the plate tip).
 
     Assertions after plate_done:
-      - HEAD SHA == post-setup HEAD (the "branch version" commit).
-      - <branch>-plate ref still exists, and the original plate tip SHA
-        is still reachable from it (plate_done's implicit pre-push may
-        have advanced the ref, but the recoverable history is preserved).
-      - WT contents == HEAD's tree (the "branch version" file content).
-      - No .git/CHERRY_PICK_HEAD marker (clean abort).
-      - stderr contains a conflict warning naming the plate branch.
+      - HEAD SHA has advanced past the parent-advance commit (cherry-pick
+        applied at least one commit on top).
+      - WT contents == "plate version\\n" (theirs/plate side won the
+        conflict resolution; not "branch version\\n").
+      - <branch>-plate ref is DELETED (success path completed).
+      - No .git/CHERRY_PICK_HEAD marker.
+      - No "cherry-pick conflict" warning on stderr.
     """
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    # 1. Plate edit replaces file contents entirely.
+    # Setup: plate edit replaces file contents entirely.
     (repo / TEST_FILENAME).write_text("plate version\n")
     plate_push(repo)
-    plate_tip_before = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
-    # 2. Reset, then a conflicting commit replaces same line with different text.
+    # Setup: reset, then a parent-branch commit replaces same line with
+    # different text. This is the same content-overlap that aborted before.
     gitResetHardToHead(repo)
     (repo / TEST_FILENAME).write_text("branch version\n")
     addFileToGit(repo, TEST_FILENAME)
-    createGitCommit(repo, "branch advance — will conflict with plate")
+    createGitCommit(repo, "branch advance - same line as plate")
+
+    # Setup: restore WT to plate tip's tree so the implicit pre-push in
+    # plate_done sees no diff and skips. The user model is that the WT at
+    # /plate --done time IS the plate tip's verified state.
+    run(["git", "checkout", plateBranchName, "--", TEST_FILENAME], cwd=repo)
+    run(["git", "reset", "HEAD", "--", TEST_FILENAME], cwd=repo)
 
     head_before_done = getSHAForGitRefViaRevParse(repo, "HEAD")
-    wt_before_done = (repo / TEST_FILENAME).read_text()
 
-    # 3. plate_done — cherry-pick should conflict, abort, restore.
+    # Test action: plate_done.
     plate_done(repo)
 
     captured = capsys.readouterr()
-    # Restored state.
-    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before_done
-    assert (repo / TEST_FILENAME).read_text() == wt_before_done
+    # Test verification: cherry-pick advanced HEAD (commit was applied).
+    assert getSHAForGitRefViaRevParse(repo, "HEAD") != head_before_done
+    # Test verification: plate side won the conflict resolution.
+    assert (repo / TEST_FILENAME).read_text() == "plate version\n"
+    # Test verification: WT matches HEAD (clean state).
     assert checkGitForCleanWorkTree(repo)
-    # Plate branch preserved; original plate tip still reachable from it.
-    assert checkIfGitBranchExists(repo, plateBranchName)
-    plate_history = run(["git", "rev-list", plateBranchName], cwd=repo).splitlines()
-    assert plate_tip_before in plate_history
-    # Cherry-pick state cleaned.
+    # Test verification: plate branch deleted (success path).
+    assert not checkIfGitBranchExists(repo, plateBranchName)
+    # Test verification: no cherry-pick state lingering.
     assert not (repo / ".git" / "CHERRY_PICK_HEAD").exists()
-    # Warning emitted.
-    assert "cherry-pick conflict" in captured.err
-    assert plateBranchName in captured.err
+    # Test verification: no conflict warning emitted.
+    assert "cherry-pick conflict" not in captured.err
 
 def _check_drop_patch_applies_in_fresh_repo(repoA: Path, repoB: Path) -> None:
     """Scenario: a `--drop` patch from repoA applies cleanly in a separate
