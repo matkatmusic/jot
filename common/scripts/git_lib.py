@@ -149,7 +149,7 @@ def gitStashFiles(repo: Path, files: list[str]) -> None:
     Uses `git stash push -u --` so that untracked files in <files> are
     included in the stash. After the call, the named files are gone from
     the WT and saved on the top of the stash stack (stash@{0}). Use
-    unstashFiles() to restore them.
+    gitUnstashFiles() to restore them.
     """
     run(["git", "stash", "push", "-u", QUIET_OUTPUT, "--"] + files, cwd=repo)
 

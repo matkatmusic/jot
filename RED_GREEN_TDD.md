@@ -104,7 +104,7 @@ def test_verify_commit_summary_is_updated_on_new_commit(tmp_path: Path):
     convo_B_trailers = CommitTrailers(convo_id="B", convo_summary="B summary")
     git_createCommit(repo, message="B", trailers= convo_B_trailers)
     # The test should detect that the convo-id A commit has a 'convo-summary' message. 
-    result = git_getCommitTrailers(repo)
+    result = git_getGitCommitTrailers(repo)
     assert result == convo_A_trailers
     # The test should then run the function to remove the convo-summary from that commit.  
     result = git_removeConvoSummaryFromCommit(repo)
@@ -127,38 +127,38 @@ It is better to have lots of tiny tests than one giant test that tries to do too
 
 for example, consider the following two functions: 
 ```py
-def setUserConfigValue(repo: Path, config_key: str, config_value: str) -> None:
+def setGitUserConfigValue(repo: Path, config_key: str, config_value: str) -> None:
     run(["git", "config", config_key, config_value], cwd=repo)
 
-def getUserConfigValue(repo: Path, config_key: str) -> str:
+def getGitUserConfigValue(repo: Path, config_key: str) -> str:
     return run(["git", "config", config_key], cwd=repo)
 ```
 
 The following example test is Bad because it tests two different behaviors at once: 
 
 ```py
-def test_setAndGetUserConfigValues(repo: Path): 
+def test_setAndgetGitUserConfigValues(repo: Path): 
     # Test: verify setting and getting User Config values in a repo works correctly. 
     # Setup: create an empty repo
     repo = makeEmptyRepo(path=tmp_path) 
     # set the default user email used for commits
-    setUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
+    setGitUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
     # set the default user name used for commits
-    setUserConfigValue(repo, USER_NAME_KEY, USER_NAME_VALUE)
+    setGitUserConfigValue(repo, USER_NAME_KEY, USER_NAME_VALUE)
     # make sure the default user email used for commits is correct
-    assert getUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
+    assert getGitUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
     # make sure the default user name used for commits is correct
-    assert getUserConfigValue(repo, USER_NAME_KEY) == USER_NAME_VALUE
+    assert getGitUserConfigValue(repo, USER_NAME_KEY) == USER_NAME_VALUE
 ```
 
 The following example test is Good because it only tests a single behavior:
 ```py
-def test_setUserConfigValue(tmp_path: Path):
+def test_setGitUserConfigValue(tmp_path: Path):
     # Test: verify setting and getting User Config values in a repo works correctly.
     # setup: create an empty repo
     repo = makeEmptyRepo(path=tmp_path)
     # Test action: set the default user email used for commits
-    setUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
+    setGitUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
     # Test verification: make sure the singular value we set was set correctly.
-    assert getUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
+    assert getGitUserConfigValue(repo, USER_EMAIL_KEY) == USER_EMAIL_VALUE
 ```

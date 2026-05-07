@@ -141,12 +141,12 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 - **Git refuses to checkout a branch that would clobber untracked
   files**. To inspect a plate branch's contents without disturbing WT,
   use `git ls-tree -r --name-only <branch>` instead of checking it out.
-- **Unborn HEAD**: `branchExists(repo, "main")` returns `False` until
+- **Unborn HEAD**: `checkIfGitBranchExists(repo, "main")` returns `False` until
   the first commit, even though `git symbolic-ref` returns `"main"`.
 - **Git trailers are single-line by spec**. `convo_summary` input is
   collapsed via `" ".join(text.split())`.
 - **`git reset --hard <sha>` preserves untracked files**. Use
-  `cleanWorkTree(repo)` (`git clean -fd`) to actually start fresh —
+  `gitCleanWorkTree(repo)` (`git clean -fd`) to actually start fresh —
   but it skips ignored paths (e.g., `.plate/`), which is what we want.
 - **Title resolution precedence in `plate_next` listing**: live
   transcript `customTitle` → `convo-name` trailer → parent-branch name
