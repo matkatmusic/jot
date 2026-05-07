@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_ORCHESTRATOR = _REPO_ROOT / "skills" / "plate" / "scripts" / "plate-orchestrator.sh"
+_ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot-plugin-orchestrator.sh"
 
 
 def _run_hook(prompt: str, repo_path: Path, session_id: str = "test-sess",

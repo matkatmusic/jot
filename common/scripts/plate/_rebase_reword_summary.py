@@ -51,7 +51,7 @@ def _format_trailer_body(text: str) -> str:
     `open questions:` `next steps:`) render on their own lines when the
     user runs `git log -1 --format='%(trailers)'`.
 
-    `getCommitTrailers` reads with `unfold=true`, which collapses these
+    `getGitCommitTrailers` reads with `unfold=true`, which collapses these
     continuation lines back to a single space-joined string for
     code paths that want the flat form (preserves the existing test
     contract).
@@ -196,8 +196,13 @@ def _do_message(commit_msg_path: Path, tip_sha: str, summary_file: Path,
     on_tip = _is_tip_commit(original)
     if on_tip:
         # Tip commit: parse the agent's payload, replace subject, append
-        # the body as the new convo-summary trailer.
+        # the body as the new convo-summary trailer. Single-line payloads
+        # (no blank-line separator) are treated as body-only so callers
+        # passing just summary text still land a trailer.
         subject, body = _parse_payload(summary_file.read_text())
+        if subject and not body:
+            body = subject
+            subject = ""
         with_new_subject = _replace_subject(stripped, subject) if subject else stripped
         new = _append_summary_trailer(with_new_subject, body) if body else with_new_subject
         if not new.endswith("\n"):

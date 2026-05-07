@@ -2,7 +2,7 @@
 
 Plate operations (all implemented):
     plate_push, plate_done, plate_drop, plate_trash, plate_recycle,
-    plate_next, simulate_derived_agent, apply_patch
+    plate_next, simulate_derived_agent, applyGitPatch
 
 `plate_push` writes commit trailers — `parent-branch` always; `convo-id`,
 `convo-name`, `convo-summary` when the matching kwarg is non-None.
@@ -16,10 +16,10 @@ Listing / formatting helpers:
 
 Repo / commit utilities:
     setup_repo, makeTestRepoWithSingleCommit, performRandomEdit,
-    getCurrentBranchName, branchExists, countCommitsReachableFromRef,
-    getTreeSHA, getGitStatus, checkForCleanWorkTree, getCommitSubject,
-    getCommitTrailers, saveChangesToPatch, resetHardToHead,
-    cleanWorkTree, deleteBranchForce, makeTempGitIndexPath, ...
+    getCurrentGitBranchName, checkIfGitBranchExists, countGitCommitsReachableFromRef,
+    getGitTreeSHA, getGitStatus, checkGitForCleanWorkTree, getGitCommitSubject,
+    getGitCommitTrailers, saveChangesToGitPatch, gitResetHardToHead,
+    gitCleanWorkTree, deleteGitBranchByForce, makeTempGitIndexPath, ...
 
 See `skills/plate/PLATE STATE.md` for the operational gap analysis and
 `plans/plate-walkthrough-log-2026-04-28.md` for the canonical sequences.
@@ -64,13 +64,32 @@ from git_lib import (  # noqa: E402  (explicit pulls so static checkers see them
     getGitCommitTrailers,
     getSHAForGitRefViaRevParse,
     gitResetHardToHead,
+    countGitCommitsReachableFromRef,
 )
 
 # Test-compat aliases: pre-rename names still used by sequence tests.
 # Map old git_lib names to current ones so test files do not need to be
 # swept every time git_lib renames a helper.
-getCurrentBranchName = getCurrentGitBranchName
-getCommitTrailers = getGitCommitTrailers
+from git_lib import (  # noqa: E402
+    setGitUserConfigValue,
+    getGitUserConfigValue,
+    createGitUserConfig,
+    createGitBranch,
+    createAndCheckoutGitBranch,
+    checkOutGitBranch,
+    getGitTreeRevOf,
+    getGitTreeSHA,
+    getGitCommitSubject,
+    gitCleanWorkTree,
+    deleteGitBranchByForce,
+    saveChangesToGitPatch,
+    checkGitForCleanWorkTree,
+    gitStashFiles,
+    gitUnstashFiles,
+    stageAllGitChanges,
+    createGitCommit,
+    getGitBranchList,
+)
 
 # ── Implemented: repo setup ───────────────────────────────────────────
 
@@ -170,7 +189,7 @@ def setup_git_plate_test_repo(base: Path) -> Path:
         <random>:   B - F1   (checked out, clean WT)
 
     The non-main branch name is randomized per call to mimic real-world
-    variance. Tests should query it via getCurrentBranchName(repo) rather
+    variance. Tests should query it via getCurrentGitBranchName(repo) rather
     than hardcoding a value.
 
     Files:
@@ -233,6 +252,50 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
 # ── Implemented: assertion utilities ──────────────────────────────────
 
 # ── Helpers used by the plate operations ─────────────────────────────
+
+def setup_repo(base: Path) -> Path:
+    """Create a fresh git repo at base/repo and return its path.
+
+    Topology:
+        main:      A         (root commit)
+                   \\
+        <random>:   B - F1   (checked out, clean WT)
+
+    The non-main branch name is randomized per call to mimic real-world
+    variance. Tests should query it via getCurrentBranchName(repo) rather
+    than hardcoding a value.
+
+    Files:
+        a.txt   on main,           content "A"
+        b.txt   on <random branch>, content "B"
+        fix.txt on <random branch>, content "F1"
+    """
+    repo = makeEmptyRepo(path=base)
+    createGitUserConfig(repo)
+
+    # main: commit A — also stages .gitignore so .plate/ is ignored
+    # and survives `git clean -fd` during plate_trash(clean_wt=True).
+    writeGitIgnore(repo)
+    addFileToGit(repo, ".gitignore")
+    (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
+    addFileToGit(repo, TEST_FILENAME)
+    createGitCommit(repo=repo, message="A")
+
+    # randomly-named branch off main, with B and F1 commits
+    branch_name = createRandomBranchName()
+    createGitBranch(repo, branch_name)
+    checkOutGitBranch(repo=repo, branch_name=branch_name)
+    
+    (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
+    addFileToGit(repo, B_FILENAME)
+    createGitCommit(repo=repo, message="B")
+
+    (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
+    addFileToGit(repo, F1_FILENAME)
+    createGitCommit(repo=repo, message="F1")
+
+    return repo
+
 
 def formatPlateAge(seconds: int) -> str:
     """Format an age in seconds as the listing-style age string.
@@ -578,6 +641,7 @@ def _buildExtractedTree(
     plate_branch: str,
     convo_id: str,
     parent_sha: str,
+    transcript_path: Optional[str] = None,
 ) -> str:
     """Build a commit tree starting from `parent_sha`'s tree, applying ONLY
     the file changes attributable to `convo_id` per the transcript.
@@ -605,10 +669,14 @@ def _buildExtractedTree(
     """
     _, cutoff = findMyLastPlate(repo, plate_branch, convo_id)
 
-    transcript_path = Path(convo_id)
-    edited_abs = extractFilesEditedSinceTimestamp(transcript_path, since_iso=cutoff)
+    # In production cli.py passes a session UUID as `convo_id` and the
+    # transcript path separately. Fall back to treating `convo_id` as a
+    # path only when no `transcript_path` was supplied (legacy test
+    # callers pass `convo_id=str(transcript_file)` directly).
+    transcript_arg = Path(transcript_path) if transcript_path else Path(convo_id)
+    edited_abs = extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
     deleted_candidates = extractFilesDeletedSinceTimestamp(
-        transcript_path, since_iso=cutoff, repo_root=repo
+        transcript_arg, since_iso=cutoff, repo_root=repo
     )
 
     # Filter deletions to files actually tracked at the parent commit
@@ -651,11 +719,31 @@ def _buildExtractedTree(
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
 
+def _formatTrailerBody(text: str) -> str:
+    """Format a long body for a multi-line git trailer value.
+
+    Git trailers can span multiple lines if every line after the first
+    starts with whitespace (RFC 822 / `git interpret-trailers`
+    continuation rule). Indenting each continuation line with a single
+    space preserves the original line breaks so multi-section bodies
+    (e.g. the convo-summary's `what:` `why:` `how:` ... blocks) render
+    each label on its own line when the user runs
+    `git log -1 --format='%(trailers)'`.
+    """
+    raw = [line.rstrip() for line in text.splitlines()]
+    raw = [line for line in raw if line.strip()]
+    if not raw:
+        return ""
+    first = raw[0].lstrip()
+    rest = [" " + line.lstrip() for line in raw[1:]]
+    return "\n".join([first] + rest)
+
 def plate_push(
     repo: Path,
     convo_id: Optional[str] = None,
     convo_name: Optional[str] = None,
     convo_summary: Optional[str] = None,
+    transcript_path: Optional[str] = None,
 ) -> Optional[str]:
     """Run the canonical /plate push and stamp commit trailers.
 
@@ -671,7 +759,7 @@ def plate_push(
         git update-ref refs/heads/<branch>-plate $NEW
 
     Trailers always written:
-        parent-branch: <branch>     # auto-derived from getCurrentBranchName
+        parent-branch: <branch>     # auto-derived from getCurrentGitBranchName
 
     Trailers written only when the matching kwarg is non-None:
         convo-id:      <transcript_path>
@@ -704,7 +792,10 @@ def plate_push(
     )
 
     if use_extraction:
-        commit_tree = _buildExtractedTree(repo, base_plate_name, convo_id, parent)
+        commit_tree = _buildExtractedTree(
+            repo, base_plate_name, convo_id, parent,
+            transcript_path=transcript_path,
+        )
     else:
         commit_tree = _buildFullWtTree(repo)
 
@@ -719,9 +810,7 @@ def plate_push(
     if convo_name is not None:
         trailerLines.append(f"convo-name: {convo_name}")
     if convo_summary is not None:
-        # Git trailers are single-line; collapse newlines to single spaces.
-        flatSummary = " ".join(convo_summary.split())
-        trailerLines.append(f"convo-summary: {flatSummary}")
+        trailerLines.append(f"convo-summary: {_formatTrailerBody(convo_summary)}")
 
     commitMessage = f"plate: WIP on {branch}\n\n" + "\n".join(trailerLines)
 
@@ -809,67 +898,80 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     # Step 3: delete the plate branch.
     deleteGitBranchByForce(repo, plateBranchName)
 
+def currentTimestampUtcCompact() -> str:
+    """UTC ISO8601-compact timestamp for trash session-dir naming.
+
+    Format: YYYYMMDDTHHMMSSZ (lex-sortable → chronological).
+    """
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def _trashBranchDir(repo: Path, branch: str) -> Path:
+    """Per-branch container under .plate/trash/ that holds session dirs."""
+    return repo / ".plate" / "trash" / branch
+
+
+def _writeTrashSession(
+    repo: Path,
+    branch: str,
+    action: str,
+    tip_sha: str,
+    parent_sha: str,
+    patches: list[tuple[str, str]],
+    extra_trailers: Optional[list[dict]] = None,
+) -> Path:
+    """Materialise a unified-layout trash session directory.
+
+    Layout:
+        <repo>/.plate/trash/<branch>/<ts>_<action>_<short-sha>/
+            info.json
+            plate_001.patch
+            plate_002.patch
+            ...
+    """
+    ts = currentTimestampUtcCompact()
+    short_sha = tip_sha[:7] if tip_sha else "0000000"
+    session_dir = _trashBranchDir(repo, branch) / f"{ts}_{action}_{short_sha}"
+    session_dir.mkdir(parents=True, exist_ok=False)
+
+    for filename, patch_text in patches:
+        (session_dir / filename).write_text(patch_text + "\n")
+
+    info = {
+        "branch": branch,
+        "action": action,
+        "saved_at": ts,
+        "tip_sha_at_save": tip_sha,
+        "parent_sha_at_save": parent_sha,
+        "trailers": extra_trailers or [],
+    }
+    (session_dir / "info.json").write_text(json.dumps(info, indent=2))
+    return session_dir
+
+
+def _listTrashSessions(repo: Path, branch: str) -> list[Path]:
+    """Lex-sorted list of session dirs under .plate/trash/<branch>/."""
+    branch_dir = _trashBranchDir(repo, branch)
+    if not branch_dir.is_dir():
+        return []
+    return sorted(d for d in branch_dir.iterdir() if d.is_dir())
+
+
 def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
-    """Pop the top plate from <branch>-plate, save as patch.
+    """Pop the top plate from ``<branch>-plate``, save as a unified trash session.
 
     Sequence:
-        - Build WT-tree via temp-index (capture tracked + untracked).
-        - Write .plate/dropped/<branch>-plate_<ts>.patch as
-          `git diff --binary <branch> <WT-tree>`.
-        - Rewind <branch>-plate to <branch>-plate~1 (or `git branch -D`
-          if last plate).
+        - Capture the popped tip's per-commit diff
+          (``git diff --binary <tip>~1 <tip>``) as ``plate_001.patch``
+          inside ``<repo>/.plate/trash/<branch>/<ts>_dropped_<sha>/``.
+        - Write an ``info.json`` recording the tip and parent SHAs plus
+          the tip's commit trailers.
+        - Rewind ``<branch>-plate`` to ``<branch>-plate~1`` (or
+          ``git branch -D`` if the last plate).
         - WT untouched.
 
     Returns:
-        Path to the generated .patch file, or None when no plate branch
-        exists (warning printed to stderr).
-    """
-    if branch is None:
-        branch = getCurrentGitBranchName(repo)
-    plateBranchName = f"{branch}-plate"
-
-    if not checkIfGitBranchExists(repo, plateBranchName):
-        print(
-            f"warning: no plate branch '{plateBranchName}' — nothing to drop",
-            file=sys.stderr,
-        )
-        return None
-
-    # Capture the entire WT (tracked + untracked) as a binary patch under
-    # .plate/dropped/<plateBranchName>_<ts>.patch. The "." pathspec stages
-    # everything in the temp index without touching the real index.
-    patch_path = saveChangesToGitPatch(repo, ["."], name=plateBranchName)
-
-    # Rewind the plate branch by one commit, or delete it if it was the last.
-    plateCount = int(run(
-        ["git", "rev-list", "--count", f"{branch}..{plateBranchName}"],
-        cwd=repo,
-    ))
-    if plateCount == 1:
-        deleteGitBranchByForce(repo, plateBranchName)
-    else:
-        parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
-        run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
-
-    return patch_path
-
-def plate_trash(
-    repo: Path,
-    branch: Optional[str] = None,
-    clean_wt: bool = False,
-) -> Optional[Path]:
-    """Delete <branch>-plate entirely, save per-plate patches under .plate/trashed/.
-
-    Args:
-        branch: working branch name; defaults to current.
-        clean_wt: if True, run git reset --hard + git clean -fd after
-                  writing the patches (mode b — destructive of post-plate
-                  WT edits not in the patch). If False, leave WT alone
-                  (mode a — patch redundant with WT).
-
-    Returns:
-        Path to the directory containing per-plate .patch files
-        (e.g. .plate/trashed/<branch>-plate_<ts>/), or None when no plate
+        Path to the new session directory, or ``None`` when no plate
         branch exists (warning printed to stderr).
     """
     if branch is None:
@@ -878,28 +980,96 @@ def plate_trash(
 
     if not checkIfGitBranchExists(repo, plateBranchName):
         print(
-            f"warning: no plate branch '{plateBranchName}' — nothing to trash",
+            f"warning: no plate branch '{plateBranchName}' - nothing to drop",
             file=sys.stderr,
         )
         return None
 
-    # Walk plate commits oldest-first.
+    tip_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
+    parent_sha = run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo)
+
+    patch_text = run(
+        ["git", "diff", "--binary", parent_sha, tip_sha],
+        cwd=repo,
+    )
+
+    session_dir = _writeTrashSession(
+        repo=repo,
+        branch=branch,
+        action="dropped",
+        tip_sha=tip_sha,
+        parent_sha=parent_sha,
+        patches=[("plate_001.patch", patch_text)],
+        extra_trailers=[getGitCommitTrailers(repo, tip_sha)],
+    )
+
+    plateCount = int(run(
+        ["git", "rev-list", "--count", f"{branch}..{plateBranchName}"],
+        cwd=repo,
+    ))
+    if plateCount == 1:
+        deleteGitBranchByForce(repo, plateBranchName)
+    else:
+        run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
+
+    return session_dir
+
+
+def plate_trash(
+    repo: Path,
+    branch: Optional[str] = None,
+    clean_wt: bool = False,
+) -> Optional[Path]:
+    """Delete <branch>-plate entirely, save the whole stack as a unified trash session.
+
+    Args:
+        branch: working branch name; defaults to current.
+        clean_wt: if True, run git reset --hard + git clean -fd after
+                  writing the patches.
+
+    Returns:
+        Path to the unified trash session directory
+        (.plate/trash/<branch>/<ts>_trashed_<sha>/), or None when no plate
+        branch exists (warning printed to stderr).
+    """
+    if branch is None:
+        branch = getCurrentGitBranchName(repo)
+    plateBranchName = f"{branch}-plate"
+
+    if not checkIfGitBranchExists(repo, plateBranchName):
+        print(
+            f"warning: no plate branch '{plateBranchName}' - nothing to trash",
+            file=sys.stderr,
+        )
+        return None
+
     plates = run(
         ["git", "rev-list", "--reverse", f"{branch}..{plateBranchName}"],
         cwd=repo,
     ).splitlines()
 
-    # Per-plate patches go into a single dated session directory.
-    trash_dir = repo / ".plate" / "trashed" / f"{plateBranchName}_{currentTimestampMs()}"
-    trash_dir.mkdir(parents=True)
+    tip_sha = plates[-1]
+    bottom_parent = run(["git", "rev-parse", f"{plates[0]}~1"], cwd=repo)
 
-    for i, plate_sha in enumerate(plates):
+    patches: list[tuple[str, str]] = []
+    trailer_records: list[dict] = []
+    for i, plate_sha in enumerate(plates, start=1):
         patch_text = run(
             ["git", "diff", "--binary", f"{plate_sha}~1", plate_sha],
             cwd=repo,
         )
-        # `git apply` requires a trailing newline; run() stripped it.
-        (trash_dir / f"plate_{i:03d}.patch").write_text(patch_text + "\n")
+        patches.append((f"plate_{i:03d}.patch", patch_text))
+        trailer_records.append(getGitCommitTrailers(repo, plate_sha))
+
+    session_dir = _writeTrashSession(
+        repo=repo,
+        branch=branch,
+        action="trashed",
+        tip_sha=tip_sha,
+        parent_sha=bottom_parent,
+        patches=patches,
+        extra_trailers=trailer_records,
+    )
 
     deleteGitBranchByForce(repo, plateBranchName)
 
@@ -907,54 +1077,177 @@ def plate_trash(
         gitResetHardToHead(repo)
         gitCleanWorkTree(repo)
 
-    return trash_dir
+    return session_dir
 
-def plate_recycle_list(repo: Path) -> str:
-    """List trashed plate sessions for the current branch.
 
-    Pending implementation. The CLI route at cli.py:_cmd_recycle calls
-    this when invoked as `recycle <repo> --list`; tests mock it. Once
-    implemented, return a human-readable listing of session-dir-names
-    found in the trash directory for the current branch.
+def plate_recycle_list(repo: Path, branch: Optional[str] = None) -> str:
+    """Human-readable enumeration of recyclable trash sessions.
+
+    Read-only - no mutation. Empty result yields a friendly empty-list
+    message rather than an error.
     """
-    raise NotImplementedError("plate_recycle_list pending implementation")
+    if branch is None:
+        branch = getCurrentGitBranchName(repo)
+    sessions = _listTrashSessions(repo, branch)
+    if not sessions:
+        return f"plate: no trash sessions for '{branch}'"
+    lines = [f"trash sessions for '{branch}' (newest last):"]
+    for d in sessions:
+        info_path = d / "info.json"
+        try:
+            info = json.loads(info_path.read_text())
+            action = info.get("action", "?")
+            saved_at = info.get("saved_at", "?")
+            tip = (info.get("tip_sha_at_save") or "")[:8]
+            lines.append(f"  {d.name}  ({action}, saved {saved_at}, tip {tip})")
+        except (OSError, ValueError):
+            lines.append(f"  {d.name}  (info.json unreadable)")
+    return "\n".join(lines)
 
 
-def stripConvoSummaryFromCommit(repo: Path, branch: str, target_ref: str) -> str:
+def stripConvoSummaryFromCommit(
+    repo: Path, branch: str, target_ref: str,
+) -> str:
     """Remove the convo-summary trailer from a commit on <branch>-plate.
 
-    Pending implementation. Tests mock this via patch.object. See the
-    fix-plate-bugs worktree (~/Programming/jot) for a reference impl
-    using git commit-tree.
+    Rewrites the targeted commit (preserving every other trailer + the
+    tree + the parent) and any descendants on <branch>-plate so the
+    branch chain stays linear. Updates refs/heads/<branch>-plate to the
+    new tip SHA and returns it.
+
+    Implementation: pure `git commit-tree` — no worktree, no rebase, no
+    interactive editor.
     """
-    raise NotImplementedError("stripConvoSummaryFromCommit pending implementation")
+    plate_branch = f"{branch}-plate"
+    target_sha = run(["git", "rev-parse", target_ref], cwd=repo)
+    tip_sha = run(["git", "rev-parse", plate_branch], cwd=repo)
+
+    target_msg = run(
+        ["git", "log", "-1", "--format=%B", target_sha], cwd=repo,
+    )
+    target_tree = run(
+        ["git", "rev-parse", f"{target_sha}^{{tree}}"], cwd=repo,
+    )
+    target_parent = run(
+        ["git", "rev-parse", f"{target_sha}~1"], cwd=repo,
+    )
+
+    new_target_msg = _stripSummaryTrailerFromMessage(target_msg)
+    new_target_sha = run(
+        [
+            "git", "commit-tree", target_tree,
+            "-p", target_parent,
+            COMMIT_MESSAGE_FLAG, new_target_msg,
+        ],
+        cwd=repo,
+    )
+
+    # Re-emit each descendant chained off the rewritten target.
+    descendants = run(
+        ["git", "rev-list", "--reverse", f"{target_sha}..{tip_sha}"],
+        cwd=repo,
+    ).splitlines()
+    prev_sha = new_target_sha
+    for desc_sha in descendants:
+        if not desc_sha:
+            continue
+        desc_msg = run(
+            ["git", "log", "-1", "--format=%B", desc_sha], cwd=repo,
+        )
+        desc_tree = run(
+            ["git", "rev-parse", f"{desc_sha}^{{tree}}"], cwd=repo,
+        )
+        prev_sha = run(
+            [
+                "git", "commit-tree", desc_tree,
+                "-p", prev_sha,
+                COMMIT_MESSAGE_FLAG, desc_msg,
+            ],
+            cwd=repo,
+        )
+
+    run(
+        ["git", "update-ref", f"refs/heads/{plate_branch}", prev_sha],
+        cwd=repo,
+    )
+    return prev_sha
 
 
-def regenerateTipSummary(repo: Path, branch: str, prior_summary: str, agent_callable) -> str:
-    """Regenerate the convo-summary trailer on the <branch>-plate tip.
+def regenerateTipSummary(
+    repo: Path,
+    branch: str,
+    prior_summary: str,
+    agent_callable,
+) -> str:
+    """Regenerate the tip's convo-summary trailer.
 
-    Pending implementation. Tests mock this via patch.object. See the
-    fix-plate-bugs worktree (~/Programming/jot) for a reference impl
-    using git commit-tree + the agent contract.
+    Calls `agent_callable(prior_summary)` to produce the new summary
+    payload (in production the callable spawns a real claude; in tests
+    it's a deterministic mock). Payload format:
+        Line 1: subject (≤50 chars; replaces the tip's commit subject)
+        Line 2: blank
+        Lines 3+: 5-section body (becomes the convo-summary trailer)
+
+    Single-line payloads (no blank-line separator) are treated as
+    pure trailer body — the commit subject is left untouched.
+
+    Updates `refs/heads/<branch>-plate` to a new tip whose message has
+    the new subject (when present) AND the convo-summary trailer.
+    Returns the new tip SHA.
     """
-    raise NotImplementedError("regenerateTipSummary pending implementation")
+    new_payload = agent_callable(prior_summary)
+    subject, body = _parseAgentPayload(new_payload)
+    # When the payload has no body (no blank-line separator), treat the
+    # whole text as body so simple `prior -> "..."` callables in tests
+    # still land a trailer. Production payloads always have a body.
+    trailer_body = body if body else subject
+    if not body:
+        subject = ""  # nothing to replace the commit subject with
+
+    plate_branch = f"{branch}-plate"
+    tip_sha = run(["git", "rev-parse", plate_branch], cwd=repo)
+    tip_msg = run(["git", "log", "-1", "--format=%B", tip_sha], cwd=repo)
+    tip_tree = run(["git", "rev-parse", f"{tip_sha}^{{tree}}"], cwd=repo)
+    tip_parent = run(["git", "rev-parse", f"{tip_sha}~1"], cwd=repo)
+
+    # Strip any pre-existing convo-summary first so we never duplicate.
+    cleaned = _stripSummaryTrailerFromMessage(tip_msg)
+    if subject:
+        cleaned = _replaceCommitSubject(cleaned, subject)
+    new_msg = _appendSummaryTrailerToMessage(cleaned, trailer_body)
+
+    new_tip_sha = run(
+        [
+            "git", "commit-tree", tip_tree,
+            "-p", tip_parent,
+            COMMIT_MESSAGE_FLAG, new_msg,
+        ],
+        cwd=repo,
+    )
+    run(
+        ["git", "update-ref", f"refs/heads/{plate_branch}", new_tip_sha],
+        cwd=repo,
+    )
+    return new_tip_sha
 
 
 def plate_recycle(
     repo: Path,
     branch: Optional[str] = None,
+    session: Optional[str] = None,
     timestamp: Optional[str] = None,
 ) -> Optional[str]:
-    """Replay a trashed stack into a fresh <branch>-plate.
+    """Replay a unified trash session into a fresh <branch>-plate.
 
-    Implementation uses Path 2 — per-plate patches replayed
-    sequentially. Path 1 (single-patch single-recovered-plate) was
-    rejected because it loses commit boundaries.
+    Re-parents the restored plate at info.json's parent_sha_at_save (NOT
+    HEAD at recycle time). Errors out without mutating when the saved
+    parent SHA is no longer in the object DB.
 
     Args:
-        branch: working branch name; defaults to current.
-        timestamp: pick a specific trash session by timestamp; defaults
-                   to most recent.
+        branch:    working branch name; defaults to current.
+        session:   exact session-dir name; defaults to newest session.
+        timestamp: legacy alias accepted for back-compat; treated as a
+                   session-dir suffix match.
 
     Returns:
         SHA of the recycled <branch>-plate tip, or None when no trashed
@@ -964,27 +1257,73 @@ def plate_recycle(
         branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    trash_root = repo / ".plate" / "trashed"
-    if not trash_root.is_dir():
-        sessions: list[Path] = []
-    else:
-        sessions = sorted(
-            d for d in trash_root.iterdir() if d.name.startswith(f"{plateBranchName}_")
-        )
+    sessions = _listTrashSessions(repo, branch)
     if not sessions:
         print(
-            f"warning: no trashed plate '{plateBranchName}' — nothing to recycle",
+            f"warning: no trashed plate '{plateBranchName}' - nothing to recycle",
             file=sys.stderr,
         )
         return None
 
-    if timestamp is not None:
-        chosen = next(d for d in sessions if d.name.endswith(f"_{timestamp}"))
+    if session is not None:
+        chosen = next((d for d in sessions if d.name == session), None)
+        if chosen is None:
+            print(
+                f"warning: session '{session}' not found under '{branch}'",
+                file=sys.stderr,
+            )
+            return None
+    elif timestamp is not None:
+        chosen = next(
+            (d for d in sessions if d.name.endswith(f"_{timestamp}")),
+            None,
+        )
+        if chosen is None:
+            print(
+                f"warning: no session with timestamp '{timestamp}' for '{branch}'",
+                file=sys.stderr,
+            )
+            return None
     else:
         chosen = sessions[-1]
 
-    # Apply each per-plate patch, then push it as its own plate commit.
-    for patch in sorted(chosen.iterdir()):
+    info_path = chosen / "info.json"
+    try:
+        info = json.loads(info_path.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"warning: cannot read {info_path} ({exc}); refusing to recycle",
+            file=sys.stderr,
+        )
+        return None
+
+    parent_sha = info.get("parent_sha_at_save")
+    if not parent_sha:
+        print(
+            f"warning: {info_path} missing parent_sha_at_save; refusing to recycle",
+            file=sys.stderr,
+        )
+        return None
+
+    # Verify the saved parent SHA still exists BEFORE mutating anything.
+    try:
+        run(["git", "cat-file", "-e", parent_sha], cwd=repo)
+    except Exception:
+        print(
+            f"warning: parent SHA {parent_sha[:8]} no longer in repo; "
+            f"cannot recycle '{chosen.name}'",
+            file=sys.stderr,
+        )
+        return None
+
+    # Re-parent the plate ref at the saved parent SHA.
+    if checkIfGitBranchExists(repo, plateBranchName):
+        deleteGitBranchByForce(repo, plateBranchName)
+    run(["git", "update-ref", f"refs/heads/{plateBranchName}", parent_sha], cwd=repo)
+
+    # Apply each saved patch in order; plate_push commits the result.
+    patches = sorted(p for p in chosen.iterdir() if p.suffix == ".patch")
+    for patch in patches:
         applyGitPatch(repo, patch)
         plate_push(repo)
 
@@ -1227,8 +1566,8 @@ def _check_plate_done_replays_stack(repo: Path) -> None:
     assert u2 in tracked
 
 def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
-    """Scenario: single plate → plate_drop saves a patch under .plate/dropped/,
-    deletes the plate ref, leaves WT untouched."""
+    """Scenario: single plate → plate_drop saves a unified trash session under
+    .plate/trash/<branch>/, deletes the plate ref, leaves WT untouched."""
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
@@ -1236,25 +1575,31 @@ def _check_plate_drop_deletes_last_plate(repo: Path) -> None:
     plate_push(repo)
     assert checkIfGitBranchExists(repo, plateBranchName)
 
-    patch_path = plate_drop(repo)
+    session_dir = plate_drop(repo)
 
+    assert session_dir is not None
+    assert session_dir.is_dir()
+    assert session_dir.parent.name == branch
+    assert session_dir.parent.parent.name == "trash"
+    assert "_dropped_" in session_dir.name
+    patch_path = session_dir / "plate_001.patch"
     assert patch_path.exists()
-    assert patch_path.parent.name == "dropped"
     assert untracked in patch_path.read_text()
     assert not checkIfGitBranchExists(repo, plateBranchName)
     assert untracked in getGitUntrackedFilesList(repo)
 
-def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
-    """Scenario: single plate → plate_drop + reset WT + apply_patch restores
+def _check_plate_drop_then_applyGitPatch_round_trip(repo: Path) -> None:
+    """Scenario: single plate → plate_drop + reset WT + applyGitPatch restores
     the dropped work to the WT byte-for-byte."""
     untracked = createUntrackedFile(repo, random.Random())["file"]
     untracked_content = (repo / untracked).read_text()
     plate_push(repo)
 
-    patch_path = plate_drop(repo)
+    session_dir = plate_drop(repo)
+    patch_path = session_dir / "plate_001.patch"
 
     # Reset WT to clean state (drop's contract leaves the file in WT;
-    # delete it explicitly so apply_patch's restoration is visible).
+    # delete it explicitly so applyGitPatch's restoration is visible).
     (repo / untracked).unlink()
     assert not (repo / untracked).exists()
 
@@ -1265,7 +1610,8 @@ def _check_plate_drop_then_apply_patch_round_trip(repo: Path) -> None:
 
 def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     """Scenario: 2-plate stack → plate_trash (default clean_wt=False) saves
-    per-plate patches, deletes plate ref, leaves WT untouched."""
+    per-plate patches under a unified trash session, deletes plate ref,
+    leaves WT untouched."""
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
@@ -1275,13 +1621,15 @@ def _check_plate_trash_default_preserves_wt(repo: Path) -> None:
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
 
-    trash_dir = plate_trash(repo)
+    session_dir = plate_trash(repo)
 
-    assert trash_dir.is_dir()
-    assert trash_dir.parent.name == "trashed"
-    patches = sorted(trash_dir.iterdir())
+    assert session_dir.is_dir()
+    assert session_dir.parent.name == branch
+    assert session_dir.parent.parent.name == "trash"
+    assert "_trashed_" in session_dir.name
+    patches = sorted(p for p in session_dir.iterdir() if p.suffix == ".patch")
     assert len(patches) == 2
-    assert all(p.suffix == ".patch" for p in patches)
+    assert (session_dir / "info.json").exists()
     assert not checkIfGitBranchExists(repo, plateBranchName)
     untracked = getGitUntrackedFilesList(repo)
     assert u1 in untracked
@@ -1303,10 +1651,10 @@ def _check_plate_trash_clean_resets_wt(repo: Path) -> None:
     u2 = createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
 
-    trash_dir = plate_trash(repo, clean_wt=True)
+    session_dir = plate_trash(repo, clean_wt=True)
 
-    assert trash_dir.is_dir()
-    patches = sorted(trash_dir.iterdir())
+    assert session_dir.is_dir()
+    patches = sorted(p for p in session_dir.iterdir() if p.suffix == ".patch")
     assert len(patches) == 2
     assert not checkIfGitBranchExists(repo, plateBranchName)
     # WT wiped.
@@ -1332,7 +1680,7 @@ def _check_plate_recycle_restores_stack(repo: Path) -> None:
     plate_tip_tree_before = getGitTreeSHA(repo, plateBranchName)
 
     plate_trash(repo)
-    # Clean WT before recycle so apply_patch doesn't conflict on existing files.
+    # Clean WT before recycle so applyGitPatch doesn't conflict on existing files.
     (repo / u1).unlink()
     (repo / u2).unlink()
 
@@ -1403,7 +1751,7 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
 
 def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_drop returns None, prints
-    warning to stderr, creates no .plate/dropped/ directory, leaves WT clean."""
+    warning to stderr, creates no .plate/trash/ directory, leaves WT clean."""
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
     assert not checkIfGitBranchExists(repo, plateBranchName)
@@ -1417,15 +1765,15 @@ def _check_plate_drop_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert result is None
     assert "no plate branch" in captured.err
     assert plateBranchName in captured.err
-    # No patch directory created.
-    assert not (repo / ".plate" / "dropped").exists()
+    # No trash directory created.
+    assert not (repo / ".plate" / "trash").exists()
     # Repo state unchanged.
     assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
     assert checkGitForCleanWorkTree(repo) == wt_clean_before
 
 def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     """Scenario: no plate branch exists → plate_trash returns None, prints
-    warning to stderr, creates no .plate/trashed/ directory, leaves WT clean."""
+    warning to stderr, creates no .plate/trash/ directory, leaves WT clean."""
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
     assert not checkIfGitBranchExists(repo, plateBranchName)
@@ -1438,7 +1786,7 @@ def _check_plate_trash_no_branch_warns_and_exits(repo: Path, capsys) -> None:
     assert result is None
     assert "no plate branch" in captured.err
     assert plateBranchName in captured.err
-    assert not (repo / ".plate" / "trashed").exists()
+    assert not (repo / ".plate" / "trash").exists()
     assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
 
 def _check_plate_recycle_no_branch_warns_and_exits(repo: Path, capsys) -> None:
@@ -1539,8 +1887,9 @@ def _check_drop_patch_applies_in_fresh_repo(repoA: Path, repoB: Path) -> None:
     untracked_content = (repoA / untracked_name).read_text()
 
     plate_push(repoA)
-    patch_path = plate_drop(repoA)
-    assert patch_path is not None
+    session_dir = plate_drop(repoA)
+    assert session_dir is not None
+    patch_path = session_dir / "plate_001.patch"
     assert patch_path.exists()
 
     # Copy patch into repoB (mirrors emailing/Slacking the file).
@@ -2204,6 +2553,18 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
 
 _REBASE_EDITOR_SCRIPT = (
     Path(__file__).resolve().parent / "_rebase_reword_summary.py"
+)
+
+# Reuse the trailer-manipulation helpers from the dual-role editor
+# script. Importing as a sibling module is safe — that script's
+# top-level only defines functions and is `if __name__ == "__main__"`
+# guarded.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _rebase_reword_summary import (  # noqa: E402
+    _strip_summary_trailer as _stripSummaryTrailerFromMessage,
+    _append_summary_trailer as _appendSummaryTrailerToMessage,
+    _parse_payload as _parseAgentPayload,
+    _replace_subject as _replaceCommitSubject,
 )
 
 def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
