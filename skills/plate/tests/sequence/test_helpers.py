@@ -21,6 +21,21 @@ import pytest
 # `from plate_lib import *` would skip. Pull them in explicitly via vars().
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
+from common.scripts.git_lib import (
+    getCurrentGitBranchName
+)
+
+import test_plate_scenarios as _plate_scenarios
+from test_plate_scenarios import (
+    _check_plate_push_creates_branch_capturing_wip,
+)
+
+globals().update({
+    name: value
+    for name, value in vars(_plate_scenarios).items()
+    if name.startswith("_check_") or name.startswith("_build") or name.startswith("_write")
+})
+
 globals().update({
     name: value
     for name, value in vars(_plate_lib).items()
@@ -1094,6 +1109,18 @@ def test_plate_done_leaves_sha_recoverable(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     _check_plate_done_leaves_sha_recoverable(repo)
 
+def test_plate_done_aborts_when_no_plate_branch(tmp_path: Path, capsys):
+    """Per-function: plate_done with no plate branch warns + returns without
+    touching the repo."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_done_aborts_when_no_plate_branch(repo, capsys)
+
+def test_plate_done_aborts_when_wt_differs_from_plate_tip(tmp_path: Path, capsys):
+    """Per-function: plate_done with WT diverged from plate tip warns + returns,
+    leaving plate branch and WT intact."""
+    repo = makeTestRepoWithSingleCommit(tmp_path)
+    _check_plate_done_aborts_when_wt_differs_from_plate_tip(repo, capsys)
+
 def test_plate_next_list_shows_plates_sorted_with_current_marker(tmp_path: Path):
     """Per-function: list mode against the single-commit fixture."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
@@ -1314,7 +1341,13 @@ def test_sequence_03_plate_done_replays_stack_and_cleans_workspace(repo: Path) -
     _check_plate_done_replays_stack(repo)
 
 
-def test_sequence_04_plate_done_captures_unpushed_work_before_cleanup(repo: Path) -> None:
+def test_sequence_04_plate_done_aborts_when_unpushed_work_exists(
+    repo: Path, capsys
+) -> None:
+    # Sequence-fixture variant of the per-function abort-on-WT-divergence
+    # contract: plate_done is pure replay and must refuse to run when the
+    # WT has uncommitted work that would be destroyed by Step 1's clean.
+    # The user is expected to /plate the divergence first, then retry.
     branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
     branch_count_before = countGitCommitsReachableFromRef(repo, branch)
@@ -1323,31 +1356,27 @@ def test_sequence_04_plate_done_captures_unpushed_work_before_cleanup(repo: Path
     u_a = createUntrackedFile(repo, random.Random())["file"]
     plate_push(repo)
     assert checkIfGitBranchExists(repo, plateBranchName)
+    plate_tip_before = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
     # 2. Edit B: create untracked file U_B but DO NOT plate_push it.
     u_b = createUntrackedFile(repo, random.Random())["file"]
-    # Sanity: P1 captured U_A but not U_B (U_B was created after).
-    p1_files = run(
-        ["git", "ls-tree", "-r", "--name-only", plateBranchName], cwd=repo
-    ).splitlines()
-    assert u_a in p1_files
-    assert u_b not in p1_files
 
-    # 3. plate_done — Step 0's implicit pre-push must capture U_B before the
-    #    Step 1 reset/clean would otherwise destroy it.
+    # 3. plate_done sees WT-tree (with U_B) != plate-tip-tree and must abort.
     plate_done(repo)
 
-    # 4a. Plate ref deleted.
-    assert not checkIfGitBranchExists(repo, plateBranchName)
-    # 4b. Branch received TWO commits (P1 + the implicit pre-push that
-    #     captured U_B). Without the implicit pre-push, only P1 lands and
-    #     U_B is lost during clean -fd.
-    assert countGitCommitsReachableFromRef(repo, branch) == branch_count_before + 2
-    # 4c. WT clean — both files are now tracked.
-    assert checkGitForCleanWorkTree(repo)
-    tracked = getGitTrackedFilesList(repo)
-    assert u_a in tracked
-    assert u_b in tracked
+    captured = capsys.readouterr()
+    # 4a. Warning emitted naming the plate branch.
+    assert "working tree differs" in captured.err
+    assert plateBranchName in captured.err
+    # 4b. Plate branch preserved at its pre-call SHA.
+    assert checkIfGitBranchExists(repo, plateBranchName)
+    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == plate_tip_before
+    # 4c. Branch HEAD did not advance (no commits applied).
+    assert countGitCommitsReachableFromRef(repo, branch) == branch_count_before
+    # 4d. Both untracked files preserved in WT for the user to /plate next.
+    untracked = getGitUntrackedFilesList(repo)
+    assert u_a in untracked
+    assert u_b in untracked
 
 
 def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
