@@ -14,7 +14,7 @@ its core operations, and shipped the production wiring. Live state today:
 - **Roadmap to v1.0**: `generatePlateSummary` agent + `convo-summary`
   format spec + Stage 2 dead-code purge. Estimated ~5–8 h remaining.
 
-Run with: `rtk pytest skills/plate/tests/sequence/test_helpers.py skills/plate/tests/sequence/test_cli.py skills/plate/tests/sequence/test_e2e_wiring.py skills/plate/tests/sequence/test_session_end_hook.py skills/plate/tests/sequence/helpers.py`
+Run with: `rtk pytest skills/plate/tests/sequence/test_helpers.py skills/plate/tests/sequence/test_plate_cli.py skills/plate/tests/sequence/test_plate_e2e_wiring.py skills/plate/tests/sequence/test_session_end_hook.py skills/plate/tests/sequence/helpers.py`
 
 ## Major changes by session
 
@@ -82,8 +82,8 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
   numeric-only via `str.isdigit()` before range check. New constant
   `PLATE_NEXT_NON_NUMERIC_MESSAGE`. `"-1"` migrated to non-numeric
   bucket.
-- 24 new tests: 16 in `test_cli.py` (mock-based variant routing +
-  trailer kwarg propagation), 8 in `test_e2e_wiring.py` (hook JSON →
+- 24 new tests: 16 in `test_plate_cli.py` (mock-based variant routing +
+  trailer kwarg propagation), 8 in `test_plate_e2e_wiring.py` (hook JSON →
   `decision:"block"` JSON contract).
 
 ### 2026-05-01 late evening — auto-`/plate` on SessionEnd
@@ -179,8 +179,8 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 |---|---|
 | `skills/plate/tests/sequence/helpers.py` | Plate ops + sub-functions + helpers + per-function unit tests + `_check_*` scenarios |
 | `skills/plate/tests/sequence/test_helpers.py` | Helper smoke tests + `test_sequence_NN` integration tests |
-| `skills/plate/tests/sequence/test_cli.py` | Mock-based CLI argv routing + trailer kwarg propagation |
-| `skills/plate/tests/sequence/test_e2e_wiring.py` | Hook JSON → orchestrator → cli.py → emit_block contract |
+| `skills/plate/tests/sequence/test_plate_cli.py` | Mock-based CLI argv routing + trailer kwarg propagation |
+| `skills/plate/tests/sequence/test_plate_e2e_wiring.py` | Hook JSON → orchestrator → cli.py → emit_block contract |
 | `skills/plate/tests/sequence/test_session_end_hook.py` | Auto-`/plate` SessionEnd pipeline |
 | `skills/plate/tests/sequence/conftest.py` | Pytest `repo` fixture |
 | `common/scripts/plate/cli.py` | Single Python entry point — production dispatcher |

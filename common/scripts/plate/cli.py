@@ -36,8 +36,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# plate_lib is a sibling module in this same directory.
+# plate_lib is a sibling module in this same directory; also expose the
+# project root so dotted `common.scripts.X` imports resolve identically to
+# pytest rootdir auto-discovery.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import plate_lib  # noqa: E402
 
 

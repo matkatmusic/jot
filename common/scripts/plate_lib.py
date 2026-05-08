@@ -277,5 +277,5 @@ def plate_main(
             pass
         out = f"plate crashed: {exc}"
 
-    print(emit_block(out))
+    print(emit_block(out.rstrip("\n")))
     return 0

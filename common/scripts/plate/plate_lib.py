@@ -110,118 +110,41 @@ def createRandomBranchName() -> str:
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
     return prefix + suffix
 
-def makeEmptyRepo(path: Path) -> Path:
-    """Create a new, empty repo with a single main branch."""
-    repo = path / "repo"
-    repo.mkdir(parents=True)                               
-    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"],
-cwd=repo)                                                 
-    return repo 
-
-# def getGitStatus(repo: Path) -> dict[str, str]:
-#     return run(["git", "status", "--porcelain"], cwd=repo).splitlines()
-
-def makeTestRepo(base: Path) -> Path:
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
-    return repo
-
+# Constants used by both plate_lib internals and the git_test_funcs_lib
+# helpers that were extracted out of this module. Kept here so the
+# late `from common.scripts.git_test_funcs_lib import *` re-export below
+# can pull them back in alongside the moved functions.
 TEST_COMMIT_MESSAGE = "test commit"
 TEST_FILENAME = "a.txt"
-
-
-
-def makeTestRepoWithSingleCommit(base: Path) -> Path:
-    repo = makeTestRepo(base=base)
-    # Ignore .plate/ so the skill's stash dir survives `git clean -fd`.
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
-    # add the test file
-    addFileToGit(repo, makeTestFile(repo, TEST_FILENAME))
-    # commit both files together as the initial commit
-    createGitCommit(repo, TEST_COMMIT_MESSAGE)
-    return repo
-
-
 TEST_FILE_CONTENTS = "A\n"
-
-def makeTestFile(repo: Path, fileName: str) -> Path:
-    file = repo / fileName
-    file.write_text(TEST_FILE_CONTENTS)
-    return file
-
-def random_string(length: int = 8, rng: random.Random = random) -> str:
-    return "".join(rng.choices(string.ascii_lowercase, k=length))
-
-# ── Implemented: simulate user edits ──────────────────────────────────
-def modifyTrackedFile(repo: Path, file: str, rng: random.Random) -> dict:
-    path = repo / file
-    path.write_text(path.read_text() + f"random-{random_string(rng=rng)}\n")
-    return {"action": "modify_tracked", "file": path.name}
-
-def modifyRandomlyChosenTrackedFile(
-    repo: Path,
-    files: list[str],
-    rng: random.Random = random,
-):
-    # randomly choose a file from <files> using the supplied rng so that
-    # callers passing a seeded rng get deterministic behavior.
-    fileName = rng.choice(files)
-    return modifyTrackedFile(repo, fileName, rng=rng)
-
-def createUntrackedFile(repo: Path, rng: random.Random) -> dict:
-    name = f"new-{random_string(rng=rng)}.txt"
-    path = repo / name
-    path.write_text(f"content-{random_string(rng=rng)}\n")
-    return {"action": "create_untracked", "file": name}
-
 B_FILENAME = "b.txt"
 B_FILE_CONTENTS = "B\n"
 F1_FILENAME = "fix.txt"
 F1_FILE_CONTENTS = "F1\n"
 
-def setup_git_plate_test_repo(base: Path) -> Path:
-    """Create a fresh git repo at base/repo and return its path.
 
-    Topology:
-        main:      A         (root commit)
-                   \\
-        <random>:   B - F1   (checked out, clean WT)
+def random_string(length: int = 8, rng: random.Random = random) -> str:
+    return "".join(rng.choices(string.ascii_lowercase, k=length))
 
-    The non-main branch name is randomized per call to mimic real-world
-    variance. Tests should query it via getCurrentGitBranchName(repo) rather
-    than hardcoding a value.
 
-    Files:
-        a.txt   on main,           content "A"
-        b.txt   on <random branch>, content "B"
-        fix.txt on <random branch>, content "F1"
-    """
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
+# Re-export the 10 git-test scaffolding helpers that were moved to
+# common/scripts/git_test_funcs_lib.py. Constants + createRandomBranchName
+# + random_string above are defined first so the new module can import
+# them back during its own load without a circular-import error.
+from common.scripts.git_test_funcs_lib import *  # noqa: E402,F401,F403
+from common.scripts.git_test_funcs_lib import (  # noqa: E402  (explicit pulls so static checkers see them)
+    makeEmptyRepo,
+    makeTestRepo,
+    makeTestRepoWithSingleCommit,
+    makeTestFile,
+    modifyTrackedFile,
+    modifyRandomlyChosenTrackedFile,
+    createUntrackedFile,
+    setup_git_plate_test_repo,
+    setup_repo,
+    currentTimestampUtcCompact,
+)
 
-    # main: commit A — also stages .gitignore so .plate/ is ignored
-    # and survives `git clean -fd` during plate_trash(clean_wt=True).
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
-    (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
-    addFileToGit(repo, TEST_FILENAME)
-    createGitCommit(repo=repo, message="A")
-
-    # randomly-named branch off main, with B and F1 commits
-    branch_name = createRandomBranchName()
-    createGitBranch(repo, branch_name)
-    checkOutGitBranch(repo=repo, branch_name=branch_name)
-    
-    (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
-    addFileToGit(repo, B_FILENAME)
-    createGitCommit(repo=repo, message="B")
-
-    (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
-    addFileToGit(repo, F1_FILENAME)
-    createGitCommit(repo=repo, message="F1")
-
-    return repo
 
 def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     """Make a random edit to the repo to simulate user activity.
@@ -252,49 +175,6 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
 # ── Implemented: assertion utilities ──────────────────────────────────
 
 # ── Helpers used by the plate operations ─────────────────────────────
-
-def setup_repo(base: Path) -> Path:
-    """Create a fresh git repo at base/repo and return its path.
-
-    Topology:
-        main:      A         (root commit)
-                   \\
-        <random>:   B - F1   (checked out, clean WT)
-
-    The non-main branch name is randomized per call to mimic real-world
-    variance. Tests should query it via getCurrentBranchName(repo) rather
-    than hardcoding a value.
-
-    Files:
-        a.txt   on main,           content "A"
-        b.txt   on <random branch>, content "B"
-        fix.txt on <random branch>, content "F1"
-    """
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
-
-    # main: commit A — also stages .gitignore so .plate/ is ignored
-    # and survives `git clean -fd` during plate_trash(clean_wt=True).
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
-    (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
-    addFileToGit(repo, TEST_FILENAME)
-    createGitCommit(repo=repo, message="A")
-
-    # randomly-named branch off main, with B and F1 commits
-    branch_name = createRandomBranchName()
-    createGitBranch(repo, branch_name)
-    checkOutGitBranch(repo=repo, branch_name=branch_name)
-    
-    (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
-    addFileToGit(repo, B_FILENAME)
-    createGitCommit(repo=repo, message="B")
-
-    (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
-    addFileToGit(repo, F1_FILENAME)
-    createGitCommit(repo=repo, message="F1")
-
-    return repo
 
 
 def formatPlateAge(seconds: int) -> str:
@@ -915,12 +795,8 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     # Step 3: delete the plate branch.
     deleteGitBranchByForce(repo, plateBranchName)
 
-def currentTimestampUtcCompact() -> str:
-    """UTC ISO8601-compact timestamp for trash session-dir naming.
-
-    Format: YYYYMMDDTHHMMSSZ (lex-sortable → chronological).
-    """
-    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+# currentTimestampUtcCompact moved to common/scripts/git_test_funcs_lib.py
+# (re-exported above via `from common.scripts.git_test_funcs_lib import *`).
 
 
 def _trashBranchDir(repo: Path, branch: str) -> Path:

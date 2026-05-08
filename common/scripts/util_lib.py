@@ -16,6 +16,37 @@ from types import TracebackType
 from typing import Any, Callable, Optional, Sequence, Type
 
 
+# ── Subprocess wrapper ────────────────────────────────────────────────
+def run(
+    cmd: list[str],
+    cwd: Path,
+    env: Optional[dict[str, str]] = None,
+    check: bool = True,
+    capture: bool = True,
+) -> str:
+    """Run cmd in cwd. Return stripped stdout when capture=True."""
+    full_env: Optional[dict[str, str]] = None
+    if env is not None:
+        full_env = os.environ.copy()
+        full_env.update(env)
+    completed = subprocess.run(
+        cmd,
+        cwd=cwd,
+        env=full_env,
+        text=True,
+        capture_output=capture,
+        check=check,
+    )
+    if not capture:
+        return ""
+    return (completed.stdout or "").strip()
+
+
+def currentTimestampMs() -> str:
+    """Millisecond-resolution timestamp for patch-file naming."""
+    return str(int(time.time() * 1000))
+
+
 def _matches_prefix(prompt: str, prefix: str) -> bool:
     """True if prompt is exactly `prefix`, `prefix `, or `prefix\\n` led."""
     if prompt == prefix:

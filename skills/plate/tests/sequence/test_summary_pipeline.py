@@ -22,11 +22,11 @@ from plate_lib import (
     plate_push,
     getGitCommitTrailers as getGitCommitTrailers,
     getCurrentGitBranchName as getCurrentGitBranchName,
-    makeTestRepoWithSingleCommit,
     TEST_FILENAME,
     _writeFakeTranscriptWithToolUse,
     run,
 )
+from git_test_funcs_lib import makeTestRepoWithSingleCommit
 
 # stripConvoSummaryFromCommit and regenerateTipSummary are RED features not yet
 # implemented. Skip collection until they exist so the rest of the suite runs.

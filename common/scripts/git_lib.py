@@ -1,17 +1,21 @@
 """Shared git utilities used by /plate and other jot scripts.
 
-Self-contained: defines the `run()` subprocess wrapper, git CLI flag
-constants, test-config constants (USER_EMAIL_*, USER_NAME_*), and the
-default GITIGNORE_CONTENTS string used by the test harness.
+Self-contained: re-exports the `run()` subprocess wrapper from util_lib,
+defines git CLI flag constants, test-config constants (USER_EMAIL_*,
+USER_NAME_*), and the default GITIGNORE_CONTENTS string used by the
+test harness.
 """
 from __future__ import annotations
 
 import os
 import subprocess
 import tempfile
-import time
 from pathlib import Path
 from typing import Optional
+
+# `run` and `currentTimestampMs` are generic utilities — moved to util_lib.
+# Re-imported here so existing callers `from git_lib import run` keep working.
+from common.scripts.util_lib import run, currentTimestampMs  # noqa: F401
 
 # ── git CLI flag constants ────────────────────────────────────────────
 QUIET_OUTPUT = "-q"
@@ -24,37 +28,6 @@ USER_EMAIL_VALUE = "test@example.com"
 USER_NAME_KEY = "user.name"
 USER_NAME_VALUE = "Test User"
 GITIGNORE_CONTENTS = ".plate/\n"
-
-
-# ── Subprocess wrapper ────────────────────────────────────────────────
-def run(
-    cmd: list[str],
-    cwd: Path,
-    env: Optional[dict[str, str]] = None,
-    check: bool = True,
-    capture: bool = True,
-) -> str:
-    """Run cmd in cwd. Return stripped stdout when capture=True."""
-    full_env: Optional[dict[str, str]] = None
-    if env is not None:
-        full_env = os.environ.copy()
-        full_env.update(env)
-    completed = subprocess.run(
-        cmd,
-        cwd=cwd,
-        env=full_env,
-        text=True,
-        capture_output=capture,
-        check=check,
-    )
-    if not capture:
-        return ""
-    return (completed.stdout or "").strip()
-
-
-def currentTimestampMs() -> str:
-    """Millisecond-resolution timestamp for patch-file naming."""
-    return str(int(time.time() * 1000))
 
 
 # ── Git helpers ───────────────────────────────────────────────────────

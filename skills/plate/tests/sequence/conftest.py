@@ -15,7 +15,7 @@ sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" ))
 # plate_lib's '_check' functions now live at skills/plate/tests/sequence/
 sys.path.insert(0, str(_REPO_ROOT / "skills" / "plate" / "tests" / "sequence"))
 
-from plate.plate_lib import setup_git_plate_test_repo  # noqa: E402
+from git_test_funcs_lib import setup_git_plate_test_repo  # noqa: E402
 from git_lib import getCurrentGitBranchName
 
 @pytest.fixture
