@@ -47,7 +47,7 @@ def currentTimestampMs() -> str:
     return str(int(time.time() * 1000))
 
 
-def _matches_prefix(prompt: str, prefix: str) -> bool:
+def _util_matches_prefix(prompt: str, prefix: str) -> bool:
     """True if prompt is exactly `prefix`, `prefix `, or `prefix\\n` led."""
     if prompt == prefix:
         return True
@@ -62,7 +62,7 @@ def _matches_prefix(prompt: str, prefix: str) -> bool:
 # Slug helpers: lowercase, replace non-alnum runs with '-', head 40, strip trailing '-'.
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
-def _slugify(topic: str) -> str:
+def _util_slugify(topic: str) -> str:
     """Mirror bash: tr lower | tr -cs '[:alnum:]' '-' | head -c 40 | sed 's/-$//'."""
     lowered = topic.lower()
     collapsed = _NON_ALNUM_RE.sub("-", lowered)
@@ -72,14 +72,14 @@ def _slugify(topic: str) -> str:
 
 # Resolve the plugin root: prefer CLAUDE_PLUGIN_ROOT env, else the parent of
 # this file's parent (mirrors bash `dirname/..`).
-def _resolvePluginRoot() -> Path:
+def _util_resolvePluginRoot() -> Path:
     env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env_root:
         return Path(env_root)
     return Path(__file__).resolve().parent.parent
 
 
-def _safe_call(fn: Callable[..., Any], *args: Any) -> str:
+def _util_safe_call(fn: Callable[..., Any], *args: Any) -> str:
     """Bash `safe` wrapper: swallow failures, return '(unavailable)'."""
     try:
         result = fn(*args)
@@ -91,13 +91,13 @@ def _safe_call(fn: Callable[..., Any], *args: Any) -> str:
         return "(unavailable)"
 
 
-def _strip_stdin_text(text: str) -> str:
+def _util_strip_stdin_text(text: str) -> str:
     """Mirror common/scripts/jot/strip_stdin.py: strip leading whitespace,
     replace null bytes with spaces."""
     return text.lstrip().replace("\x00", " ")
 
 
-def _append_log(log_file: str, line: str) -> None:
+def _util_append_log(log_file: str, line: str) -> None:
     """Append a line to the log file; swallow all errors (bash hide_errors)."""
     if not log_file:
         return
@@ -109,14 +109,14 @@ def _append_log(log_file: str, line: str) -> None:
         return
 
 
-def _hide_errors(func, *args, **kwargs):
+def _util_hide_errors(func, *args, **kwargs):
     try:
         return func(*args, **kwargs)
     except Exception:
         return "(unavailable)"
 
 
-def _appendAudit(audit_path: Path, line: str) -> None:
+def _util_appendAudit(audit_path: Path, line: str) -> None:
     with audit_path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
 
@@ -136,7 +136,7 @@ def _readSidecar(target_file: Path, attempts: int = 5, sleep_s: float = 0.2) -> 
     return ""
 
 
-def _isoTimestampLocal() -> str:
+def _util_isoTimestampLocal() -> str:
     # Match bash `date -Iseconds` (local-tz, seconds precision).
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
@@ -181,15 +181,15 @@ def terminal_spawnIfNeeded(
     if not session:
         raise ValueError("terminal_spawnIfNeeded: session name required")
 
-    clients = _terminalListTmuxClients(session)
+    clients = _terminal_listTmuxClients(session)
     if clients.strip():
         return 0
 
     if sys.platform == "darwin":
         if shutil.which("osascript") is None:
-            _terminalAppendAdvisory(log_file, log_prefix, session)
+            _terminal_appendAdvisory(log_file, log_prefix, session)
             return 0
-        script = _terminalBuildOsascript(session, maximize)
+        script = _terminal_buildOsascript(session, maximize)
         try:
             subprocess.Popen(
                 ["osascript"],
@@ -201,18 +201,18 @@ def terminal_spawnIfNeeded(
             pass
         return 0
 
-    _terminalAppendNonDarwinAdvisory(log_file, log_prefix, session)
+    _terminal_appendNonDarwinAdvisory(log_file, log_prefix, session)
     return 0
 
 
-def _ls_latest_input_txt(todos_dir: Path) -> Path | None:
+def _util_ls_latest_input_txt(todos_dir: Path) -> Path | None:
     """Return the most-recently-modified *_input.txt under todos_dir, or None."""
     candidates = sorted(todos_dir.glob("*_input.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
     return candidates[0] if candidates else None
 
 
 
-def _tail_lines(path: Path, n: int) -> str:
+def _util_tail_lines(path: Path, n: int) -> str:
     """Return last n lines of path as a string, or empty string if unreadable."""
     try:
         text = path.read_text(errors="replace")
@@ -223,7 +223,7 @@ def _tail_lines(path: Path, n: int) -> str:
 
 
 
-def _launch_terminal_background() -> None:
+def _terminal_launchBackground() -> None:
     """Fire-and-forget: launch Terminal.app via osascript without activating."""
     subprocess.Popen(
         ["osascript", "-e", "tell application \"Terminal\" to launch"],
@@ -242,7 +242,7 @@ def _terminal_running() -> bool:
     return result.returncode == 0
 
 
-def _terminalListTmuxClients(session: str) -> str:
+def _terminal_listTmuxClients(session: str) -> str:
     try:
         result = subprocess.run(
             ["tmux", "list-clients", "-t", session],
@@ -257,7 +257,7 @@ def _terminalListTmuxClients(session: str) -> str:
         return ""
 
 
-def _terminalBuildOsascript(session: str, maximize: str) -> str:
+def _terminal_buildOsascript(session: str, maximize: str) -> str:
     return (
         f'if application "Terminal" is running then\n'
         f'  tell application "Terminal" to do script "tmux attach -t {session}"\n'
@@ -265,41 +265,41 @@ def _terminalBuildOsascript(session: str, maximize: str) -> str:
         f'  tell application "Terminal"\n'
         f'    do script "tmux attach -t {session}" in window 1\n'
         f"  end tell\n"
-        f"end if{_terminalMaximizeBlock(maximize)}"
+        f"end if{_terminal_maximizeBlock(maximize)}"
     )
 
 
-def _terminalIsoNow() -> str:
+def _terminal_isoNow() -> str:
     return datetime.now().astimezone().replace(microsecond=0).isoformat()
 
 
-def _terminalAppendAdvisory(log_file: str, prefix: str, session: str) -> None:
+def _terminal_appendAdvisory(log_file: str, prefix: str, session: str) -> None:
     if not log_file or log_file == "/dev/null":
         return
     try:
         with open(log_file, "a", encoding="utf-8") as fh:
             fh.write(
-                f"{_terminalIsoNow()} {prefix}: osascript unavailable; "
+                f"{_terminal_isoNow()} {prefix}: osascript unavailable; "
                 f"attach manually via `tmux attach -t {session}`\n"
             )
     except OSError:
         return
 
 
-def _terminalAppendNonDarwinAdvisory(log_file: str, prefix: str, session: str) -> None:
+def _terminal_appendNonDarwinAdvisory(log_file: str, prefix: str, session: str) -> None:
     if not log_file or log_file == "/dev/null":
         return
     try:
         with open(log_file, "a", encoding="utf-8") as fh:
             fh.write(
-                f"{_terminalIsoNow()} {prefix}: non-Darwin host; "
+                f"{_terminal_isoNow()} {prefix}: non-Darwin host; "
                 f"attach manually via `tmux attach -t {session}`\n"
             )
     except OSError:
         return
 
 
-def _terminalMaximizeBlock(maximize: str) -> str:
+def _terminal_maximizeBlock(maximize: str) -> str:
     if maximize == "yes":
         return (
             '\ntell application "Finder"\n'
@@ -350,14 +350,14 @@ def shell_runWithTimeout(secs: float, argv: Sequence[str]) -> int:
         return proc.wait()
 
 
-def _readFirstToken(path: str) -> str:
+def _util_readFirstToken(path: str) -> str:
     with open(path, "r", encoding="utf-8") as fh:
         line = fh.readline()
     parts = line.strip().split()
     return parts[0] if parts else ""
 
 
-def _sha256File(path: str) -> str:
+def _util_sha256File(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(65536), b""):

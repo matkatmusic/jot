@@ -65,7 +65,7 @@ def test_dispatch_routes_jot_prefix_to_jot_main(monkeypatch):
 
 
 def test_dispatch_longest_prefix_wins_for_todo_list(monkeypatch):
-    # Scenario: "/todo-list" must route to todoList_main, not todo_main, because
+    # Scenario: "/todo-list" must route to todo_listMain, not todo_main, because
     # the dispatcher sorts prefixes longest-first.
     # Setup: stub both /todo and /todo-list entrypoints; record which fires.
     called = []

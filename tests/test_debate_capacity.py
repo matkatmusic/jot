@@ -406,9 +406,9 @@ def test_updates_model_dicts_on_success():
             "common.scripts.debate_lib.debate_agentLaunchCmd",
             return_value="gemini --model gemini-flash",
         ),
-        patch("common.scripts.debate_lib._kill_pane"),
-        patch("common.scripts.debate_lib._launch_agent", return_value=True),
-        patch("common.scripts.debate_lib._send_prompt", return_value=True),
+        patch("common.scripts.debate_lib._tmux_kill_pane"),
+        patch("common.scripts.debate_lib._debate_launch_agent", return_value=True),
+        patch("common.scripts.debate_lib._debate_send_prompt", return_value=True),
     ):
         kwargs = dict(_BASE_KWARGS)
         kwargs["current_model"] = current_model
@@ -423,7 +423,7 @@ def test_kills_old_pane_returns_new_pane_id():
     # Scenario: successful rotation; old pane killed, new pane id returned.
     # Setup: debate_nextModel = "gemini-flash"; debate_newEmptyPane = "%99".
     # Test action: call debate_retryPaneWithNextModel.
-    # Test verification: _kill_pane called with "%10"; return value == "%99".
+    # Test verification: _tmux_kill_pane called with "%10"; return value == "%99".
     kill_mock = MagicMock()
 
     with (
@@ -440,10 +440,10 @@ def test_kills_old_pane_returns_new_pane_id():
             return_value="gemini --model gemini-flash",
         ),
         patch(
-            "common.scripts.debate_lib._kill_pane", kill_mock
+            "common.scripts.debate_lib._tmux_kill_pane", kill_mock
         ),
-        patch("common.scripts.debate_lib._launch_agent", return_value=True),
-        patch("common.scripts.debate_lib._send_prompt", return_value=True),
+        patch("common.scripts.debate_lib._debate_launch_agent", return_value=True),
+        patch("common.scripts.debate_lib._debate_send_prompt", return_value=True),
     ):
         result = debate_retryPaneWithNextModel(**_BASE_KWARGS)
 
@@ -453,7 +453,7 @@ def test_kills_old_pane_returns_new_pane_id():
 
 def test_launch_agent_failure_returns_none():
     # Scenario: new pane created but agent fails to become ready.
-    # Setup: _launch_agent returns False.
+    # Setup: _debate_launch_agent returns False.
     # Test action: call debate_retryPaneWithNextModel.
     # Test verification: returns None (mirrors bash `return 1`).
     with (
@@ -469,11 +469,11 @@ def test_launch_agent_failure_returns_none():
             "common.scripts.debate_lib.debate_agentLaunchCmd",
             return_value="gemini --model gemini-flash",
         ),
-        patch("common.scripts.debate_lib._kill_pane"),
+        patch("common.scripts.debate_lib._tmux_kill_pane"),
         patch(
-            "common.scripts.debate_lib._launch_agent", return_value=False
+            "common.scripts.debate_lib._debate_launch_agent", return_value=False
         ),
-        patch("common.scripts.debate_lib._send_prompt", return_value=True),
+        patch("common.scripts.debate_lib._debate_send_prompt", return_value=True),
     ):
         result = debate_retryPaneWithNextModel(**_BASE_KWARGS)
 
@@ -482,7 +482,7 @@ def test_launch_agent_failure_returns_none():
 
 def test_send_prompt_failure_returns_none():
     # Scenario: agent launched fine but prompt delivery timed out.
-    # Setup: _launch_agent True; _send_prompt returns False.
+    # Setup: _debate_launch_agent True; _debate_send_prompt returns False.
     # Test action: call debate_retryPaneWithNextModel.
     # Test verification: returns None.
     with (
@@ -498,10 +498,10 @@ def test_send_prompt_failure_returns_none():
             "common.scripts.debate_lib.debate_agentLaunchCmd",
             return_value="gemini --model gemini-flash",
         ),
-        patch("common.scripts.debate_lib._kill_pane"),
-        patch("common.scripts.debate_lib._launch_agent", return_value=True),
+        patch("common.scripts.debate_lib._tmux_kill_pane"),
+        patch("common.scripts.debate_lib._debate_launch_agent", return_value=True),
         patch(
-            "common.scripts.debate_lib._send_prompt", return_value=False
+            "common.scripts.debate_lib._debate_send_prompt", return_value=False
         ),
     ):
         result = debate_retryPaneWithNextModel(**_BASE_KWARGS)
@@ -530,9 +530,9 @@ def test_tried_models_created_when_agent_missing():
             "common.scripts.debate_lib.debate_agentLaunchCmd",
             return_value="codex -a never",
         ),
-        patch("common.scripts.debate_lib._kill_pane"),
-        patch("common.scripts.debate_lib._launch_agent", return_value=True),
-        patch("common.scripts.debate_lib._send_prompt", return_value=True),
+        patch("common.scripts.debate_lib._tmux_kill_pane"),
+        patch("common.scripts.debate_lib._debate_launch_agent", return_value=True),
+        patch("common.scripts.debate_lib._debate_send_prompt", return_value=True),
     ):
         kwargs = dict(_BASE_KWARGS)
         kwargs["agent"] = "codex"

@@ -16,7 +16,7 @@ from common.scripts import debate_lib as sut
 
 
 # =====================================================================
-# debateRetry_main tests
+# debate_retryMain tests
 # =====================================================================
 
 
@@ -100,7 +100,7 @@ def test_debateRetry_missing_transcript_emits_message(monkeypatch, tmp_path):
     calls = _install_stubs_dr(monkeypatch, transcript_path="", repo_root=str(tmp_path))
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -115,7 +115,7 @@ def test_debateRetry_missing_repo_emits_message(monkeypatch):
     calls = _install_stubs_dr(monkeypatch, transcript_path="/some/t.txt", repo_root="")
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -136,7 +136,7 @@ def test_debateRetry_no_matching_debate_emits_message(monkeypatch, tmp_path):
     )
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -157,7 +157,7 @@ def test_debateRetry_matched_with_synthesis_emits_already_complete(monkeypatch, 
     )
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -183,7 +183,7 @@ def test_debateRetry_matched_with_live_lock_emits_still_running(monkeypatch, tmp
     )
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -217,7 +217,7 @@ def test_debateRetry_happy_path_lex_max_wins_and_invokes_resume(monkeypatch, tmp
     )
 
     # Test action:
-    rc = _mod_dr.debateRetry_main()
+    rc = _mod_dr.debate_retryMain()
 
     # Test verification:
     assert rc == 0
@@ -463,7 +463,7 @@ def test_partial_substring_does_not_match(tmp_path):
 
 
 # =====================================================================
-# debateAbort_main tests [retry -- debate-abort path]
+# debate_abortMain tests [retry -- debate-abort path]
 # =====================================================================
 
 
@@ -504,7 +504,7 @@ def test_emits_when_transcript_path_missing(
     msgs = _capture_emit(monkeypatch)
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: rc=0 and the exact bash message was emitted.
     assert rc == 0
@@ -520,7 +520,7 @@ def test_emits_when_repo_root_missing(
     msgs = _capture_emit(monkeypatch)
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: bash's exact "git repository" message.
     assert rc == 0
@@ -541,7 +541,7 @@ def test_emits_when_no_matching_debate_found(
     msgs = _capture_emit(monkeypatch)
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: emits "no debate found" and the foreign dir survives.
     assert rc == 0
@@ -562,7 +562,7 @@ def test_emits_still_running_when_live_lock_present(
     monkeypatch.setattr("common.scripts.debate_lib.debate_liveSession", lambda _d: "debate-7")
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: emits the kill-session hint; debate dir untouched.
     assert rc == 0
@@ -586,7 +586,7 @@ def test_emits_still_running_with_unknown_when_session_lookup_empty(
     monkeypatch.setattr("common.scripts.debate_lib.debate_liveSession", lambda _d: "")
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: '<unknown>' placeholder used in the kill-session hint.
     assert rc == 0
@@ -615,7 +615,7 @@ def test_happy_path_deletes_dir_and_emits_success(
     )
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: dir gone, exact "deleted ..." message emitted.
     assert rc == 0
@@ -639,7 +639,7 @@ def test_lexicographic_tiebreak_picks_newest_basename(
     monkeypatch.setattr("common.scripts.debate_lib.debate_liveSession", lambda _d: "")
 
     # Test action: invoke entry point.
-    rc = sut.debateAbort_main()
+    rc = sut.debate_abortMain()
 
     # Test verification: only the lex-greatest matching dir was deleted; the
     # older matching dir AND the unrelated dir survive.

@@ -16,7 +16,7 @@ import pytest
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
 from common.scripts.git_lib import (
-    getCurrentGitBranchName
+    git_getCurrentBranchName
 )
 
 import test_plate_scenarios as _plate_scenarios

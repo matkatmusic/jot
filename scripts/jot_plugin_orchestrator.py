@@ -18,7 +18,7 @@ from pathlib import Path
 # the repo root is not on sys.path. Pytest already arranges this via rootdir.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from common.scripts.util_lib import _matches_prefix
+from common.scripts.util_lib import _util_matches_prefix
 from common.scripts.jot_lib import (
     jot_collectDiagnostics,
     jot_main,
@@ -27,7 +27,7 @@ from common.scripts.jot_lib import (
     jot_stop,
 )
 from common.scripts.todo_lib import (
-    todoList_main,
+    todo_listMain,
     todo_launcher,
     todo_main,
     todo_scanOpen,
@@ -41,8 +41,8 @@ from common.scripts.plate_dispatcher import (
     plate_summaryWatch,
 )
 from common.scripts.debate_lib import (
-    debateAbort_main,
-    debateRetry_main,
+    debate_abortMain,
+    debate_retryMain,
     debate_launch,
     debate_tmuxOrchestrator,
 )
@@ -74,10 +74,10 @@ _PROMPT_DISPATCH: tuple = (
     ("/jot", lambda: jot_main()),
     ("/plate", lambda: plate_main()),
     ("/debate", lambda: debate_launch()),
-    ("/debate-retry", lambda: debateRetry_main()),
-    ("/debate-abort", lambda: debateAbort_main()),
+    ("/debate-retry", lambda: debate_retryMain()),
+    ("/debate-abort", lambda: debate_abortMain()),
     ("/todo", lambda: todo_main()),
-    ("/todo-list", lambda: todoList_main()),
+    ("/todo-list", lambda: todo_listMain()),
 )
 
 
@@ -115,7 +115,7 @@ def dispatch_main(argv: list[str] | None = None) -> int:
             raw = json.dumps(data)
 
     for prefix, fn in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
-        if _matches_prefix(prompt, prefix):
+        if _util_matches_prefix(prompt, prefix):
             saved_stdin = sys.stdin
             try:
                 sys.stdin = io.StringIO(raw)

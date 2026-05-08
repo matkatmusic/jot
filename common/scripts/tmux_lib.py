@@ -424,7 +424,7 @@ def tmux_ensureSession(
     return 0
 
 
-def _default_tmux_runner(argv: List[str]) -> int:
+def _tmux_default_runner(argv: List[str]) -> int:
     """Real tmux invocation: run `argv` and return the exit code.
 
     stdout/stderr suppressed because collisions are an expected control-flow
@@ -440,7 +440,7 @@ def _default_tmux_runner(argv: List[str]) -> int:
     return proc.returncode
 
 
-def _run_tmux(*args: str) -> str:
+def _tmux_run(*args: str) -> str:
     """Run a tmux subcommand; return stdout or error message on failure."""
     try:
         result = subprocess.run(
@@ -465,7 +465,7 @@ def _tmux_session_exists(session: str) -> bool:
 
 
 # Default tmux send used when the caller does not inject one.
-def _default_tmux_send(pane: str, keys: str) -> None:
+def _tmux_default_send(pane: str, keys: str) -> None:
     # Mirrors `tmux send-keys -t "$PANE" <keys> 2>/dev/null || true` --
     # callers swallow errors at the dispatch layer, but we also redirect
     # stderr here so a missing pane doesn't pollute the watcher's log.
@@ -477,7 +477,7 @@ def _default_tmux_send(pane: str, keys: str) -> None:
     )
 
 
-def _backgroundKill(pane_target: str, retile_target: str = "jot:jots") -> None:
+def _tmux_backgroundKill(pane_target: str, retile_target: str = "jot:jots") -> None:
     # Bash forks a `( sleep 0.5; kill-pane; retile ) &` subshell so the hook
     # can return BEFORE tmux signals claude. In Python we expose this as a
     # function so tests can monkeypatch it; default impl does the work
@@ -487,7 +487,7 @@ def _backgroundKill(pane_target: str, retile_target: str = "jot:jots") -> None:
     tmux_retile(retile_target)
 
 
-def _live_pane_ids() -> set[str]:
+def _tmux_live_pane_ids() -> set[str]:
     """Return the set of currently-live tmux pane ids ('%N').
 
     Failures (no tmux, no server, non-zero rc) are swallowed and yield
@@ -507,7 +507,7 @@ def _live_pane_ids() -> set[str]:
         return set()
     return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
-def _kill_pane(pane_id: str) -> None:
+def _tmux_kill_pane(pane_id: str) -> None:
     """Kill a tmux pane, silencing errors (mirrors bash `hide_errors tmux_kill_pane`)."""
     subprocess.run(
         ["tmux", "kill-pane", "-t", pane_id],
@@ -518,7 +518,7 @@ def _kill_pane(pane_id: str) -> None:
 
 # Boundary seam: returns the pane's current foreground command (e.g. "gemini","codex","bash").
 # Tests patch this.
-def _paneCurrentCommand(pane_id: str) -> str:
+def _tmux_paneCurrentCommand(pane_id: str) -> str:
     try:
         out = subprocess.run(
             ["tmux", "display-message", "-p", "-t", pane_id, "#{pane_current_command}"],
@@ -535,7 +535,7 @@ def _paneCurrentCommand(pane_id: str) -> str:
 
 # Boundary seam: returns the set of live pane ids (e.g. {"%5","%7"}) in WINDOW_TARGET.
 # Tests patch this; production callers pass `window_target` from the orchestrator.
-def _listLivePaneIds(window_target: str) -> set[str]:
+def _tmux_listLivePaneIds(window_target: str) -> set[str]:
     try:
         out = subprocess.run(
             ["tmux", "list-panes", "-t", window_target, "-F", "#{pane_id}"],

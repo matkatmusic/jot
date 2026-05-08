@@ -54,7 +54,7 @@ def test_todoListPrompt_e2e_routesTo_todoList_main_emitsNoTodosFolderBlock(
 ) -> None:
     # Scenario: a UserPromptSubmit payload with prompt "/todo-list" against
     # a repo that has no Todos/ folder must be routed via _PROMPT_DISPATCH
-    # to todo_lib.todoList_main, which prints the documented
+    # to todo_lib.todo_listMain, which prints the documented
     # "No Todos/ folder found in this project." block on stdout.
     # Setup: hermetic env; cwd is a fresh tmp repo without a Todos/ dir.
     env, payload = e2e_buildTodoListPromptFixture(tmp_path)

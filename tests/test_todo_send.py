@@ -36,9 +36,9 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
 
     calls = []
 
-    monkeypatch.setattr("common.scripts.todo_lib.getGitBranchNameOrFail", lambda p: "main-branch")
-    monkeypatch.setattr("common.scripts.todo_lib.getGitRecentCommitHashes", lambda p: ["commit1", "commit2"])
-    monkeypatch.setattr("common.scripts.todo_lib.getGitUncommittedFilenames", lambda p: ["file1.txt"])
+    monkeypatch.setattr("common.scripts.todo_lib.git_getBranchNameOrFail", lambda p: "main-branch")
+    monkeypatch.setattr("common.scripts.todo_lib.git_getRecentCommitHashes", lambda p: ["commit1", "commit2"])
+    monkeypatch.setattr("common.scripts.todo_lib.git_getUncommittedFilenames", lambda p: ["file1.txt"])
     monkeypatch.setattr("common.scripts.todo_lib.todo_scanOpen", lambda p: [str(repo_root / "Todos" / "todo1.md")])
 
     def mock_run(cmd, *args, **kwargs):

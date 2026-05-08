@@ -56,13 +56,13 @@ def _patch_all(pane_content: str = "", *, ready_after: int | None = 0):
 
 @pytest.fixture
 def fake_tmux(monkeypatch):
-    """Patch `_live_pane_ids` to return a configurable set without tmux."""
+    """Patch `_tmux_live_pane_ids` to return a configurable set without tmux."""
     state: dict[str, set[str]] = {"live": set()}
 
     def _fake() -> set[str]:
         return set(state["live"])
 
-    monkeypatch.setattr("common.scripts.debate_lib._live_pane_ids", _fake)
+    monkeypatch.setattr("common.scripts.debate_lib._tmux_live_pane_ids", _fake)
     return state
 
 
@@ -76,8 +76,8 @@ def test_removes_lock_with_missing_pane_id(tmp_path: Path) -> None:
     # Setup: create a .r1_gemini.lock with junk that sed regex will not match.
     lock = _write_lock(tmp_path, "r1", "gemini", "garbage-not-a-pane-id\n")
     # Test action: invoke cleaner with no live panes; tmux probes should not even matter.
-    with patch("common.scripts.debate_lib._listLivePaneIds", return_value=set()), \
-         patch("common.scripts.debate_lib._paneCurrentCommand", return_value=""):
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds", return_value=set()), \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand", return_value=""):
         debate_cleanStaleLocks(tmp_path, "r1")
     # Test verification: the malformed lock must be gone.
     assert not lock.exists()
@@ -87,8 +87,8 @@ def test_removes_lock_when_pane_not_in_window(tmp_path: Path) -> None:
     # Scenario: lock references a pane id that is no longer present in the tmux window.
     # Setup: write a well-formed lock pointing to %42; tmux reports only %99 alive.
     lock = _write_lock(tmp_path, "r1", "codex", "debate:%42\n")
-    with patch("common.scripts.debate_lib._listLivePaneIds", return_value={"%99"}), \
-         patch("common.scripts.debate_lib._paneCurrentCommand", return_value="codex"):
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds", return_value={"%99"}), \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand", return_value="codex"):
         # Test action: clean stage r1.
         debate_cleanStaleLocks(tmp_path, "r1")
     # Test verification: stale lock removed.
@@ -99,8 +99,8 @@ def test_removes_lock_when_pane_current_command_mismatches_agent(tmp_path: Path)
     # Scenario: pane is alive but running a different binary (agent crashed; shell took over).
     # Setup: lock claims pane %5 for gemini, but tmux reports current_command = "bash".
     lock = _write_lock(tmp_path, "r1", "gemini", "debate:%5\n")
-    with patch("common.scripts.debate_lib._listLivePaneIds", return_value={"%5"}), \
-         patch("common.scripts.debate_lib._paneCurrentCommand", return_value="bash"):
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds", return_value={"%5"}), \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand", return_value="bash"):
         # Test action.
         debate_cleanStaleLocks(tmp_path, "r1")
     # Test verification: lock removed because current_command != agent.
@@ -111,8 +111,8 @@ def test_preserves_lock_when_pane_alive_and_command_matches_agent(tmp_path: Path
     # Scenario: pane is live and running the agent binary -- lock is valid and must NOT be removed.
     # Setup: lock for codex on pane %7; tmux confirms %7 alive with current_command "codex".
     lock = _write_lock(tmp_path, "r1", "codex", "debate:%7\n")
-    with patch("common.scripts.debate_lib._listLivePaneIds", return_value={"%7"}), \
-         patch("common.scripts.debate_lib._paneCurrentCommand", return_value="codex"):
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds", return_value={"%7"}), \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand", return_value="codex"):
         # Test action.
         debate_cleanStaleLocks(tmp_path, "r1")
     # Test verification: live lock preserved.
@@ -125,8 +125,8 @@ def test_only_touches_locks_for_requested_stage(tmp_path: Path) -> None:
     # Setup: write one stale r1 lock (no pane id) and one stale r2 lock (no pane id).
     r1_lock = _write_lock(tmp_path, "r1", "gemini", "junk\n")
     r2_lock = _write_lock(tmp_path, "r2", "gemini", "junk\n")
-    with patch("common.scripts.debate_lib._listLivePaneIds", return_value=set()), \
-         patch("common.scripts.debate_lib._paneCurrentCommand", return_value=""):
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds", return_value=set()), \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand", return_value=""):
         # Test action: clean stage r1 only.
         debate_cleanStaleLocks(tmp_path, "r1")
     # Test verification: r1 lock removed, r2 lock untouched.
@@ -137,8 +137,8 @@ def test_only_touches_locks_for_requested_stage(tmp_path: Path) -> None:
 def test_no_locks_present_is_a_noop(tmp_path: Path) -> None:
     # Scenario: empty debate directory -- glob matches nothing.
     # Setup: tmp_path is empty; no tmux probes should be invoked.
-    with patch("common.scripts.debate_lib._listLivePaneIds") as live, \
-         patch("common.scripts.debate_lib._paneCurrentCommand") as cur:
+    with patch("common.scripts.debate_lib._tmux_listLivePaneIds") as live, \
+         patch("common.scripts.debate_lib._tmux_paneCurrentCommand") as cur:
         # Test action.
         debate_cleanStaleLocks(tmp_path, "synthesis")
     # Test verification: function returns cleanly without probing tmux.

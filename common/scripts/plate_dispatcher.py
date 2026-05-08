@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from common.scripts.git_lib import GitError, getGitRepoRoot, ensureGitignoreEntry
+from common.scripts.git_lib import GitError, git_getRepoRoot, git_ensureGitignoreEntry
 from common.scripts.hookjson_lib import hookjson_checkRequirements, hookjson_emitBlock
-from common.scripts.tmux_lib import _default_tmux_send
+from common.scripts.tmux_lib import _tmux_default_send
 
 
 # Strict /plate prompt regex - mirrors bash grep -qE pattern exactly.
@@ -115,7 +115,7 @@ def plate_summaryWatch(
     interval: Optional[int] = None,
     *,
     sleep: Callable[[float], None] = time.sleep,
-    tmux_send: Callable[[str, str], None] = _default_tmux_send,
+    tmux_send: Callable[[str, str], None] = _tmux_default_send,
 ) -> int:
     # Resolve env-knob defaults exactly like the bash `${VAR:-default}` form.
     if timeout is None:
@@ -168,8 +168,8 @@ def plate_main(
     """Claude Code plugin hook entrypoint for /plate commands."""
     emit_block = _hookjson_emitBlock or hookjson_emitBlock
     check_reqs = _hookjson_checkRequirements or hookjson_checkRequirements
-    get_repo_root = _getGitRepoRoot or getGitRepoRoot
-    ensure_gitignore = _ensureGitignoreEntry or ensureGitignoreEntry
+    get_repo_root = _getGitRepoRoot or git_getRepoRoot
+    ensure_gitignore = _ensureGitignoreEntry or git_ensureGitignoreEntry
     run = _subprocess_run or subprocess.run
     env = _environ if _environ is not None else dict(os.environ)
 

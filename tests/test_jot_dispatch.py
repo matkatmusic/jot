@@ -53,9 +53,9 @@ def test_dispatchMain_leading_whitespace_in_prompt_tolerated(monkeypatch):
 
 def test_dispatchMain_jot_namespace_normalises_to_bare_skill(monkeypatch):
     # Scenario: prompt "/jot:todo-list ..." -> rewritten to "/todo-list ...".
-    # Setup: stub todoList_main; namespaced prompt.
+    # Setup: stub todo_listMain; namespaced prompt.
     calls: list = []
-    _stub_prompt_disp(monkeypatch, "todoList_main", calls, "/todo-list")
+    _stub_prompt_disp(monkeypatch, "todo_listMain", calls, "/todo-list")
     payload = json.dumps({"prompt": "/jot:todo-list show me"})
     monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
     # Test action:
@@ -210,9 +210,9 @@ def test_happy_path_writes_input_file_with_all_sections(
     _stub_passing_deps(monkeypatch)
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "abc123 init")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "M file.py")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getRecentCommitHashes", lambda c: "abc123 init")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getUncommittedFilenames", lambda c: "M file.py")
     monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "todo1\ntodo2")
     launched = {"called": False}
 
@@ -329,10 +329,10 @@ def test_argv_dispatch_unpacks_args_positionally(monkeypatch, subcmd, target, ar
         ("/jot", "jot_main"),
         ("/plate", "plate_main"),
         ("/debate", "debate_launch"),
-        ("/debate-retry", "debateRetry_main"),
-        ("/debate-abort", "debateAbort_main"),
+        ("/debate-retry", "debate_retryMain"),
+        ("/debate-abort", "debate_abortMain"),
         ("/todo", "todo_main"),
-        ("/todo-list", "todoList_main"),
+        ("/todo-list", "todo_listMain"),
     ],
 )
 def test_promptDispatch_routesPrefixToMatchingMain(monkeypatch, prefix, target_attr):
@@ -355,15 +355,15 @@ def test_promptDispatch_routesPrefixToMatchingMain(monkeypatch, prefix, target_a
 
 def test_promptDispatch_rewritesJotNamespaceToBareSkill(monkeypatch):
     # Scenario: "/jot:todo-list ..." rewrites to "/todo-list ..." and routes
-    # to todoList_main with the rewritten JSON forwarded on stdin.
-    # Setup: stub todoList_main; payload uses the namespaced prefix.
+    # to todo_listMain with the rewritten JSON forwarded on stdin.
+    # Setup: stub todo_listMain; payload uses the namespaced prefix.
     calls: list = []
-    _stub_prompt_disp(monkeypatch, "todoList_main", calls, "/todo-list")
+    _stub_prompt_disp(monkeypatch, "todo_listMain", calls, "/todo-list")
     payload = json.dumps({"prompt": "/jot:todo-list show me"})
     monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
     # Test action: dispatch in stdin-mode.
     rc = dispatch_main([])
-    # Test verification: rc=0, todoList_main got the rewritten prompt.
+    # Test verification: rc=0, todo_listMain got the rewritten prompt.
     assert rc == 0
     assert len(calls) == 1
     forwarded = json.loads(calls[0][1])
@@ -378,10 +378,10 @@ def test_promptDispatch_unknownPrefixInvokesNothing(monkeypatch):
         ("/jot", "jot_main"),
         ("/plate", "plate_main"),
         ("/debate", "debate_launch"),
-        ("/debate-retry", "debateRetry_main"),
-        ("/debate-abort", "debateAbort_main"),
+        ("/debate-retry", "debate_retryMain"),
+        ("/debate-abort", "debate_abortMain"),
         ("/todo", "todo_main"),
-        ("/todo-list", "todoList_main"),
+        ("/todo-list", "todo_listMain"),
     ]:
         _stub_prompt_disp(monkeypatch, target_attr, tripwire, prefix)
     payload = json.dumps({"prompt": "/unknownthing fixture"})

@@ -165,11 +165,11 @@ def e2e_buildDebatePromptFixture(tmp_path: Path) -> tuple[dict[str, str], str]:
 
 
 def e2e_buildDebateRetryPromptFixture(tmp_path: Path) -> tuple[dict[str, str], str]:
-    """`/debate-retry` with empty transcript_path -> debateRetry_main bails
+    """`/debate-retry` with empty transcript_path -> debate_retryMain bails
     out via the early-transcript-empty branch. Observable: debate_initHookContext
     creates the parent dir of DEBATE_LOG_FILE; we point that file at a nested
     path that does NOT exist beforehand, so the dir's existence proves the
-    routed entrypoint ran. No skip switch needed; debateRetry_main does not
+    routed entrypoint ran. No skip switch needed; debate_retryMain does not
     spawn Terminal.app or claude before the early return."""
     env = _e2e_baseEnv(tmp_path)
     nested = tmp_path / "debate-retry-logs" / "nested"
@@ -185,7 +185,7 @@ def e2e_buildDebateRetryPromptFixture(tmp_path: Path) -> tuple[dict[str, str], s
 
 
 def e2e_buildDebateAbortPromptFixture(tmp_path: Path) -> tuple[dict[str, str], str]:
-    """`/debate-abort` with empty transcript_path -> debateAbort_main bails
+    """`/debate-abort` with empty transcript_path -> debate_abortMain bails
     via the empty-transcript_path early branch. Same observable strategy as
     debate-retry: nested DEBATE_LOG_FILE parent dir is created by
     debate_initHookContext, proving the routed entrypoint ran."""
@@ -224,7 +224,7 @@ def e2e_buildTodoPromptFixture(tmp_path: Path) -> tuple[dict[str, str], str]:
 
 
 def e2e_buildTodoListPromptFixture(tmp_path: Path) -> tuple[dict[str, str], str]:
-    """`/todo-list` against a repo with no Todos/ dir -> todoList_main
+    """`/todo-list` against a repo with no Todos/ dir -> todo_listMain
     emits 'No Todos/ folder found in this project.' block. No skip
     switch needed."""
     env = _e2e_baseEnv(tmp_path)

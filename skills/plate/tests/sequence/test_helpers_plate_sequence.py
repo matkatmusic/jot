@@ -17,7 +17,7 @@ import pytest
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
 from common.scripts.git_lib import (
-    getCurrentGitBranchName
+    git_getCurrentBranchName
 )
 
 import test_plate_scenarios as _plate_scenarios
@@ -50,19 +50,19 @@ def test_sequence_01_plate_push_first_time_preserves_user_workspace(repo: Path) 
 
 
 def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> None:
-    branch = getCurrentGitBranchName(repo)
+    branch = git_getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    head_before = getSHAForGitRefViaRevParse(repo, "HEAD")
+    head_before = git_getSHAForRefViaRevParse(repo, "HEAD")
 
     # 1. Edit A: modify a tracked file. Run plate_push → P1.
     (repo / TEST_FILENAME).write_text("edit A\n")
     p1_sha = plate_push(repo)
     assert p1_sha is not None
-    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p1_sha
+    assert git_getSHAForRefViaRevParse(repo, plateBranchName) == p1_sha
 
     # 2. Edit B: keep working — append more changes on top of the visible WT.
     (repo / TEST_FILENAME).write_text("edit A\nedit B\n")
-    untracked_b = createUntrackedFile(repo, random.Random())["file"]
+    untracked_b = git_test_createUntrackedFile(repo, random.Random())["file"]
 
     # 3. Second plate_push → P2.
     p2_sha = plate_push(repo)
@@ -72,7 +72,7 @@ def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> N
     assert p2_sha != p1_sha
     assert run(["git", "rev-parse", f"{plateBranchName}~1"], cwd=repo) == p1_sha
     # 4b. <branch>-plate advances to P2.
-    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p2_sha
+    assert git_getSHAForRefViaRevParse(repo, plateBranchName) == p2_sha
     # 4c. Latest plate tree captures the current WT (both edit B and untracked).
     plate_files = run(
         ["git", "ls-tree", "-r", "--name-only", plateBranchName], cwd=repo
@@ -83,9 +83,9 @@ def test_sequence_02_plate_push_second_time_extends_plate_stack(repo: Path) -> N
     )
     assert plate_tip_a_txt == "edit A\nedit B"
     # 4d. Branch HEAD and WT unchanged.
-    assert getSHAForGitRefViaRevParse(repo, "HEAD") == head_before
+    assert git_getSHAForRefViaRevParse(repo, "HEAD") == head_before
     assert (repo / TEST_FILENAME).read_text() == "edit A\nedit B\n"
-    assert untracked_b in getGitUntrackedFilesList(repo)
+    assert untracked_b in git_getUntrackedFilesList(repo)
 
 
 def test_sequence_03_plate_done_replays_stack_and_cleans_workspace(repo: Path) -> None:
@@ -104,18 +104,18 @@ def test_sequence_04_plate_done_aborts_when_unpushed_work_exists(
     # contract: plate_done is pure replay and must refuse to run when the
     # WT has uncommitted work that would be destroyed by Step 1's clean.
     # The user is expected to /plate the divergence first, then retry.
-    branch = getCurrentGitBranchName(repo)
+    branch = git_getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    branch_count_before = countGitCommitsReachableFromRef(repo, branch)
+    branch_count_before = git_countCommitsReachableFromRef(repo, branch)
 
     # 1. Edit A: create untracked file U_A, push as P1.
-    u_a = createUntrackedFile(repo, random.Random())["file"]
+    u_a = git_test_createUntrackedFile(repo, random.Random())["file"]
     plate_push(repo)
-    assert checkIfGitBranchExists(repo, plateBranchName)
-    plate_tip_before = getSHAForGitRefViaRevParse(repo, plateBranchName)
+    assert git_checkIfBranchExists(repo, plateBranchName)
+    plate_tip_before = git_getSHAForRefViaRevParse(repo, plateBranchName)
 
     # 2. Edit B: create untracked file U_B but DO NOT plate_push it.
-    u_b = createUntrackedFile(repo, random.Random())["file"]
+    u_b = git_test_createUntrackedFile(repo, random.Random())["file"]
 
     # 3. plate_done sees WT-tree (with U_B) != plate-tip-tree and must abort.
     plate_done(repo)
@@ -125,30 +125,30 @@ def test_sequence_04_plate_done_aborts_when_unpushed_work_exists(
     assert "working tree differs" in captured.err
     assert plateBranchName in captured.err
     # 4b. Plate branch preserved at its pre-call SHA.
-    assert checkIfGitBranchExists(repo, plateBranchName)
-    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == plate_tip_before
+    assert git_checkIfBranchExists(repo, plateBranchName)
+    assert git_getSHAForRefViaRevParse(repo, plateBranchName) == plate_tip_before
     # 4c. Branch HEAD did not advance (no commits applied).
-    assert countGitCommitsReachableFromRef(repo, branch) == branch_count_before
+    assert git_countCommitsReachableFromRef(repo, branch) == branch_count_before
     # 4d. Both untracked files preserved in WT for the user to /plate next.
-    untracked = getGitUntrackedFilesList(repo)
+    untracked = git_getUntrackedFilesList(repo)
     assert u_a in untracked
     assert u_b in untracked
 
 
 def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
-    branch = getCurrentGitBranchName(repo)
+    branch = git_getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     rng = random.Random()
     # 1. P1: edit A — create untracked U_A, push.
-    u_a = createUntrackedFile(repo, rng)["file"]
+    u_a = git_test_createUntrackedFile(repo, rng)["file"]
     plate_push(repo)
-    p1_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
+    p1_sha = git_getSHAForRefViaRevParse(repo, plateBranchName)
 
     # 2. P2: edit B — create untracked U_B, push.
-    u_b = createUntrackedFile(repo, rng)["file"]
+    u_b = git_test_createUntrackedFile(repo, rng)["file"]
     p2_sha = plate_push(repo)
-    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p2_sha
+    assert git_getSHAForRefViaRevParse(repo, plateBranchName) == p2_sha
 
     # 3. plate_drop — should rewind, NOT delete (multi-plate stack).
     session_dir = plate_drop(repo)
@@ -162,12 +162,12 @@ def test_sequence_05_plate_drop_removes_top_plate_only(repo: Path) -> None:
     patch_path = session_dir / "plate_001.patch"
     assert patch_path.exists()
     # 4b. <branch>-plate rewinds to P1 (still exists, not deleted).
-    assert checkIfGitBranchExists(repo, plateBranchName)
-    assert getSHAForGitRefViaRevParse(repo, plateBranchName) == p1_sha
+    assert git_checkIfBranchExists(repo, plateBranchName)
+    assert git_getSHAForRefViaRevParse(repo, plateBranchName) == p1_sha
     # 4c. WT unchanged — both untracked files still present.
     assert (repo / u_a).exists()
     assert (repo / u_b).exists()
-    untracked = getGitUntrackedFilesList(repo)
+    untracked = git_getUntrackedFilesList(repo)
     assert u_a in untracked
     assert u_b in untracked
     # 4d. The dropped top plate is recoverable — the patch references the
@@ -186,7 +186,7 @@ def test_sequence_07_applyGitPatch_recovers_dropped_plate_work(repo: Path) -> No
     # 1. User creates a single plate P1.
     # 2. User runs plate_drop(repo) and keeps the generated patch path.
     # 3. User resets/cleans the repo back to branch HEAD.
-    # 4. User runs applyGitPatch(repo, patch).
+    # 4. User runs git_applyPatch(repo, patch).
     # 5. WT contains the dropped plate work again byte-for-byte.
     _check_plate_drop_then_applyGitPatch_round_trip(repo)
 
@@ -324,11 +324,11 @@ def test_sequence_19_drop_patch_is_portable_across_repos(tmp_path: Path) -> None
     # 2. In repoA: edit TEST_FILENAME, create an untracked file, plate_push,
     #    plate_drop → produces a portable .patch file.
     # 3. The .patch file is copied into repoB (e.g., emailed to a teammate).
-    # 4. In repoB: applyGitPatch(repoB, patch) restores the dropped edits
+    # 4. In repoB: git_applyPatch(repoB, patch) restores the dropped edits
     #    byte-for-byte — both the tracked modification and the untracked
     #    file land cleanly with no merge markers.
-    repoA = setup_repo(tmp_path / "a")
-    repoB = setup_repo(tmp_path / "b")
+    repoA = git_test_setup_repo(tmp_path / "a")
+    repoB = git_test_setup_repo(tmp_path / "b")
     _check_drop_patch_applies_in_fresh_repo(repoA, repoB)
 
 

@@ -22,7 +22,7 @@ def test_terminal_spawnIfNeeded_empty_session_raises_value_error():
 def test_terminal_spawnIfNeeded_skips_spawn_when_clients_attached():
     # Scenario: tmux session already has an attached client.
     # Setup: stub tmux list to return a non-empty client line.
-    with patch.object(mod, "_terminalListTmuxClients", return_value="/dev/ttys001 ...\n"), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value="/dev/ttys001 ...\n"), \
          patch.object(mod.subprocess, "Popen") as popen, \
          patch.object(mod.sys, "platform", "darwin"):
         # Test action: call function on darwin.
@@ -37,7 +37,7 @@ def test_terminal_spawnIfNeeded_darwin_spawns_osascript_with_attach_command():
     # Setup: stub list_clients empty, which() finds osascript, mock Popen.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/usr/bin/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
          patch.object(mod.subprocess, "Popen", return_value=fake_proc) as popen:
@@ -57,7 +57,7 @@ def test_terminal_spawnIfNeeded_darwin_maximize_yes_includes_full_desktop_block(
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/x/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
          patch.object(mod.subprocess, "Popen", return_value=fake_proc):
@@ -74,7 +74,7 @@ def test_terminal_spawnIfNeeded_darwin_maximize_compact_includes_centred_1000x70
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
     fake_proc.communicate.return_value = (b"", b"")
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/x/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
          patch.object(mod.subprocess, "Popen", return_value=fake_proc):
@@ -90,7 +90,7 @@ def test_terminal_spawnIfNeeded_darwin_missing_osascript_writes_advisory_and_ret
     # Scenario: darwin host but osascript binary is not on PATH.
     # Setup: which() returns None; real tmp log file.
     log = tmp_path / "spawn.log"
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value=None), \
          patch.object(mod.sys, "platform", "darwin"), \
          patch.object(mod.subprocess, "Popen") as popen:
@@ -108,7 +108,7 @@ def test_terminal_spawnIfNeeded_non_darwin_writes_advisory_and_does_not_spawn(tm
     # Scenario: linux host invokes the spawner.
     # Setup: sys.platform stubbed to linux; real tmp log file.
     log = tmp_path / "spawn.log"
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.sys, "platform", "linux"), \
          patch.object(mod.subprocess, "Popen") as popen:
         # Test action: invoke with custom log_prefix.
@@ -125,7 +125,7 @@ def test_terminal_spawnIfNeeded_dev_null_log_does_not_create_file(tmp_path, monk
     # Scenario: caller passes default /dev/null log on non-darwin.
     # Setup: cwd switched to tmp_path so any accidental write would land here.
     monkeypatch.chdir(tmp_path)
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.sys, "platform", "linux"):
         # Test action: invoke with log_file="/dev/null".
         rc = terminal_spawnIfNeeded("s", "/dev/null", "tmux")
@@ -137,7 +137,7 @@ def test_terminal_spawnIfNeeded_dev_null_log_does_not_create_file(tmp_path, monk
 def test_terminal_spawnIfNeeded_advisory_write_failure_is_swallowed():
     # Scenario: log file path is unwritable.
     # Setup: monkeypatch open() to raise OSError.
-    with patch.object(mod, "_terminalListTmuxClients", return_value=""), \
+    with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.sys, "platform", "linux"), \
          patch("builtins.open", side_effect=OSError("EACCES")):
         # Test action + verification: function returns 0, no exception escapes.

@@ -15,16 +15,16 @@ sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" ))
 # plate_lib's '_check' functions now live at skills/plate/tests/sequence/
 sys.path.insert(0, str(_REPO_ROOT / "skills" / "plate" / "tests" / "sequence"))
 
-from git_test_funcs_lib import setup_git_plate_test_repo  # noqa: E402
-from git_lib import getCurrentGitBranchName
+from git_test_funcs_lib import git_test_setup_plate_test_repo  # noqa: E402
+from git_lib import git_getCurrentBranchName
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """Fresh git repo with the standard topology, isolated per test.
 
-    Topology produced by setup_git_plate_test_repo():
+    Topology produced by git_test_setup_plate_test_repo():
         main: A
               \\
         fix:   B - F1 (HEAD, clean WT)
     """
-    return setup_git_plate_test_repo(tmp_path)
+    return git_test_setup_plate_test_repo(tmp_path)

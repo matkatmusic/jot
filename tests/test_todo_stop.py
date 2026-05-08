@@ -61,9 +61,9 @@ def test_safe_wrapper_falls_back_to_unavailable(
     def boom(*_: object) -> str:
         raise RuntimeError("nope")
 
-    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", boom)
-    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", boom)
-    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.git_getBranchNameOrFail", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.git_getRecentCommitHashes", boom)
+    monkeypatch.setattr("common.scripts.jot_lib.git_getUncommittedFilenames", boom)
     monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", boom)
     monkeypatch.setattr("common.scripts.jot_lib.jot_launchPhase2Window", lambda: 0)
 

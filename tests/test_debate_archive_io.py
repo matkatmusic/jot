@@ -15,7 +15,7 @@ from common.scripts.debate_lib import (
     debate_waitForOutputs,
     debate_writeFailed,
 )
-from common.scripts.git_lib import makeGitRepo as _make_repo
+from common.scripts.git_lib import git_makeRepo as _make_repo
 
 
 # =====================================================================

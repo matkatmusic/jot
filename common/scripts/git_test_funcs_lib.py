@@ -22,17 +22,17 @@ from pathlib import Path
 from common.scripts.git_lib import (
     QUIET_OUTPUT,
     CREATE_BRANCH_AND_CHECKOUT_FLAG,
-    addFileToGit,
-    checkOutGitBranch,
-    createGitBranch,
-    createGitCommit,
-    createGitUserConfig,
-    writeGitIgnore,
+    git_addFile,
+    git_checkOutBranch,
+    git_createBranch,
+    git_createCommit,
+    git_createUserConfig,
+    git_writeGitignore,
 )
 from common.scripts.util_lib import run
 
 
-def makeEmptyRepo(path: Path) -> Path:
+def git_test_makeEmptyRepo(path: Path) -> Path:
     """Create a new, empty repo with a single main branch."""
     repo = path / "repo"
     repo.mkdir(parents=True)
@@ -40,40 +40,40 @@ def makeEmptyRepo(path: Path) -> Path:
 cwd=repo)
     return repo
 
-# def getGitStatus(repo: Path) -> dict[str, str]:
+# def git_getStatus(repo: Path) -> dict[str, str]:
 #     return run(["git", "status", "--porcelain"], cwd=repo).splitlines()
 
-def makeTestRepo(base: Path) -> Path:
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
+def git_test_makeTestRepo(base: Path) -> Path:
+    repo = git_test_makeEmptyRepo(path=base)
+    git_createUserConfig(repo)
     return repo
 
 
-def makeTestRepoWithSingleCommit(base: Path) -> Path:
-    repo = makeTestRepo(base=base)
+def git_test_makeRepoWithSingleCommit(base: Path) -> Path:
+    repo = git_test_makeTestRepo(base=base)
     # Ignore .plate/ so the skill's stash dir survives `git clean -fd`.
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
     # add the test file
-    addFileToGit(repo, makeTestFile(repo, TEST_FILENAME))
+    git_addFile(repo, git_test_makeTestFile(repo, TEST_FILENAME))
     # commit both files together as the initial commit
-    createGitCommit(repo, TEST_COMMIT_MESSAGE)
+    git_createCommit(repo, TEST_COMMIT_MESSAGE)
     return repo
 
 
-def makeTestFile(repo: Path, fileName: str) -> Path:
+def git_test_makeTestFile(repo: Path, fileName: str) -> Path:
     file = repo / fileName
     file.write_text(TEST_FILE_CONTENTS)
     return file
 
 
 # ── Implemented: simulate user edits ──────────────────────────────────
-def modifyTrackedFile(repo: Path, file: str, rng: random.Random) -> dict:
+def git_test_modifyTrackedFile(repo: Path, file: str, rng: random.Random) -> dict:
     path = repo / file
     path.write_text(path.read_text() + f"random-{plate_random_string(rng=rng)}\n")
     return {"action": "modify_tracked", "file": path.name}
 
-def modifyRandomlyChosenTrackedFile(
+def git_test_modifyRandomlyChosenTrackedFile(
     repo: Path,
     files: list[str],
     rng: random.Random = random,
@@ -81,16 +81,16 @@ def modifyRandomlyChosenTrackedFile(
     # randomly choose a file from <files> using the supplied rng so that
     # callers passing a seeded rng get deterministic behavior.
     fileName = rng.choice(files)
-    return modifyTrackedFile(repo, fileName, rng=rng)
+    return git_test_modifyTrackedFile(repo, fileName, rng=rng)
 
-def createUntrackedFile(repo: Path, rng: random.Random) -> dict:
+def git_test_createUntrackedFile(repo: Path, rng: random.Random) -> dict:
     name = f"new-{plate_random_string(rng=rng)}.txt"
     path = repo / name
     path.write_text(f"content-{plate_random_string(rng=rng)}\n")
     return {"action": "create_untracked", "file": name}
 
 
-def setup_git_plate_test_repo(base: Path) -> Path:
+def git_test_setup_plate_test_repo(base: Path) -> Path:
     """Create a fresh git repo at base/repo and return its path.
 
     Topology:
@@ -99,7 +99,7 @@ def setup_git_plate_test_repo(base: Path) -> Path:
         <random>:   B - F1   (checked out, clean WT)
 
     The non-main branch name is randomized per call to mimic real-world
-    variance. Tests should query it via getCurrentGitBranchName(repo) rather
+    variance. Tests should query it via git_getCurrentBranchName(repo) rather
     than hardcoding a value.
 
     Files:
@@ -107,34 +107,34 @@ def setup_git_plate_test_repo(base: Path) -> Path:
         b.txt   on <random branch>, content "B"
         fix.txt on <random branch>, content "F1"
     """
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
+    repo = git_test_makeEmptyRepo(path=base)
+    git_createUserConfig(repo)
 
     # main: commit A — also stages .gitignore so .plate/ is ignored
     # and survives `git clean -fd` during plate_trash(clean_wt=True).
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
     (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
-    addFileToGit(repo, TEST_FILENAME)
-    createGitCommit(repo=repo, message="A")
+    git_addFile(repo, TEST_FILENAME)
+    git_createCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
     branch_name = plate_createRandomBranchName()
-    createGitBranch(repo, branch_name)
-    checkOutGitBranch(repo=repo, branch_name=branch_name)
+    git_createBranch(repo, branch_name)
+    git_checkOutBranch(repo=repo, branch_name=branch_name)
 
     (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
-    addFileToGit(repo, B_FILENAME)
-    createGitCommit(repo=repo, message="B")
+    git_addFile(repo, B_FILENAME)
+    git_createCommit(repo=repo, message="B")
 
     (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
-    addFileToGit(repo, F1_FILENAME)
-    createGitCommit(repo=repo, message="F1")
+    git_addFile(repo, F1_FILENAME)
+    git_createCommit(repo=repo, message="F1")
 
     return repo
 
 
-def setup_repo(base: Path) -> Path:
+def git_test_setup_repo(base: Path) -> Path:
     """Create a fresh git repo at base/repo and return its path.
 
     Topology:
@@ -151,34 +151,34 @@ def setup_repo(base: Path) -> Path:
         b.txt   on <random branch>, content "B"
         fix.txt on <random branch>, content "F1"
     """
-    repo = makeEmptyRepo(path=base)
-    createGitUserConfig(repo)
+    repo = git_test_makeEmptyRepo(path=base)
+    git_createUserConfig(repo)
 
     # main: commit A — also stages .gitignore so .plate/ is ignored
     # and survives `git clean -fd` during plate_trash(clean_wt=True).
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
     (repo / TEST_FILENAME).write_text(TEST_FILE_CONTENTS)
-    addFileToGit(repo, TEST_FILENAME)
-    createGitCommit(repo=repo, message="A")
+    git_addFile(repo, TEST_FILENAME)
+    git_createCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
     branch_name = plate_createRandomBranchName()
-    createGitBranch(repo, branch_name)
-    checkOutGitBranch(repo=repo, branch_name=branch_name)
+    git_createBranch(repo, branch_name)
+    git_checkOutBranch(repo=repo, branch_name=branch_name)
 
     (repo / B_FILENAME).write_text(B_FILE_CONTENTS)
-    addFileToGit(repo, B_FILENAME)
-    createGitCommit(repo=repo, message="B")
+    git_addFile(repo, B_FILENAME)
+    git_createCommit(repo=repo, message="B")
 
     (repo / F1_FILENAME).write_text(F1_FILE_CONTENTS)
-    addFileToGit(repo, F1_FILENAME)
-    createGitCommit(repo=repo, message="F1")
+    git_addFile(repo, F1_FILENAME)
+    git_createCommit(repo=repo, message="F1")
 
     return repo
 
 
-def currentTimestampUtcCompact() -> str:
+def git_test_currentTimestampUtcCompact() -> str:
     """UTC ISO8601-compact timestamp for trash session-dir naming.
 
     Format: YYYYMMDDTHHMMSSZ (lex-sortable → chronological).

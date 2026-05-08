@@ -11,15 +11,15 @@ from typing import Any, Callable, Optional, Sequence, Type, TypedDict
 from common.scripts.claude_lib import claude_buildCmd, claude_seedPermissions
 from common.scripts.hookjson_lib import hookjson_checkRequirements, hookjson_emitBlock
 from common.scripts.git_lib import (
-    getGitBranchNameOrFail,
-    getGitRecentCommitHashes,
-    getGitUncommittedFilenames,
-    _gitRepoRoot,
+    git_getBranchNameOrFail,
+    git_getRecentCommitHashes,
+    git_getUncommittedFilenames,
+    _git_repoRoot,
     _git_get_repo_root,
 )
 from common.scripts.util_lib import (
-    _hide_errors,
-    _resolvePluginRoot,
+    _util_hide_errors,
+    _util_resolvePluginRoot,
     FileLock,
     LockTimeout,
     terminal_spawnIfNeeded,
@@ -53,8 +53,8 @@ _AUDIT_MAX_LINES = 1000
 # from stdin, validates the prompt, locates the repo's Todos/ folder, runs the
 # format_open_todos.py helper, and emits a block-decision JSON wrapping the
 # formatted output (or a friendly fallback message). Always returns 0.
-def todoList_main() -> int:
-    plugin_root = _resolvePluginRoot()
+def todo_listMain() -> int:
+    plugin_root = _util_resolvePluginRoot()
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
 
     raw = sys.stdin.read()
@@ -86,7 +86,7 @@ def todoList_main() -> int:
     cwd_val = payload.get("cwd")
     cwd = cwd_val if isinstance(cwd_val, str) and cwd_val else os.getcwd()
 
-    repo_root = _gitRepoRoot(cwd)
+    repo_root = _git_repoRoot(cwd)
     if not repo_root:
         print(hookjson_emitBlock("todo-list: not a git repository."))
         return 0
@@ -307,13 +307,13 @@ def todo_launcher(session_id: str, idea: str, pending_file_path: str) -> int:
     input_file = target_dir / f"{timestamp}_input.txt"
     input_abs = str(input_file)
     
-    branch = _hide_errors(getGitBranchNameOrFail, Path(cwd))
-    commits_list = _hide_errors(getGitRecentCommitHashes, Path(cwd))
+    branch = _util_hide_errors(git_getBranchNameOrFail, Path(cwd))
+    commits_list = _util_hide_errors(git_getRecentCommitHashes, Path(cwd))
     commits = "\n".join(commits_list) if isinstance(commits_list, list) else commits_list
-    uncommitted_list = _hide_errors(getGitUncommittedFilenames, Path(cwd))
+    uncommitted_list = _util_hide_errors(git_getUncommittedFilenames, Path(cwd))
     uncommitted = "\n".join(uncommitted_list) if isinstance(uncommitted_list, list) else uncommitted_list
     
-    open_todos_list = _hide_errors(todo_scanOpen, repo_root)
+    open_todos_list = _util_hide_errors(todo_scanOpen, repo_root)
     open_todos = "\n".join(open_todos_list) if isinstance(open_todos_list, list) else open_todos_list
     
     if transcript_path and Path(transcript_path).is_file():
@@ -581,7 +581,7 @@ def todo_sessionStart(input_file: str, tmpdir_inv: str) -> int:
 # Mirrors `head -10 "$f" | grep -q '^status: open'`: a line within the first
 # 10 lines whose start is the literal token "status: open". grep's anchor (^)
 # pins the match to column 0; the trailing portion of the line is unconstrained.
-def _has_open_status(path: Path) -> bool:
+def _todo_has_open_status(path: Path) -> bool:
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for i, line in enumerate(fh):
@@ -610,7 +610,7 @@ def todo_scanOpen(target_dir: str | Path = ".") -> list[str]:
     for md_path in sorted(todos_dir.glob("*.md")):
         if not md_path.is_file():
             continue
-        if _has_open_status(md_path):
+        if _todo_has_open_status(md_path):
             open_paths.append(str(md_path.resolve()))
     return open_paths
 

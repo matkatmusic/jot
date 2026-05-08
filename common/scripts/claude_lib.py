@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import shutil
 
 from common.scripts.util_lib import (
-    _readFirstToken,
-    _sha256File
+    _util_readFirstToken,
+    _util_sha256File
 )
 
 # Writes a Claude settings JSON file (permissions.allow + hooks block) and returns the `claude --settings ... --add-dir ...` command string with trailing newline.
@@ -59,7 +59,7 @@ def claude_seedPermissions(
         )
         return
 
-    current_default_sha = _readFirstToken(default_sha_file)
+    current_default_sha = _util_readFirstToken(default_sha_file)
 
     if not Path(installed).is_file():
         shutil.copyfile(default, installed)
@@ -73,11 +73,11 @@ def claude_seedPermissions(
         return
 
     try:
-        installed_sha = _sha256File(installed)
+        installed_sha = _util_sha256File(installed)
     except OSError:
         installed_sha = ""
 
-    prior_sha = _readFirstToken(prior_sha_file) if Path(prior_sha_file).is_file() else ""
+    prior_sha = _util_readFirstToken(prior_sha_file) if Path(prior_sha_file).is_file() else ""
 
     if installed_sha == current_default_sha:
         return

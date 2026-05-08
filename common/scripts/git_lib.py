@@ -32,12 +32,12 @@ GITIGNORE_CONTENTS = ".plate/\n"
 
 
 # ── Git helpers ───────────────────────────────────────────────────────
-def makeGitRepo(path: Path) -> Path:
+def git_makeRepo(path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
     return path.resolve()
 
 
-def isGitRepo(path: Path) -> bool:
+def git_isRepo(path: Path) -> bool:
     completed = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
         capture_output=True,
@@ -45,13 +45,13 @@ def isGitRepo(path: Path) -> bool:
     )
     return completed.returncode == 0
 
-def setGitUserConfigValue(repo: Path, config_key: str, config_value: str) -> None:
+def git_setUserConfigValue(repo: Path, config_key: str, config_value: str) -> None:
     run(["git", "config", config_key, config_value], cwd=repo)
 
-def getGitUserConfigValue(repo: Path, config_key: str) -> str:
+def git_getUserConfigValue(repo: Path, config_key: str) -> str:
     return run(["git", "config", config_key], cwd=repo)
 
-def writeGitIgnore(repo: Path, contents: str = GITIGNORE_CONTENTS) -> Path:
+def git_writeGitignore(repo: Path, contents: str = GITIGNORE_CONTENTS) -> Path:
     """Write a .gitignore file at repo root and return its path.
 
     Default contents ignore the /plate skill's local stash directory
@@ -63,11 +63,11 @@ def writeGitIgnore(repo: Path, contents: str = GITIGNORE_CONTENTS) -> Path:
     return path
 
 
-def createGitUserConfig(repo: Path) -> None:
-    setGitUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
-    setGitUserConfigValue(repo, USER_NAME_KEY, USER_NAME_VALUE)
+def git_createUserConfig(repo: Path) -> None:
+    git_setUserConfigValue(repo, USER_EMAIL_KEY, USER_EMAIL_VALUE)
+    git_setUserConfigValue(repo, USER_NAME_KEY, USER_NAME_VALUE)
 
-def getGitBranchList(repo: Path) -> list[str]:
+def git_getBranchList(repo: Path) -> list[str]:
     # git branch --list
     result = run(["git", "branch", "--list"], cwd=repo).splitlines()
     # remove the leading characters (* , +)
@@ -79,65 +79,65 @@ def getGitBranchList(repo: Path) -> list[str]:
         cleanedBranchNames.append(cleaned)
     return cleanedBranchNames
 
-def createGitBranch(repo: Path, branch_name: str) -> None:
+def git_createBranch(repo: Path, branch_name: str) -> None:
     # git branch -q <branch-name>
     run(["git", "branch", QUIET_OUTPUT, branch_name], cwd=repo)
 
-def checkOutGitBranch(repo: Path, branch_name: str) -> None:
+def git_checkOutBranch(repo: Path, branch_name: str) -> None:
     # git checkout -q <branch-name>
     run(["git", "checkout", QUIET_OUTPUT, branch_name], cwd=repo)
 
-def createAndCheckoutGitBranch(repo: Path, branch_name: str) -> None:
+def git_createAndCheckoutBranch(repo: Path, branch_name: str) -> None:
     run(["git", "checkout", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, branch_name], cwd=repo)
 
-def getCurrentGitBranchName(repo: Path) -> str:
+def git_getCurrentBranchName(repo: Path) -> str:
     """Return the current branch name (e.g. 'fix')."""
     # git branch --show-current
     return run(["git", "branch", "--show-current"], cwd=repo)
 
-def getGitUntrackedFilesList(repo: Path) -> list[str]:
+def git_getUntrackedFilesList(repo: Path) -> list[str]:
     # git ls-files --others --exclude-standard
     return run(["git", "ls-files", "--others", "--exclude-standard"], cwd=repo).splitlines()
 
-def getGitUnstagedFilesList(repo: Path) -> list[str]:
+def git_getUnstagedFilesList(repo: Path) -> list[str]:
     # git ls-files --modified
     return run(["git", "ls-files", "--modified"], cwd=repo).splitlines()
 
-def getGitStagedFilesList(repo: Path) -> list[str]:
+def git_getStagedFilesList(repo: Path) -> list[str]:
     # git diff --name-only --cached
     return run(["git", "diff", "--name-only", "--cached"], cwd=repo).splitlines()
 
-def getGitTrackedFilesList(repo: Path) -> list[str]:
+def git_getTrackedFilesList(repo: Path) -> list[str]:
     return run(["git", "ls-files"], cwd=repo).splitlines()
 
-def addFileToGit(repo: Path, file: str) -> None:
+def git_addFile(repo: Path, file: str) -> None:
     run(["git", "add", file], cwd=repo)
 
 
-def stageAllGitChanges(repo: Path, env: dict[str, str] | None = None) -> None:
+def git_stageAllChanges(repo: Path, env: dict[str, str] | None = None) -> None:
     run(["git", "add", "-A"], cwd=repo, env=env)
 
-def gitStashFiles(repo: Path, files: list[str]) -> None:
+def git_stashFiles(repo: Path, files: list[str]) -> None:
     """Stash the named files (tracked or untracked) and remove them from WT.
 
     Uses `git stash push -u --` so that untracked files in <files> are
     included in the stash. After the call, the named files are gone from
     the WT and saved on the top of the stash stack (stash@{0}). Use
-    gitUnstashFiles() to restore them.
+    git_unstashFiles() to restore them.
     """
     run(["git", "stash", "push", "-u", QUIET_OUTPUT, "--"] + files, cwd=repo)
 
-def gitUnstashFiles(repo: Path) -> None:
+def git_unstashFiles(repo: Path) -> None:
     """Pop the top of the stash stack back into the WT (stash@{0})."""
     run(["git", "stash", "pop", QUIET_OUTPUT], cwd=repo)
 
-def addMultipleFilesToGit(repo: Path, files: list[str]) -> None:
+def git_addMultipleFiles(repo: Path, files: list[str]) -> None:
     run(["git", "add"] + files, cwd=repo)
 
-def createGitCommit(repo: Path, message: str) -> None:
+def git_createCommit(repo: Path, message: str) -> None:
     run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE_FLAG, message], cwd=repo)
 
-def checkIfGitBranchExists(repo: Path, branchName: str) -> bool:
+def git_checkIfBranchExists(repo: Path, branchName: str) -> bool:
     """True iff refs/heads/<branchName> exists."""
     # git branch --list <branchName>
     list_output = run(["git", "branch", "--list"], cwd=repo)
@@ -146,48 +146,48 @@ def checkIfGitBranchExists(repo: Path, branchName: str) -> bool:
     # the branch exists if its name appears in the list of branches
     return branchName in list_output
 
-def countGitCommitsReachableFromRef(repo: Path, ref: str) -> int:
+def git_countCommitsReachableFromRef(repo: Path, ref: str) -> int:
     """Number of commits reachable from <ref>."""
     return int(run(["git", "rev-list", "--count", ref], cwd=repo))
 
-def setGitIndexFileForEnv(env: dict[str, str], gitIndexFile: str) -> dict[str, str]:
+def git_setIndexFileForEnv(env: dict[str, str], gitIndexFile: str) -> dict[str, str]:
     env["GIT_INDEX_FILE"] = gitIndexFile
     return env
 
 
-def getSHAForGitRefViaRevParse(repo: Path, ref: str) -> str:
+def git_getSHAForRefViaRevParse(repo: Path, ref: str) -> str:
     return run(["git", "rev-parse", ref], cwd=repo)
 
-def readGitTreeAt(repo: Path, ref: str, env: dict[str, str]) -> str:
+def git_readTreeAt(repo: Path, ref: str, env: dict[str, str]) -> str:
     return run(["git", "read-tree", ref], cwd=repo, env=env)
 
-def writeGitTree(repo: Path, env: dict[str, str]) -> str:
+def git_writeTree(repo: Path, env: dict[str, str]) -> str:
     return run(["git", "write-tree"], cwd=repo, env=env)
 
-def getGitTreeRevOf(commit: str) -> str:
+def git_getTreeRevOf(commit: str) -> str:
     """Return the git rev-spec that peels <commit> to its tree.
     The returned string is a rev-spec (e.g. 'abc1234^{tree}'), NOT a SHA.
     Pass it to git rev-parse — or any command taking a <rev> — to resolve it to the SHA of the commit's tree.
     """
     return f"{commit}^{{tree}}"
 
-def getGitTreeSHA(repo: Path, ref: str) -> str:
+def git_getTreeSHA(repo: Path, ref: str) -> str:
     """SHA of the tree pointed to by <ref>."""
-    return getSHAForGitRefViaRevParse(repo, getGitTreeRevOf(ref))
+    return git_getSHAForRefViaRevParse(repo, git_getTreeRevOf(ref))
 
-def getGitStatus(repo: Path) -> str:
+def git_getStatus(repo: Path) -> str:
     """Output of `git status --porcelain` (empty string when clean)."""
     return run(["git", "status", "--porcelain"], cwd=repo)
 
-def checkGitForCleanWorkTree(repo: Path) -> bool:
+def git_checkForCleanWorkTree(repo: Path) -> bool:
     """True iff WT and index match HEAD with no untracked files."""
-    return getGitStatus(repo) == ""
+    return git_getStatus(repo) == ""
 
-def getGitCommitSubject(repo: Path, ref: str) -> str:
+def git_getCommitSubject(repo: Path, ref: str) -> str:
     """Subject line of the commit at <ref>."""
     return run(["git", "log", "-1", "--format=%s", ref], cwd=repo)
 
-def getGitCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
+def git_getCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
     """Commit message trailers at <ref> as a key→value dict.
 
     Trailers are git's RFC822-style key/value lines at the end of the
@@ -207,11 +207,11 @@ def getGitCommitTrailers(repo: Path, ref: str) -> dict[str, str]:
     return trailers
 
 
-def gitResetHardToHead(repo: Path) -> None:
+def git_resetHardToHead(repo: Path) -> None:
     """git reset --hard — restore tracked files to HEAD's state."""
     run(["git", "reset", QUIET_OUTPUT, "--hard"], cwd=repo)
 
-def gitCleanWorkTree(repo: Path) -> None:
+def git_cleanWorkTree(repo: Path) -> None:
     """git clean -fd — delete untracked files and untracked directories.
 
     Ignored paths (e.g. anything matching .gitignore) are preserved
@@ -219,11 +219,11 @@ def gitCleanWorkTree(repo: Path) -> None:
     """
     run(["git", "clean", "-fd", QUIET_OUTPUT], cwd=repo)
 
-def deleteGitBranchByForce(repo: Path, branchName: str) -> None:
+def git_deleteBranchByForce(repo: Path, branchName: str) -> None:
     """git branch -D <name> — delete branch even if not merged."""
     run(["git", "branch", "-D", QUIET_OUTPUT, branchName], cwd=repo)
 
-def saveChangesToGitPatch(
+def git_saveChangesToPatch(
     repo: Path,
     files: list[str],
     name: str = "changes",
@@ -248,12 +248,12 @@ def saveChangesToGitPatch(
     """
     # Temp-index snapshot lets us stage untracked files without polluting
     # the real index.
-    tmp_index_path = makeTempGitIndexPath()
+    tmp_index_path = git_makeTempIndexPath()
     try:
-        env = setGitIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
-        readGitTreeAt(repo=repo, ref="HEAD", env=env)
+        env = git_setIndexFileForEnv(env={}, gitIndexFile=tmp_index_path)
+        git_readTreeAt(repo=repo, ref="HEAD", env=env)
         run(["git", "add"] + files, cwd=repo, env=env)
-        snapshot_tree = writeGitTree(repo=repo, env=env)
+        snapshot_tree = git_writeTree(repo=repo, env=env)
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
 
@@ -268,12 +268,12 @@ def saveChangesToGitPatch(
     patch_path.write_text(patch_text + "\n")
     return patch_path
 
-def makeTempGitIndexPath() -> str:
+def git_makeTempIndexPath() -> str:
     fd, tmp_index_path = tempfile.mkstemp(prefix="plate-index-")
     os.close(fd)
     return tmp_index_path
 
-def applyGitPatch(repo: Path, patch: Path) -> None:
+def git_applyPatch(repo: Path, patch: Path) -> None:
     """Apply a saved .patch file via `git apply --3way <patch>`."""
     run(["git", "apply", "--3way", str(patch)], cwd=repo)
 
@@ -289,7 +289,7 @@ class GitError(Exception):
     """
 
 
-def getGitRepoRoot(path: Path) -> Path:
+def git_getRepoRoot(path: Path) -> Path:
     """Absolute repo root containing <path>.
 
     Mirrors `git_get_repo_root` in git.sh: resolves --git-common-dir to
@@ -312,13 +312,13 @@ def getGitRepoRoot(path: Path) -> Path:
     return common.parent
 
 
-def getGitBranchNameOrFail(path: Path) -> str:
+def git_getBranchNameOrFail(path: Path) -> str:
     """Current branch name, or raise on detached HEAD / non-repo.
 
     Mirrors `git_get_branch_name` in git.sh exactly, including the
     detached-HEAD message format.
     """
-    if not isGitRepo(path):
+    if not git_isRepo(path):
         raise GitError(f"[git] not a git repository: {path}")
     branch = run(["git", "-C", str(path), "branch", "--show-current"], cwd=path)
     if not branch:
@@ -329,13 +329,13 @@ def getGitBranchNameOrFail(path: Path) -> str:
     return branch
 
 
-def getGitRecentCommitHashes(path: Path, n: int = 5) -> list[str]:
+def git_getRecentCommitHashes(path: Path, n: int = 5) -> list[str]:
     """Up to <n> most-recent commit short hashes, newest first.
 
     Mirrors `git_get_recent_commits` in git.sh. Raises GitError if
     <path> is not a repo or has no commits.
     """
-    if not isGitRepo(path):
+    if not git_isRepo(path):
         raise GitError(f"[git] not a git repository: {path}")
     # `git log` on a repo with no commits exits 128 — handle without raising.
     completed = subprocess.run(
@@ -350,7 +350,7 @@ def getGitRecentCommitHashes(path: Path, n: int = 5) -> list[str]:
     return out.split()
 
 
-def getGitUncommittedFilenames(path: Path) -> list[str]:
+def git_getUncommittedFilenames(path: Path) -> list[str]:
     """Filenames with uncommitted changes (modified, staged, untracked).
 
     Mirrors `git_get_uncommitted` in git.sh, which parses the second
@@ -358,7 +358,7 @@ def getGitUncommittedFilenames(path: Path) -> list[str]:
     the work tree is clean (the bash CLI shim translates that to 'None').
     Raises GitError if <path> is not a repo.
     """
-    if not isGitRepo(path):
+    if not git_isRepo(path):
         raise GitError(f"[git] not a git repository: {path}")
     porcelain = run(["git", "-C", str(path), "status", "--short"], cwd=path)
     if not porcelain:
@@ -374,7 +374,7 @@ def getGitUncommittedFilenames(path: Path) -> list[str]:
     return files
 
 
-def ensureGitignoreEntry(repo_root: Path, pattern: str) -> None:
+def git_ensureGitignoreEntry(repo_root: Path, pattern: str) -> None:
     """Idempotently append <pattern> as a line in <repo_root>/.gitignore.
 
     Mirrors `git_ensure_gitignore_entry` in git.sh: if <pattern> already
@@ -391,7 +391,7 @@ def ensureGitignoreEntry(repo_root: Path, pattern: str) -> None:
 
 # Resolve the git repo root for a given cwd via `git -C <cwd> rev-parse
 # --show-toplevel`. Returns None when not inside a git checkout.
-def _gitRepoRoot(cwd: str) -> str | None:
+def _git_repoRoot(cwd: str) -> str | None:
     try:
         result = subprocess.run(
             ["git", "-C", cwd, "rev-parse", "--show-toplevel"],

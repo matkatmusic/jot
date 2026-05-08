@@ -51,7 +51,7 @@ def _format_trailer_body(text: str) -> str:
     `open questions:` `next steps:`) render on their own lines when the
     user runs `git log -1 --format='%(trailers)'`.
 
-    `getGitCommitTrailers` reads with `unfold=true`, which collapses these
+    `git_getCommitTrailers` reads with `unfold=true`, which collapses these
     continuation lines back to a single space-joined string for
     code paths that want the flat form (preserves the existing test
     contract).

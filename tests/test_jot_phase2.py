@@ -485,9 +485,9 @@ def test_skip_launch_does_not_call_phase2(
     monkeypatch.setenv("JOT_SKIP_LAUNCH", "1")
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getRecentCommitHashes", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getUncommittedFilenames", lambda c: "")
     monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "")
     launched = {"called": False}
     monkeypatch.setattr("common.scripts.jot_lib.jot_launchPhase2Window", lambda: launched.__setitem__("called", True) or 0)
@@ -516,9 +516,9 @@ def test_phase2_called_on_happy_path(
     _stub_passing_deps(monkeypatch)
     repo = tmp_path / "repo"
     (repo / "Todos").mkdir(parents=True)
-    monkeypatch.setattr("common.scripts.jot_lib.getGitBranchNameOrFail", lambda c: "main")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitRecentCommitHashes", lambda c: "")
-    monkeypatch.setattr("common.scripts.jot_lib.getGitUncommittedFilenames", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getBranchNameOrFail", lambda c: "main")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getRecentCommitHashes", lambda c: "")
+    monkeypatch.setattr("common.scripts.jot_lib.git_getUncommittedFilenames", lambda c: "")
     monkeypatch.setattr("common.scripts.jot_lib.todo_scanOpen", lambda r: "")
     calls = {"n": 0}
 

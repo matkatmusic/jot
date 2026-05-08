@@ -46,9 +46,9 @@ def test_gitTestFuncsLibSymbols_resolveFromCanonical() -> None:
     # codebase relies on plate_lib re-exporting it.
     # Setup: nothing.
     # Test action: import the canonical module and grab a public symbol.
-    from common.scripts.git_test_funcs_lib import makeEmptyRepo
+    from common.scripts.git_test_funcs_lib import git_test_makeEmptyRepo
     # Test verification: the symbol is the expected callable.
-    assert callable(makeEmptyRepo)
+    assert callable(git_test_makeEmptyRepo)
 
 
 def test_runAndCurrentTimestampMs_resolveFromCanonical() -> None:

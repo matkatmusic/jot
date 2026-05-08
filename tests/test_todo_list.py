@@ -1,4 +1,4 @@
-"""Tests for todoList_main and todo_scanOpen (list bucket)."""
+"""Tests for todo_listMain and todo_scanOpen (list bucket)."""
 from __future__ import annotations
 
 import json
@@ -11,13 +11,13 @@ from types import SimpleNamespace
 import pytest
 
 from common.scripts import todo_lib as mod
-from common.scripts.todo_lib import todoList_main, todo_scanOpen
+from common.scripts.todo_lib import todo_listMain, todo_scanOpen
 
 # Bind module alias used throughout the test bodies.
 sut = mod
 
 
-# --- todoList_main ---
+# --- todo_listMain ---
 
 
 def _setStdin(monkeypatch: pytest.MonkeyPatch, payload: str) -> None:
@@ -30,7 +30,7 @@ def test_non_todoList_prompt_exits_silently(monkeypatch, capsys):
     _setStdin(monkeypatch, json.dumps({"prompt": "/something-else"}))
     monkeypatch.setattr(sut.subprocess, "run", lambda *a, **k: pytest.fail("must not run subprocess"))
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: returns 0 and emits no output.
     assert rc == 0
     assert capsys.readouterr().out == ""
@@ -44,7 +44,7 @@ def test_bad_prompt_after_fast_path_exits_silently(monkeypatch, capsys):
     monkeypatch.setattr("common.scripts.hookjson_lib.hookjson_checkRequirements", lambda *a, **k: None)
     monkeypatch.setattr(sut.subprocess, "run", lambda *a, **k: pytest.fail("must not run subprocess"))
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: silent exit, no block emission.
     assert rc == 0
     assert capsys.readouterr().out == ""
@@ -61,7 +61,7 @@ def test_missing_repo_emits_not_a_git_repo(monkeypatch, capsys, tmp_path):
         lambda *a, **k: SimpleNamespace(returncode=128, stdout="", stderr="fatal"),
     )
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: prints block JSON with not-a-git-repo reason.
     captured = capsys.readouterr().out.strip()
     decoded = json.loads(captured)
@@ -80,7 +80,7 @@ def test_missing_todos_folder_emits_message(monkeypatch, capsys, tmp_path):
         lambda *a, **k: SimpleNamespace(returncode=0, stdout=str(tmp_path) + "\n", stderr=""),
     )
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: emits the no-Todos-folder block message.
     decoded = json.loads(capsys.readouterr().out.strip())
     assert rc == 0
@@ -104,7 +104,7 @@ def test_empty_formatter_output_emits_no_open_todos(monkeypatch, capsys, tmp_pat
 
     monkeypatch.setattr(sut.subprocess, "run", fake_run)
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: emits "No open TODOs." block; formatter was invoked.
     decoded = json.loads(capsys.readouterr().out.strip())
     assert rc == 0
@@ -130,7 +130,7 @@ def test_non_empty_formatter_output_is_forwarded(monkeypatch, capsys, tmp_path):
 
     monkeypatch.setattr(sut.subprocess, "run", fake_run)
     # Test action: invoke entrypoint.
-    rc = sut.todoList_main()
+    rc = sut.todo_listMain()
     # Test verification: emitted reason equals captured formatter stdout verbatim.
     decoded = json.loads(capsys.readouterr().out.strip())
     assert rc == 0

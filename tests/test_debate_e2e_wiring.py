@@ -44,7 +44,7 @@ def test_debateRetryPrompt_emitsBlockDecisionWhenTranscriptPathMissing(
     tmp_path: Path,
 ) -> None:
     # Scenario: a "/debate-retry" UserPromptSubmit with empty transcript_path
-    # must reach debateRetry_main via _PROMPT_DISPATCH, which emits the
+    # must reach debate_retryMain via _PROMPT_DISPATCH, which emits the
     # documented "no transcript_path" block-decision JSON on stdout.
     # Setup: hermetic env with empty transcript_path in payload.
     env, payload = e2e_buildDebateRetryPromptFixture(tmp_path)
@@ -64,7 +64,7 @@ def test_debateAbortPrompt_emitsBlockDecisionWhenTranscriptPathMissing(
     tmp_path: Path,
 ) -> None:
     # Scenario: a "/debate-abort" UserPromptSubmit with empty transcript_path
-    # must reach debateAbort_main via _PROMPT_DISPATCH, which emits the
+    # must reach debate_abortMain via _PROMPT_DISPATCH, which emits the
     # documented "no transcript_path" block-decision JSON on stdout.
     # Setup: hermetic env with empty transcript_path in payload.
     env, payload = e2e_buildDebateAbortPromptFixture(tmp_path)

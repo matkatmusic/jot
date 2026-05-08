@@ -20,13 +20,13 @@ import pytest
 
 from plate_lib import (
     plate_push,
-    getGitCommitTrailers as getGitCommitTrailers,
-    getCurrentGitBranchName as getCurrentGitBranchName,
+    git_getCommitTrailers as git_getCommitTrailers,
+    git_getCurrentBranchName as git_getCurrentBranchName,
     TEST_FILENAME,
     _plate_writeFakeTranscriptWithToolUse,
 )
 from util_lib import run
-from git_test_funcs_lib import makeTestRepoWithSingleCommit
+from git_test_funcs_lib import git_test_makeRepoWithSingleCommit
 
 # plate_stripConvoSummaryFromCommit and plate_regenerateTipSummary are RED features not yet
 # implemented. Skip collection until they exist so the rest of the suite runs.
@@ -52,8 +52,8 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
         agent's deterministic output
       - other trailers on either commit get clobbered
     """
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    branch = getCurrentGitBranchName(repo)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
+    branch = git_getCurrentBranchName(repo)
     plate_branch = f"{branch}-plate"
 
     # plate_push triggers the multi-agent extraction path whenever the
@@ -91,8 +91,8 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
     )
 
     # Pre-condition: A has convo-summary; B does not.
-    a_pre = getGitCommitTrailers(repo, f"{plate_branch}~1")
-    b_pre = getGitCommitTrailers(repo, plate_branch)
+    a_pre = git_getCommitTrailers(repo, f"{plate_branch}~1")
+    b_pre = git_getCommitTrailers(repo, plate_branch)
     assert a_pre.get("convo-summary") == "OLD: original summary", a_pre
     assert "convo-summary" not in b_pre, b_pre
 
@@ -100,8 +100,8 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
     plate_stripConvoSummaryFromCommit(repo, branch, target_ref=f"{plate_branch}~1")
 
     # A no longer has convo-summary; B unchanged (still no trailer).
-    a_mid = getGitCommitTrailers(repo, f"{plate_branch}~1")
-    b_mid = getGitCommitTrailers(repo, plate_branch)
+    a_mid = git_getCommitTrailers(repo, f"{plate_branch}~1")
+    b_mid = git_getCommitTrailers(repo, plate_branch)
     assert "convo-summary" not in a_mid, a_mid
     assert "convo-summary" not in b_mid, b_mid
     # Other A trailers preserved.
@@ -123,8 +123,8 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
     )
 
     # B has the new summary; A still empty.
-    a_post = getGitCommitTrailers(repo, f"{plate_branch}~1")
-    b_post = getGitCommitTrailers(repo, plate_branch)
+    a_post = git_getCommitTrailers(repo, f"{plate_branch}~1")
+    b_post = git_getCommitTrailers(repo, plate_branch)
     assert "convo-summary" not in a_post, a_post
     assert (
         b_post.get("convo-summary")
@@ -153,16 +153,16 @@ def test_regenerate_tip_summary_splits_subject_and_body(tmp_path: Path):
          subject line),
       3. produce a trailer block git's
          `interpret-trailers --parse` recognizes (i.e.,
-         `getGitCommitTrailers` returns a non-empty `convo-summary` key).
+         `git_getCommitTrailers` returns a non-empty `convo-summary` key).
 
     Failing condition (any of):
       - tip's commit subject is unchanged (still `plate: WIP on ...`)
       - the convo-summary trailer value contains the subject line
-      - getGitCommitTrailers returns no convo-summary at all (git's parser
+      - git_getCommitTrailers returns no convo-summary at all (git's parser
         rejected the trailer block)
     """
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    branch = getCurrentGitBranchName(repo)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
+    branch = git_getCurrentBranchName(repo)
     plate_branch = f"{branch}-plate"
 
     # Setup: tip commit on plate (no convo-summary yet).
@@ -202,7 +202,7 @@ def test_regenerate_tip_summary_splits_subject_and_body(tmp_path: Path):
 
     # 2-3. git's trailer parser recognizes the block and the value is
     # the body only (no subject line embedded).
-    trailers = getGitCommitTrailers(repo, plate_branch)
+    trailers = git_getCommitTrailers(repo, plate_branch)
     assert "convo-summary" in trailers, (
         f"git's trailer parser must recognize the trailer block; "
         f"got trailers={trailers!r}"

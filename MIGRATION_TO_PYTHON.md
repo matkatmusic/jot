@@ -116,42 +116,42 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 ### common/scripts/plate/plate_lib.py
 
-- createRandomBranchName
-- random_string
-- performRandomEdit
-- formatPlateAge
-- localTranscriptIsReadable
-- extractConvoNameFromTranscript
-- extractConvoCwdFromTranscript
-- extractFilesEditedSinceTimestamp
-- _writeFakeTranscriptWithToolUse
-- _parseRmTargets
-- listPlateBranches
-- findMyLastPlate
-- _resolveTargetPlate
-- _buildFullWtTree
-- _buildExtractedTree
-- _formatTrailerBody
+- plate_createRandomBranchName
+- plate_random_string
+- plate_performRandomEdit
+- plate_formatPlateAge
+- plate_localTranscriptIsReadable
+- plate_extractConvoNameFromTranscript
+- plate_extractConvoCwdFromTranscript
+- plate_extractFilesEditedSinceTimestamp
+- _plate_writeFakeTranscriptWithToolUse
+- _plate_parseRmTargets
+- plate_listPlateBranches
+- plate_findMyLastPlate
+- _plate_resolveTargetPlate
+- _plate_buildFullWtTree
+- _plate_buildExtractedTree
+- _plate_formatTrailerBody
 - plate_push
 - plate_done
-- _trashBranchDir
-- _writeTrashSession
-- _listTrashSessions
+- _plate_trashBranchDir
+- _plate_writeTrashSession
+- _plate_listTrashSessions
 - plate_drop
 - plate_trash
 - plate_recycle_list
-- stripConvoSummaryFromCommit
-- regenerateTipSummary
+- plate_stripConvoSummaryFromCommit
+- plate_regenerateTipSummary
 - plate_recycle
 - plate_next
-- _resolvePlateTitle
+- _plate_resolvePlateTitle
 - _plate_next_list
 - _plate_next_jump
-- simulate_derived_agent
-- extractFilesDeletedSinceTimestamp
-- _writeTranscriptFile
-- _buildTwoBranchPlateTopology
-- rewriteBranchTipSummary
+- plate_simulate_derived_agent
+- plate_extractFilesDeletedSinceTimestamp
+- _plate_writeTranscriptFile
+- _plate_buildTwoBranchPlateTopology
+- plate_rewriteBranchTipSummary
 
 (36 functions, 0 classes)
 
@@ -237,9 +237,9 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - debate_archive
 - debate_buildClaudeCmd
 - debate_buildClaudePrompts
-- _build_r1
-- _build_r2
-- _build_synthesis
+- _debate_build_r1
+- _debate_build_r2
+- _debate_build_synthesis
 - class ResumeFeasibility
 - debate_checkResumeFeasibility
 - debate_claimSession
@@ -266,83 +266,83 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - debate_cleanup
 - debate_anyLiveLock
 - debate_sendPromptToAgent
-- _launch_agent
-- _send_prompt
+- _debate_launch_agent
+- _debate_send_prompt
 - debate_probeGemini
 - debate_launchAgentsParallel
 - debate_newEmptyPane
-- debateAbort_main
+- debate_abortMain
 - debate_startOrResume
 - debate_main
-- debateRetry_main
+- debate_retryMain
 - debate_daemonMain
 
 (42 functions, 3 classes)
 
 ### common/scripts/git_lib.py
 
-- makeGitRepo
-- isGitRepo
-- setGitUserConfigValue
-- getGitUserConfigValue
-- writeGitIgnore
-- createGitUserConfig
-- getGitBranchList
-- createGitBranch
-- checkOutGitBranch
-- createAndCheckoutGitBranch
-- getCurrentGitBranchName
-- getGitUntrackedFilesList
-- getGitUnstagedFilesList
-- getGitStagedFilesList
-- getGitTrackedFilesList
-- addFileToGit
-- stageAllGitChanges
-- gitStashFiles
-- gitUnstashFiles
-- addMultipleFilesToGit
-- createGitCommit
-- checkIfGitBranchExists
-- countGitCommitsReachableFromRef
-- setGitIndexFileForEnv
-- getSHAForGitRefViaRevParse
-- readGitTreeAt
-- writeGitTree
-- getGitTreeRevOf
-- getGitTreeSHA
-- getGitStatus
-- checkGitForCleanWorkTree
-- getGitCommitSubject
-- getGitCommitTrailers
-- gitResetHardToHead
-- gitCleanWorkTree
-- deleteGitBranchByForce
-- saveChangesToGitPatch
-- makeTempGitIndexPath
-- applyGitPatch
+- git_makeRepo
+- git_isRepo
+- git_setUserConfigValue
+- git_getUserConfigValue
+- git_writeGitignore
+- git_createUserConfig
+- git_getBranchList
+- git_createBranch
+- git_checkOutBranch
+- git_createAndCheckoutBranch
+- git_getCurrentBranchName
+- git_getUntrackedFilesList
+- git_getUnstagedFilesList
+- git_getStagedFilesList
+- git_getTrackedFilesList
+- git_addFile
+- git_stageAllChanges
+- git_stashFiles
+- git_unstashFiles
+- git_addMultipleFiles
+- git_createCommit
+- git_checkIfBranchExists
+- git_countCommitsReachableFromRef
+- git_setIndexFileForEnv
+- git_getSHAForRefViaRevParse
+- git_readTreeAt
+- git_writeTree
+- git_getTreeRevOf
+- git_getTreeSHA
+- git_getStatus
+- git_checkForCleanWorkTree
+- git_getCommitSubject
+- git_getCommitTrailers
+- git_resetHardToHead
+- git_cleanWorkTree
+- git_deleteBranchByForce
+- git_saveChangesToPatch
+- git_makeTempIndexPath
+- git_applyPatch
 - class GitError
-- getGitRepoRoot
-- getGitBranchNameOrFail
-- getGitRecentCommitHashes
-- getGitUncommittedFilenames
-- ensureGitignoreEntry
-- _gitRepoRoot
+- git_getRepoRoot
+- git_getBranchNameOrFail
+- git_getRecentCommitHashes
+- git_getUncommittedFilenames
+- git_ensureGitignoreEntry
+- _git_repoRoot
 - _git_get_repo_root
 
 (46 functions, 1 classes)
 
 ### common/scripts/git_test_funcs_lib.py
 
-- makeEmptyRepo
-- makeTestRepo
-- makeTestRepoWithSingleCommit
-- makeTestFile
-- modifyTrackedFile
-- modifyRandomlyChosenTrackedFile
-- createUntrackedFile
-- setup_git_plate_test_repo
-- setup_repo
-- currentTimestampUtcCompact
+- git_test_makeEmptyRepo
+- git_test_makeTestRepo
+- git_test_makeRepoWithSingleCommit
+- git_test_makeTestFile
+- git_test_modifyTrackedFile
+- git_test_modifyRandomlyChosenTrackedFile
+- git_test_createUntrackedFile
+- git_test_setup_plate_test_repo
+- git_test_setup_repo
+- git_test_currentTimestampUtcCompact
 
 (10 functions, 0 classes)
 
@@ -361,11 +361,11 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - jot_sendPrompt
 - jot_rotateAudit
 - jot_buildClaudeCmd
-- _jotDefaultPermissionsSeed
-- _jotDefaultExpandPermissions
-- _jotAppendLog
+- _jot_defaultPermissionsSeed
+- _jot_defaultExpandPermissions
+- _jot_appendLog
 - jot_launchPhase2Window
-- _readSidecar
+- _jot_readSidecar
 - jot_diagSection
 - jot_diagIndent
 - jot_diagKv
@@ -419,28 +419,28 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - tmux_waitForClaudeReadiness
 - tmux_ensureKeepalivePane
 - tmux_ensureSession
-- _default_tmux_runner
-- _run_tmux
+- _tmux_default_runner
+- _tmux_run
 - _tmux_session_exists
-- _default_tmux_send
-- _backgroundKill
-- _live_pane_ids
-- _kill_pane
-- _paneCurrentCommand
-- _listLivePaneIds
+- _tmux_default_send
+- _tmux_backgroundKill
+- _tmux_live_pane_ids
+- _tmux_kill_pane
+- _tmux_paneCurrentCommand
+- _tmux_listLivePaneIds
 
 (41 functions, 0 classes)
 
 ### common/scripts/todo_lib.py
 
 - jot_sendPrompt
-- todoList_main
+- todo_listMain
 - todo_main
 - todo_sessionEnd
 - todo_launcher
 - todo_stop
 - todo_sessionStart
-- _has_open_status
+- _todo_has_open_status
 - todo_scanOpen
 
 (9 functions, 0 classes)
@@ -449,31 +449,31 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 - run
 - currentTimestampMs
-- _matches_prefix
-- _slugify
-- _resolvePluginRoot
-- _safe_call
-- _strip_stdin_text
-- _append_log
-- _hide_errors
-- _appendAudit
+- _util_matches_prefix
+- _util_slugify
+- _util_resolvePluginRoot
+- _util_safe_call
+- _util_strip_stdin_text
+- _util_append_log
+- _util_hide_errors
+- _util_appendAudit
 - _readSidecar
-- _isoTimestampLocal
+- _util_isoTimestampLocal
 - shell_waitForFile
 - terminal_spawnIfNeeded
-- _ls_latest_input_txt
-- _tail_lines
-- _launch_terminal_background
+- _util_ls_latest_input_txt
+- _util_tail_lines
+- _terminal_launchBackground
 - _terminal_running
-- _terminalListTmuxClients
-- _terminalBuildOsascript
-- _terminalIsoNow
-- _terminalAppendAdvisory
-- _terminalAppendNonDarwinAdvisory
-- _terminalMaximizeBlock
+- _terminal_listTmuxClients
+- _terminal_buildOsascript
+- _terminal_isoNow
+- _terminal_appendAdvisory
+- _terminal_appendNonDarwinAdvisory
+- _terminal_maximizeBlock
 - shell_runWithTimeout
-- _readFirstToken
-- _sha256File
+- _util_readFirstToken
+- _util_sha256File
 - class LockTimeout
 - class FileLock
   - FileLock.__init__
@@ -1913,7 +1913,16 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 (3 functions, 0 classes)
 
+### plans/rename_funcs.py
+
+- loadConfig
+- buildSubstitutionPlan
+- renameOneFile
+- main
+
+(4 functions, 0 classes)
+
 ---
 
-**Totals:** 95 files, 1365 functions, 27 classes.
+**Totals:** 96 files, 1369 functions, 27 classes.
 

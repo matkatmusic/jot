@@ -17,9 +17,9 @@ from common.scripts.claude_lib import (
     claude_seedPermissions,
 )
 from common.scripts.git_lib import (
-    getGitBranchNameOrFail,
-    getGitRecentCommitHashes,
-    getGitUncommittedFilenames,
+    git_getBranchNameOrFail,
+    git_getRecentCommitHashes,
+    git_getUncommittedFilenames,
 )
 from common.scripts.hookjson_lib import (
     hookjson_checkRequirements,
@@ -40,13 +40,13 @@ from common.scripts.todo_lib import todo_scanOpen
 from common.scripts.util_lib import (
     FileLock,
     LockTimeout,
-    _append_log,
-    _appendAudit,
-    _isoTimestampLocal,
-    _ls_latest_input_txt,
-    _safe_call,
-    _strip_stdin_text,
-    _tail_lines,
+    _util_append_log,
+    _util_appendAudit,
+    _util_isoTimestampLocal,
+    _util_ls_latest_input_txt,
+    _util_safe_call,
+    _util_strip_stdin_text,
+    _util_tail_lines,
     terminal_spawnIfNeeded,
 )
 
@@ -140,7 +140,7 @@ def jot_buildClaudeCmd(
     prior_sha_file = f"{claude_plugin_data}/permissions.default.sha256"
     Path(claude_plugin_data).mkdir(parents=True, exist_ok=True)
 
-    seed_fn = permissions_seed or _jotDefaultPermissionsSeed
+    seed_fn = permissions_seed or _jot_defaultPermissionsSeed
     seed_fn(
         permissions_file,
         default_file,
@@ -150,7 +150,7 @@ def jot_buildClaudeCmd(
         "jot",
     )
 
-    expand_fn = expand_permissions or _jotDefaultExpandPermissions
+    expand_fn = expand_permissions or _jot_defaultExpandPermissions
     env = {"CWD": cwd, "HOME": home, "REPO_ROOT": repo_root}
     allow_json = expand_fn(permissions_file, env)
 
@@ -187,7 +187,7 @@ def jot_buildClaudeCmd(
     }
 
 
-def _jotDefaultPermissionsSeed(
+def _jot_defaultPermissionsSeed(
     permissions_file: str,
     default_file: str,
     default_sha_file: str,
@@ -206,7 +206,7 @@ def _jotDefaultPermissionsSeed(
     return 0
 
 
-def _jotDefaultExpandPermissions(permissions_file: str, env: dict[str, str]) -> str:
+def _jot_defaultExpandPermissions(permissions_file: str, env: dict[str, str]) -> str:
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     script_path = f"{plugin_root}/common/scripts/jot/expand_permissions.py"
     merged = {**os.environ, **env}
@@ -220,7 +220,7 @@ def _jotDefaultExpandPermissions(permissions_file: str, env: dict[str, str]) -> 
     return result.stdout
 
 
-def _jotAppendLog(log_file: str, message: str) -> None:
+def _jot_appendLog(log_file: str, message: str) -> None:
     if not log_file:
         return
     try:
@@ -277,7 +277,7 @@ def jot_launchPhase2Window() -> int:
 
             pane_id = tmux_splitWorkerPane("jot:jots", cwd, claude_cmd)
             if not pane_id:
-                _jotAppendLog(log_file, "[jot] tmux split-window returned empty pane id\n")
+                _jot_appendLog(log_file, "[jot] tmux split-window returned empty pane id\n")
                 return 1
 
             target_path = Path(tmpdir_inv) / "tmux_target"
@@ -288,7 +288,7 @@ def jot_launchPhase2Window() -> int:
             tmux_setPaneTitle(pane_id, pane_label)
             tmux_retile("jot:jots")
     except LockTimeout:
-        _jotAppendLog(log_file, f"[jot] failed to acquire global tmux-launch lock at {tmux_lock}\n")
+        _jot_appendLog(log_file, f"[jot] failed to acquire global tmux-launch lock at {tmux_lock}\n")
         return 1
 
     terminal_spawnIfNeeded("jot", log_file, "jot")
@@ -299,7 +299,7 @@ _DIAG_SECTION_RULE = "═" * 59
 
 
 # Polls the tmux_target sidecar file up to 5 times at 0.2s intervals; returns first non-empty first line, or "" if it stays empty.
-def _readSidecar(target_file: Path) -> str:
+def _jot_readSidecar(target_file: Path) -> str:
     for _ in range(5):
         try:
             if target_file.is_file() and target_file.stat().st_size > 0:
@@ -384,7 +384,7 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
     # --- section 1 ---
     lines.append(jot_diagSection("1. Latest Todos/*_input.txt"))
     todos_dir = repo_root / "Todos"
-    latest = _ls_latest_input_txt(todos_dir) if todos_dir.is_dir() else None
+    latest = _util_ls_latest_input_txt(todos_dir) if todos_dir.is_dir() else None
     if latest is None:
         lines.append(f"(no input.txt found in {todos_dir})\n")
     else:
@@ -458,7 +458,7 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
         lines.append("--- audit.log (last 30 entries) ---\n")
         audit_file = state_dir / "audit.log"
         if audit_file.exists():
-            lines.append(jot_diagIndent(_tail_lines(audit_file, 30)))
+            lines.append(jot_diagIndent(_util_tail_lines(audit_file, 30)))
         else:
             lines.append("  (missing)\n")
         lines.append("\n")
@@ -479,18 +479,18 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
         lines.append("(no 'jot' tmux session exists)\n")
     else:
         lines.append("--- tmux list-sessions | grep jot ---\n")
-        sessions = _run_tmux("list-sessions")
+        sessions = _tmux_run("list-sessions")
         jot_sessions = "\n".join(l for l in sessions.splitlines() if l.startswith("jot"))
         lines.append(jot_diagIndent(jot_sessions + "\n") if jot_sessions else "  (none)\n")
         lines.append("\n")
 
         lines.append("--- tmux list-windows -t jot ---\n")
-        lines.append(jot_diagIndent(_run_tmux("list-windows", "-t", "jot") + "\n"))
+        lines.append(jot_diagIndent(_tmux_run("list-windows", "-t", "jot") + "\n"))
         lines.append("\n")
 
         lines.append(f"--- tmux list-panes -t {tmux_target} ---\n")
         lines.append(jot_diagIndent(
-            _run_tmux(
+            _tmux_run(
                 "list-panes", "-t", tmux_target,
                 "-F", "#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}",
             ) + "\n"
@@ -499,12 +499,12 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
 
         lines.append("--- pane start command ---\n")
         lines.append(jot_diagIndent(
-            _run_tmux("display-message", "-t", tmux_target, "-p", "start: #{pane_start_command}") + "\n"
+            _tmux_run("display-message", "-t", tmux_target, "-p", "start: #{pane_start_command}") + "\n"
         ))
         lines.append("\n")
 
         lines.append("--- tmux attached clients ---\n")
-        clients = _run_tmux("list-clients", "-t", "jot")
+        clients = _tmux_run("list-clients", "-t", "jot")
         if not clients.strip():
             lines.append("  (no clients attached)\n")
         else:
@@ -512,7 +512,7 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
         lines.append("\n")
 
         lines.append("--- pane content (last 80 lines of scrollback) ---\n")
-        pane_content = _run_tmux("capture-pane", "-p", "-t", tmux_target, "-S", "-80")
+        pane_content = _tmux_run("capture-pane", "-p", "-t", tmux_target, "-S", "-80")
         lines.append(jot_diagIndent(pane_content + "\n") if pane_content.strip() else "  (empty)\n")
 
     # --- section 4 ---
@@ -546,7 +546,7 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
     lines.append(jot_diagSection(f"5. {log_file_path} (last 20 entries)"))
     log_path = Path(log_file_path)
     if log_path.exists():
-        lines.append(jot_diagIndent(_tail_lines(log_path, 20)))
+        lines.append(jot_diagIndent(_util_tail_lines(log_path, 20)))
     else:
         lines.append("(missing)\n")
 
@@ -708,7 +708,7 @@ def jot_stop(
 
     tmpdir_path = Path(tmpdir_inv)
     target_file = tmpdir_path / "tmux_target"
-    tmux_target = _readSidecar(target_file)
+    tmux_target = _jot_readSidecar(target_file)
     if not tmux_target:
         print(
             "[jot-stop] tmux_target sidecar empty after retries",
@@ -720,7 +720,7 @@ def jot_stop(
     jot_initState(state_dir)
     audit_path = Path(state_dir) / "audit.log"
 
-    ts = _isoTimestampLocal()
+    ts = _util_isoTimestampLocal()
     input_path = Path(input_file)
     if input_path.is_file():
         try:
@@ -729,17 +729,17 @@ def jot_stop(
         except OSError:
             first_line = ""
         if first_line.startswith("PROCESSED:"):
-            _appendAudit(audit_path, f"{ts} SUCCESS {input_file}")
+            _util_appendAudit(audit_path, f"{ts} SUCCESS {input_file}")
         else:
-            _appendAudit(
+            _util_appendAudit(
                 audit_path, f"{ts} FAIL {input_file} (no PROCESSED marker)"
             )
     else:
-        _appendAudit(audit_path, f"{ts} FAIL {input_file} (input.txt missing)")
+        _util_appendAudit(audit_path, f"{ts} FAIL {input_file} (input.txt missing)")
 
     jot_rotateAudit(audit_path, 1000)
 
-    bg = background_kill if background_kill is not None else _backgroundKill
+    bg = background_kill if background_kill is not None else _tmux_backgroundKill
     bg(tmux_target, "jot:jots")
     return 0
 
@@ -771,7 +771,7 @@ def jot_main() -> int:
     if '"/jot' not in hook_input:
         return 0
 
-    _append_log(log_file, f"{datetime.now().isoformat()} HOOK_INPUT {hook_input}\n")
+    _util_append_log(log_file, f"{datetime.now().isoformat()} HOOK_INPUT {hook_input}\n")
 
     # Required external commands.
     hookjson_checkRequirements("jot", "jq", "python3", "tmux", "claude")
@@ -786,7 +786,7 @@ def jot_main() -> int:
         payload = json.loads(hook_input) if hook_input.strip() else {}
     except json.JSONDecodeError:
         payload = {}
-    prompt = _strip_stdin_text(str(payload.get("prompt", "")))
+    prompt = _util_strip_stdin_text(str(payload.get("prompt", "")))
 
     # Strict prefix match.
     if prompt != "/jot" and not prompt.startswith("/jot "):
@@ -796,14 +796,14 @@ def jot_main() -> int:
     idea = prompt[len("/jot"):]
     if idea.startswith(" "):
         idea = idea[1:]
-    idea = _strip_stdin_text(idea)
+    idea = _util_strip_stdin_text(idea)
 
     if not idea:
         print(hookjson_emitBlock("jot: no idea provided"))
         return 0
 
     session_id = str(payload.get("session_id", "?")) or "?"
-    _append_log(
+    _util_append_log(
         log_file,
         f"{datetime.now().isoformat()} jot session={session_id} idea_len={len(idea)}\n",
     )
@@ -841,10 +841,10 @@ def jot_main() -> int:
     input_file.write_text(header)
 
     # Git state + open todos + conversation (each safe-wrapped).
-    branch = _safe_call(getGitBranchNameOrFail, cwd)
-    commits = _safe_call(getGitRecentCommitHashes, cwd)
-    uncommitted = _safe_call(getGitUncommittedFilenames, cwd)
-    open_todos = _safe_call(todo_scanOpen, repo_root)
+    branch = _util_safe_call(git_getBranchNameOrFail, cwd)
+    commits = _util_safe_call(git_getRecentCommitHashes, cwd)
+    uncommitted = _util_safe_call(git_getUncommittedFilenames, cwd)
+    open_todos = _util_safe_call(todo_scanOpen, repo_root)
 
     if transcript_path and Path(transcript_path).is_file():
         try:

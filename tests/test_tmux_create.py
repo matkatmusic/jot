@@ -630,14 +630,14 @@ def kill_calls(monkeypatch):
 
 @pytest.fixture
 def fake_tmux(monkeypatch):
-    """Patch `_live_pane_ids` to return a configurable set without tmux."""
+    """Patch `_tmux_live_pane_ids` to return a configurable set without tmux."""
     state: dict[str, set[str]] = {"live": set()}
 
     def _fake() -> set[str]:
         return set(state["live"])
 
 
-    monkeypatch.setattr("common.scripts.tmux_lib._live_pane_ids", _fake)
+    monkeypatch.setattr("common.scripts.tmux_lib._tmux_live_pane_ids", _fake)
     return state
 
 

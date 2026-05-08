@@ -172,7 +172,7 @@ def test_plateMain_prompt_with_leading_whitespace_is_accepted(tmp_path):
 
 # Repo-root detection
 def test_plateMain_missing_repo_root_emits_friendly_message(tmp_path):
-    # Scenario: getGitRepoRoot returns empty string.
+    # Scenario: git_getRepoRoot returns empty string.
     # Setup: deps with repo_root="".
     raw = _make_payload_pm()
     deps = _make_deps_pm(repo_root="")

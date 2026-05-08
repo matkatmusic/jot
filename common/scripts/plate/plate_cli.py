@@ -71,7 +71,7 @@ def _cmd_push(argv: list[str]) -> str:
     )
     if sha is None:
         return "plate: no changes to stack"
-    branch = plate_lib.getCurrentGitBranchName(repo)
+    branch = plate_lib.git_getCurrentBranchName(repo)
     # Fire-and-forget background summary agent. Returns immediately.
     # PLATE_SKIP_LAUNCH=1 short-circuits (used by tests).
     attach_hint: Optional[str] = None

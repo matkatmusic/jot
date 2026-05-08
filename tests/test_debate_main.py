@@ -837,7 +837,7 @@ def test_always_calls_debate_main() -> None:
 
 def test_skipTerminalCheck_envBypassesDarwinTerminalProbe(monkeypatch: pytest.MonkeyPatch) -> None:
     # Scenario: DEBATE_SKIP_TERMINAL_CHECK=1 must short-circuit the macOS Terminal.app
-    # probe entirely, so neither _terminal_running nor _launch_terminal_background
+    # probe entirely, so neither _terminal_running nor _terminal_launchBackground
     # fires - even when the platform is Darwin and Terminal is "not running".
     # Setup: env var set, simulate Darwin, sentinel-fail both terminal hooks so any
     # call would raise. Inject debate_main mock so we don't run real orchestration.

@@ -19,7 +19,7 @@ import pytest
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
 from common.scripts.git_lib import (
-    getCurrentGitBranchName
+    git_getCurrentBranchName
 )
 
 import test_plate_scenarios as _plate_scenarios
@@ -53,7 +53,7 @@ def test_formatPlateAge():
 
 def test_listPlateBranches(tmp_path: Path):
     """Two plate branches across two working branches → both listed, newest first."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
 
     # First plate on `main`.
     (repo / TEST_FILENAME).write_text("edit on main\n")
@@ -63,8 +63,8 @@ def test_listPlateBranches(tmp_path: Path):
     time.sleep(1)
 
     # Second plate on a new branch `feature-x`.
-    gitResetHardToHead(repo)
-    createAndCheckoutGitBranch(repo, "feature-x")
+    git_resetHardToHead(repo)
+    git_createAndCheckoutBranch(repo, "feature-x")
     (repo / TEST_FILENAME).write_text("edit on feature\n")
     plate_push(repo, convo_id="t2.jsonl", convo_name="convo-on-feature")
 
@@ -83,15 +83,15 @@ def test_listPlateBranches(tmp_path: Path):
 
 def test_listPlateBranches_excludes_non_plate_refs(tmp_path: Path):
     """Plain working branches and unrelated refs are not returned."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    createAndCheckoutGitBranch(repo, "feature-y")
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
+    git_createAndCheckoutBranch(repo, "feature-y")
     # No plate pushed; `feature-y` and `main` are plain branches.
     assert plate_listPlateBranches(repo) == []
 
 def test_findMyLastPlate(tmp_path: Path):
     """plate_findMyLastPlate walks the branch and returns most recent matching trailer."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
-    branch = getCurrentGitBranchName(repo)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
+    branch = git_getCurrentBranchName(repo)
     plate_branch = f"{branch}-plate"
 
     # No branch yet → (None, None).
@@ -127,35 +127,35 @@ def test_plate_push_1x(tmp_path: Path):
     to inspect its exact tracked-file list (this fixture: .gitignore + a.txt
     + the new file), then switch back and unstash.
     """
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_push_creates_branch_capturing_wip(repo)
 
     # Fixture-specific extras: clear the tracked modification (so checkout
     # doesn't conflict on it), stash the untracked, then verify the plate
     # branch's exact tracked-file list via checkout.
-    originalBranch = getCurrentGitBranchName(repo)
+    originalBranch = git_getCurrentBranchName(repo)
     plateBranchName = f"{originalBranch}-plate"
     untrackedFileName = next(
-        f for f in getGitUntrackedFilesList(repo) if f.startswith("new-")
+        f for f in git_getUntrackedFilesList(repo) if f.startswith("new-")
     )
 
-    gitResetHardToHead(repo)
-    gitStashFiles(repo, [untrackedFileName])
-    assert getGitUntrackedFilesList(repo) == []
+    git_resetHardToHead(repo)
+    git_stashFiles(repo, [untrackedFileName])
+    assert git_getUntrackedFilesList(repo) == []
 
-    checkOutGitBranch(repo, plateBranchName)
-    assert sorted(getGitTrackedFilesList(repo)) == sorted(
+    git_checkOutBranch(repo, plateBranchName)
+    assert sorted(git_getTrackedFilesList(repo)) == sorted(
         [".gitignore", TEST_FILENAME, untrackedFileName]
     )
 
-    checkOutGitBranch(repo, originalBranch)
-    gitUnstashFiles(repo)
-    assert getCurrentGitBranchName(repo) == originalBranch
-    assert untrackedFileName in getGitUntrackedFilesList(repo)
+    git_checkOutBranch(repo, originalBranch)
+    git_unstashFiles(repo)
+    assert git_getCurrentBranchName(repo) == originalBranch
+    assert untrackedFileName in git_getUntrackedFilesList(repo)
 
 def test_plate_push_with_convo_id(tmp_path: Path):
     """plate_push writes parent-branch always, and convo-* trailers when set."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     (repo / TEST_FILENAME).write_text("modified\n")
 
     sha = plate_push(
@@ -166,9 +166,9 @@ def test_plate_push_with_convo_id(tmp_path: Path):
     )
     assert sha is not None
 
-    branch = getCurrentGitBranchName(repo)
+    branch = git_getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
-    trailers = getGitCommitTrailers(repo, plateBranchName)
+    trailers = git_getCommitTrailers(repo, plateBranchName)
 
     assert trailers["parent-branch"] == branch
     assert trailers["convo-id"] == "/Users/me/.claude/projects/proj/abc-123.jsonl"
@@ -189,7 +189,7 @@ def test_plate_push_convo_summary_preserves_section_labels_on_own_lines(
 
     Fix: indent every continuation line with a single space (git's
     standard multi-line trailer continuation rule), preserving the line
-    breaks. `getGitCommitTrailers` uses `unfold=true`, so the flat-form
+    breaks. `git_getCommitTrailers` uses `unfold=true`, so the flat-form
     test contract still holds for callers that expect a single-line
     string.
 
@@ -197,7 +197,7 @@ def test_plate_push_convo_summary_preserves_section_labels_on_own_lines(
     smashed onto one line, OR the unfolded read returns something
     other than the flat space-joined string.
     """
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     (repo / TEST_FILENAME).write_text("modified\n")
 
     summary = (
@@ -211,7 +211,7 @@ def test_plate_push_convo_summary_preserves_section_labels_on_own_lines(
     sha = plate_push(repo, convo_summary=summary)
     assert sha is not None
 
-    branch = getCurrentGitBranchName(repo)
+    branch = git_getCurrentBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
     # Raw commit message: each section label is at the start of a line
@@ -226,7 +226,7 @@ def test_plate_push_convo_summary_preserves_section_labels_on_own_lines(
     # Unfolded read (the form code paths already depend on): collapses
     # continuation lines to single-space joins. Existing flat-form
     # contract preserved.
-    trailers = getGitCommitTrailers(repo, plateBranchName)
+    trailers = git_getCommitTrailers(repo, plateBranchName)
     flat = trailers["convo-summary"]
     assert "what:" in flat and "why:" in flat and "how:" in flat
     # No literal newline in the unfolded form.
@@ -252,12 +252,12 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
     repo = tmp_path / "repo"
     repo.mkdir()
     run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
-    createGitUserConfig(repo)
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
+    git_createUserConfig(repo)
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
     (repo / "a.txt").write_text("base\n")
-    addFileToGit(repo, "a.txt")
-    createGitCommit(repo, "initial")
+    git_addFile(repo, "a.txt")
+    git_createCommit(repo, "initial")
 
     # Agent A: UUID-style convo_id, transcript stored at a separate path.
     uuid_A = "9f2be37f-0620-4877-b2e5-03c4ac2cdf35"
@@ -291,7 +291,7 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
     pb_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
     assert pb_b_content == "B"
 
-    trailers = getGitCommitTrailers(repo, "main-plate")
+    trailers = git_getCommitTrailers(repo, "main-plate")
     assert trailers["convo-id"] == uuid_B, (
         "trailer must carry the UUID we passed, not the transcript path"
     )
@@ -308,12 +308,12 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     repo = tmp_path / "repo"
     repo.mkdir()
     run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
-    createGitUserConfig(repo)
-    writeGitIgnore(repo)
-    addFileToGit(repo, ".gitignore")
+    git_createUserConfig(repo)
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
     (repo / "a.txt").write_text("base\n")
-    addFileToGit(repo, "a.txt")
-    createGitCommit(repo, "initial")
+    git_addFile(repo, "a.txt")
+    git_createCommit(repo, "initial")
 
     # 1 & 2: Agent A's transcript with one Edit-on-a.txt entry (timestamps far
     # in the future so the cutoff filter never excludes them in this test).
@@ -364,7 +364,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     assert "A2-not-yet-plated" not in pb1_a_content
     pb1_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
     assert pb1_b_content == "B"
-    pb1_trailers = getGitCommitTrailers(repo, "main-plate")
+    pb1_trailers = git_getCommitTrailers(repo, "main-plate")
     assert pb1_trailers["convo-id"] == str(transcript_B)
     # Pb1 parents to Pa1 (linear history on the shared branch).
     assert run(["git", "rev-parse", "main-plate~1"], cwd=repo) == pa1_sha
@@ -378,7 +378,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     assert pa2_a_content == "base\nA1\nA2-not-yet-plated"
     pa2_b_content = run(["git", "show", "main-plate:b.txt"], cwd=repo)
     assert pa2_b_content == "B"
-    pa2_trailers = getGitCommitTrailers(repo, "main-plate")
+    pa2_trailers = git_getCommitTrailers(repo, "main-plate")
     assert pa2_trailers["convo-id"] == str(transcript_A)
 
     # 12: Agent B "deletes" b.txt — append a Bash rm entry to Agent B's
@@ -409,14 +409,14 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
 
 def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
     """Without convo_* kwargs, only parent-branch is written."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     (repo / TEST_FILENAME).write_text("modified\n")
 
     sha = plate_push(repo)
     assert sha is not None
 
-    branch = getCurrentGitBranchName(repo)
-    trailers = getGitCommitTrailers(repo, f"{branch}-plate")
+    branch = git_getCurrentBranchName(repo)
+    trailers = git_getCommitTrailers(repo, f"{branch}-plate")
     assert trailers["parent-branch"] == branch
     assert "convo-id" not in trailers
     assert "convo-name" not in trailers
@@ -424,91 +424,91 @@ def test_plate_push_omits_convo_trailers_when_kwargs_unset(tmp_path: Path):
 
 def test_plate_done(tmp_path: Path):
     """Per-function: 2-plate stack → done cherry-picks both, deletes plate, WT clean."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_done_replays_stack(repo)
 
 def test_plate_drop(tmp_path: Path):
     """Per-function: single plate → drop deletes branch + writes patch.
     Shared scenario covers the contract; runs against the 1-commit fixture."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_drop_deletes_last_plate(repo)
 
 def test_plate_trash(tmp_path: Path):
     """Per-function: 2-plate stack → trash saves patches + deletes branch + WT preserved."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_trash_default_preserves_wt(repo)
 
 def test_plate_trash_hard(tmp_path: Path):
     """Per-function: dirty 2-plate stack → trash --hard saves patches + wipes WT."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_trash_clean_resets_wt(repo)
 
 def test_plate_recycle(tmp_path: Path):
     """Per-function: 2 plates → trash → recycle restores branch with same tree."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_recycle_restores_stack(repo)
 
 def test_simulate_derived_agent_first(tmp_path: Path):
     """Per-function: first derived agent records trailers."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_first_derived_agent_records_trailers(repo)
 
 def test_simulate_derived_agent_second(tmp_path: Path):
     """Per-function: second derived agent extends chain (parent-convo points at previous)."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_second_derived_agent_extends_chain(repo)
 
 def test_plate_drop_no_branch(tmp_path: Path, capsys):
     """Per-function: plate_drop with no plate branch warns + returns None."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_drop_no_branch_warns_and_exits(repo, capsys)
 
 def test_plate_trash_no_branch(tmp_path: Path, capsys):
     """Per-function: plate_trash with no plate branch warns + returns None."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_trash_no_branch_warns_and_exits(repo, capsys)
 
 def test_plate_recycle_no_branch(tmp_path: Path, capsys):
     """Per-function: plate_recycle with no trashed session warns + returns None."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_recycle_no_branch_warns_and_exits(repo, capsys)
 
 def test_plate_done_resolves_content_conflict_in_plate_favor(tmp_path: Path, capsys):
     """Per-function: plate_done auto-resolves content conflicts in plate's favor."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_done_resolves_content_conflict_in_plate_favor(repo, capsys)
 
 def test_drop_patch_cross_repo_portability(tmp_path: Path):
     """Per-function: drop patch from repoA applies in a separate repoB."""
-    repoA = makeTestRepoWithSingleCommit(tmp_path / "a")
-    repoB = makeTestRepoWithSingleCommit(tmp_path / "b")
+    repoA = git_test_makeRepoWithSingleCommit(tmp_path / "a")
+    repoB = git_test_makeRepoWithSingleCommit(tmp_path / "b")
     _check_drop_patch_applies_in_fresh_repo(repoA, repoB)
 
 def test_plate_done_leaves_sha_recoverable(tmp_path: Path):
     """Per-function: plate_done's deleted plate SHA is still in the object DB."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_done_leaves_sha_recoverable(repo)
 
 def test_plate_done_aborts_when_no_plate_branch(tmp_path: Path, capsys):
     """Per-function: plate_done with no plate branch warns + returns without
     touching the repo."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_done_aborts_when_no_plate_branch(repo, capsys)
 
 def test_plate_done_aborts_when_wt_differs_from_plate_tip(tmp_path: Path, capsys):
     """Per-function: plate_done with WT diverged from plate tip warns + returns,
     leaving plate branch and WT intact."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_done_aborts_when_wt_differs_from_plate_tip(repo, capsys)
 
 def test_plate_next_list_shows_plates_sorted_with_current_marker(tmp_path: Path):
     """Per-function: list mode against the single-commit fixture."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_list_shows_plates_sorted_with_current_marker(repo)
 
 def test_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes(tmp_path: Path):
     """Per-function: cross-branch jump with readable target transcript."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes(repo, tmp_path)
 
 def test_plate_next_jump_lost_message_when_transcript_unreadable(tmp_path: Path):
@@ -517,31 +517,31 @@ def test_plate_next_jump_lost_message_when_transcript_unreadable(tmp_path: Path)
 
 def test_plate_next_jump_self_index_is_noop(tmp_path: Path):
     """Per-function: picking the current plate's index is a no-op."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_jump_self_index_is_noop(repo, tmp_path)
 
 def test_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(tmp_path: Path):
     """Per-function: jump from a plate-less branch proceeds normally."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(repo, tmp_path)
 
 def test_plate_next_jump_invalid_index_returns_message(tmp_path: Path):
     """Per-function: invalid index returns user-facing message, no side effects."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_jump_invalid_index_returns_message(repo, tmp_path)
 
 def test_plate_next_list_empty_when_no_plates(tmp_path: Path):
     """Per-function: list mode on a repo with no plates returns the friendly
     empty-list message."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_list_empty_when_no_plates(repo)
 
 def test_plate_next_list_no_marker_when_head_has_no_plate(tmp_path: Path):
     """Per-function: list mode marks no entries when HEAD has no plate."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_plate_next_list_no_marker_when_head_has_no_plate(repo, tmp_path)
 
 def test_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(tmp_path: Path) -> None:
     """Per-function: rebase-reword strips old summary, writes new on tip."""
-    repo = makeTestRepoWithSingleCommit(tmp_path)
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
     _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(repo)

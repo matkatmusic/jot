@@ -29,11 +29,11 @@ from common.scripts.hookjson_lib import (
     hookjson_emitBlock,
 )
 from common.scripts.tmux_lib import (
-    _default_tmux_runner,
-    _kill_pane,
-    _listLivePaneIds,
-    _live_pane_ids,
-    _paneCurrentCommand,
+    _tmux_default_runner,
+    _tmux_kill_pane,
+    _tmux_listLivePaneIds,
+    _tmux_live_pane_ids,
+    _tmux_paneCurrentCommand,
     tmux_capturePane,
     tmux_killPane,
     tmux_retile,
@@ -41,7 +41,7 @@ from common.scripts.tmux_lib import (
     tmux_splitWorkerPane,
 )
 from common.scripts.util_lib import (
-    _slugify,
+    _util_slugify,
     shell_waitForFile,
     terminal_spawnIfNeeded,
 )
@@ -298,16 +298,16 @@ def debate_buildClaudePrompts(
         ]
 
     if stage == "r1":
-        _build_r1(stage, debate_dir, plugin_root, agents, agent_filter)
+        _debate_build_r1(stage, debate_dir, plugin_root, agents, agent_filter)
     elif stage == "r2":
-        _build_r2(debate_dir, agents, agent_filter)
+        _debate_build_r2(debate_dir, agents, agent_filter)
     elif stage == "synthesis":
-        _build_synthesis(debate_dir, agents)
+        _debate_build_synthesis(debate_dir, agents)
     else:
         raise ValueError(f"Unknown stage: {stage!r}")
 
 
-def _build_r1(
+def _debate_build_r1(
     stage: str,
     debate_dir: Path,
     plugin_root: Path,
@@ -354,7 +354,7 @@ def _build_r1(
             instructions_file.write_text(rendered)
 
 
-def _build_r2(
+def _debate_build_r2(
     debate_dir: Path,
     agents: list[str],
     agent_filter: str,
@@ -382,7 +382,7 @@ def _build_r2(
         (debate_dir / f"r2_instructions_{agent}.txt").write_text(buf.getvalue())
 
 
-def _build_synthesis(debate_dir: Path, agents: list[str]) -> None:
+def _debate_build_synthesis(debate_dir: Path, agents: list[str]) -> None:
     """Build synthesis instruction file inline (mirrors bash printf block)."""
     agents_str = " ".join(agents)
     buf = StringIO()
@@ -505,7 +505,7 @@ def debate_checkResumeFeasibility(
 def debate_claimSession(
     keepalive_cmd: str,
     *,
-    tmux_runner: Callable[[List[str]], int] = _default_tmux_runner,
+    tmux_runner: Callable[[List[str]], int] = _tmux_default_runner,
 ) -> str:
     """Atomically claim the lowest-unused `debate-N` tmux session.
 
@@ -576,11 +576,11 @@ def debate_cleanStaleLocks(
             continue
         pane_id = match.group(1)
         if live_panes is None:
-            live_panes = _listLivePaneIds(window_target)
+            live_panes = _tmux_listLivePaneIds(window_target)
         if pane_id not in live_panes:
             lock.unlink(missing_ok=True)
             continue
-        current = _paneCurrentCommand(pane_id)
+        current = _tmux_paneCurrentCommand(pane_id)
         if current != agent:
             lock.unlink(missing_ok=True)
 
@@ -852,7 +852,7 @@ def debate_launch(
 
     if is_darwin and not skip_terminal_check:
         from common.scripts.util_lib import (
-            _launch_terminal_background as _default_launch_terminal,
+            _terminal_launchBackground as _default_launch_terminal,
             _terminal_running as _default_terminal_running,
         )
         terminal_running_fn = _terminal_running_fn or _default_terminal_running
@@ -1135,7 +1135,7 @@ def debate_retryPaneWithNextModel(
     tried_models[agent] = f"{existing_tried},{next_model}" if existing_tried else next_model
 
     # YELLOW: kill stale pane; open fresh replacement.
-    _kill_pane(current_pane_id)
+    _tmux_kill_pane(current_pane_id)
     new_pane = debate_newEmptyPane(window_target=window_target, cwd=cwd)
     if new_pane is None:
         print(
@@ -1159,7 +1159,7 @@ def debate_retryPaneWithNextModel(
     )
 
     # YELLOW: launch agent; propagate failure as None.
-    if not _launch_agent(
+    if not _debate_launch_agent(
         pane_id=new_pane,
         stage=stage,
         agent=agent,
@@ -1169,7 +1169,7 @@ def debate_retryPaneWithNextModel(
         return None
 
     # YELLOW: send instructions file; propagate failure as None.
-    if not _send_prompt(
+    if not _debate_send_prompt(
         pane_id=new_pane,
         stage=stage,
         agent=agent,
@@ -1493,7 +1493,7 @@ def debate_anyLiveLock(debate_dir: str | os.PathLike[str]) -> bool:
     if not locks:
         return False
 
-    live = _live_pane_ids()
+    live = _tmux_live_pane_ids()
     if not live:
         return False
 
@@ -1548,7 +1548,7 @@ def debate_sendPromptToAgent(
     return 1
 
 
-def _launch_agent(
+def _debate_launch_agent(
     *,
     pane_id: str,
     stage: str,
@@ -1566,7 +1566,7 @@ def _launch_agent(
     )
 
 
-def _send_prompt(
+def _debate_send_prompt(
     *,
     pane_id: str,
     stage: str,
@@ -1749,7 +1749,7 @@ def debate_newEmptyPane(window_target: str, cwd: str) -> str | None:
     return pane_id
 
 
-def debateAbort_main() -> int:
+def debate_abortMain() -> int:
     """Entry point for the /debate-abort hook. Returns process exit code.
 
     Mirrors bash `debate_abort_main`. Returns 0 on every code path
@@ -2068,7 +2068,7 @@ def debate_main() -> int:
             return 0
 
         timestamp = _dt.now().strftime("%Y-%m-%dT%H-%M-%S")
-        slug = _slugify(topic)
+        slug = _util_slugify(topic)
         debate_dir = Path(repo_root) / "Debates" / f"{timestamp}_{slug}"
         debate_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2135,7 +2135,7 @@ def debate_main() -> int:
     return 0
 
 
-def debateRetry_main() -> int:
+def debate_retryMain() -> int:
     """Hook entry-point for the /debate-retry slash command.
 
     Locates the most recent debate directory in the current repo whose
