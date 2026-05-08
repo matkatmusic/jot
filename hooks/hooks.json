@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}scripts/jot-plugin-orchestrator.sh"
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}scripts/jot_plugin_orchestrator.py"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ \"$PLATE_SKIP_AUTO\" = \"1\" ] && exit 0; jq '. + {prompt: \"/plate\"}' | bash ${CLAUDE_PLUGIN_ROOT}scripts/jot-plugin-orchestrator.sh"
+            "command": "[ \"$PLATE_SKIP_AUTO\" = \"1\" ] && exit 0; jq '. + {prompt: \"/plate\"}' | python3 ${CLAUDE_PLUGIN_ROOT}scripts/jot_plugin_orchestrator.py"
           }
         ]
       }
