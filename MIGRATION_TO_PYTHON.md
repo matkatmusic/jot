@@ -36,12 +36,6 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 (0 functions, 0 classes)
 
-### common/scripts/plate/build_settings_json.py
-
-*(no top-level functions or classes)*
-
-(0 functions, 0 classes)
-
 ### common/scripts/plate/cascade_parent_chain.py
 
 *(no top-level functions or classes)*
@@ -1532,6 +1526,16 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 (6 functions, 0 classes)
 
+### tests/test_spawn_summary_agent.py
+
+- _import_spawn_module
+- _make_baseline_env
+- test_spawnSummaryAgent_emitsPythonStopHookCommand
+- test_spawnSummaryAgent_launchesPythonWatcherSubprocess
+- test_spawnSummaryAgent_callsTerminalSpawnInDaemonThread
+
+(5 functions, 0 classes)
+
 ### tests/test_tmux_communicate.py
 
 - _make_fake_run
@@ -1924,5 +1928,5 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 ---
 
-**Totals:** 96 files, 1369 functions, 27 classes.
+**Totals:** 96 files, 1374 functions, 27 classes.
 
