@@ -21,3 +21,6 @@ __pycache__
 
 .plate/plate-log.txt
 scripts/test_results
+
+# context-mode plugin drops PID lockfiles in CWD
+.in_use/
