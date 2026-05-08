@@ -18,7 +18,7 @@ def plugin_layout(tmp_path: Path):
     plugin_data = tmp_path / "plugin_data"
     (plugin_root / "scripts").mkdir(parents=True)
     (plugin_root / "skills/jot/scripts/assets").mkdir(parents=True)
-    (plugin_root / "scripts/jot-plugin-orchestrator.sh").write_text("# fake orchestrator\n")
+    (plugin_root / "scripts/jot_plugin_orchestrator.py").write_text("# fake orchestrator\n")
     (plugin_root / "skills/jot/scripts/assets/permissions.default.json").write_text("{}")
     (plugin_root / "skills/jot/scripts/assets/permissions.default.json.sha256").write_text("deadbeef")
 
@@ -95,7 +95,7 @@ def test_jot_buildClaudeCmd_orchestrator_script_copied_into_tmpdir(plugin_layout
     # Test action: invoke.
     _invoke_jot_build(plugin_layout)
     # Test verification: tmpdir copy exists and matches source bytes.
-    copied = plugin_layout["tmp_inv"] / "jot-plugin-orchestrator.sh"
+    copied = plugin_layout["tmp_inv"] / "jot_plugin_orchestrator.py"
     assert copied.read_text() == "# fake orchestrator\n"
 
 

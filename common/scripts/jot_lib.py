@@ -131,8 +131,8 @@ def jot_buildClaudeCmd(
     permissions_file = f"{claude_plugin_data}/permissions.local.json"
 
     shutil.copy(
-        f"{claude_plugin_root}/scripts/jot-plugin-orchestrator.sh",
-        f"{tmpdir_inv}/jot-plugin-orchestrator.sh",
+        f"{claude_plugin_root}/scripts/jot_plugin_orchestrator.py",
+        f"{tmpdir_inv}/jot_plugin_orchestrator.py",
     )
 
     default_file = f"{claude_plugin_root}/skills/jot/scripts/assets/permissions.default.json"
@@ -157,14 +157,14 @@ def jot_buildClaudeCmd(
     hooks_json_file = f"{tmpdir_inv}/hooks.json"
     hooks_body = (
         "{\n"
-        '  "SessionStart": [{"hooks": [{"type": "command", "command": "bash '
-        f"{tmpdir_inv}/jot-plugin-orchestrator.sh jot-session-start '{input_file}' '{tmpdir_inv}'"
+        '  "SessionStart": [{"hooks": [{"type": "command", "command": "python3 '
+        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-session-start '{input_file}' '{tmpdir_inv}'"
         '"}]}],\n'
-        '  "Stop":         [{"hooks": [{"type": "command", "command": "bash '
-        f"{tmpdir_inv}/jot-plugin-orchestrator.sh jot-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"
+        '  "Stop":         [{"hooks": [{"type": "command", "command": "python3 '
+        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"
         '"}]}],\n'
-        '  "SessionEnd":   [{"hooks": [{"type": "command", "command": "bash '
-        f"{tmpdir_inv}/jot-plugin-orchestrator.sh jot-session-end '{tmpdir_inv}'"
+        '  "SessionEnd":   [{"hooks": [{"type": "command", "command": "python3 '
+        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-session-end '{tmpdir_inv}'"
         '"}]}]\n'
         "}\n"
     )
@@ -571,7 +571,7 @@ def jot_collectDiagnostics(out_path: str | None = None) -> str:
         os.path.join(os.environ.get("HOME", ""), ".claude/plugins/installed/jot"),
     )
     for p_str in [
-        os.path.join(plugin_root, "scripts/jot-plugin-orchestrator.sh"),
+        os.path.join(plugin_root, "scripts/jot_plugin_orchestrator.py"),
         os.path.join(plugin_root, "scripts"),
         os.path.join(plugin_root, "hooks/hooks.json"),
     ]:

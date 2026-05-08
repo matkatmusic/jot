@@ -1933,8 +1933,8 @@ def debate_startOrResume(
     daemon_env = {**os.environ, **daemon_env_extras}
 
     daemon_cmd = [
-        "bash",
-        str(Path(plugin_root) / "scripts" / "jot-plugin-orchestrator.sh"),
+        "python3",
+        str(Path(plugin_root) / "scripts" / "jot_plugin_orchestrator.py"),
         "debate-tmux-orchestrator",
         str(debate_dir),
         session,

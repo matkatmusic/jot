@@ -246,3 +246,71 @@ def test_happy_path_writes_input_file_with_all_sections(
     assert "Uncommitted: M file.py" in text
     assert "## Open TODO Files\ntodo1\ntodo2" in text
     assert "(no transcript available)" in text
+
+
+# --- _ARGV_DISPATCH adapter regression tests ---
+#
+# Each test confirms dispatch_main routes argv[1:] as positional args to the
+# underlying lib function. Guards against the dispatch contract regressing
+# back to passing argv as a single list.
+
+
+def _record_calls(monkeypatch, target_attr, recorder):
+    # Replace the lib function the lambda captures, then rebuild
+    # _ARGV_DISPATCH so the lambda re-resolves to the stub.
+    monkeypatch.setattr(f"jot_plugin_orchestrator.{target_attr}", lambda *a, **k: (recorder.append(a), 0)[1])
+
+
+def _rebuild_argv_dispatch(monkeypatch):
+    # Rebuild _ARGV_DISPATCH from the freshly-patched module attrs.
+    o = _orchestrator
+    rebuilt = {
+        "jot-session-start": lambda argv: o.jot_sessionStart(*argv),
+        "jot-session-end": lambda argv: o.jot_sessionEnd(*argv),
+        "jot-stop": lambda argv: o.jot_stop(*argv),
+        "scan-open-todos": lambda argv: o.todo_scanOpen(*argv),
+        "todo-launcher": lambda argv: o.todo_launcher(*argv),
+        "todo-stop": lambda argv: o.todo_stop(*argv),
+        "todo-session-start": lambda argv: o.todo_sessionStart(*argv),
+        "todo-session-end": lambda argv: o.todo_sessionEnd(*argv),
+        "plate-summary-stop": lambda argv: o.plate_summaryStop(*argv),
+        "plate-summary-watch": lambda argv: o.plate_summaryWatch(*argv),
+        "debate-tmux-orchestrator": lambda argv: o.debate_tmuxOrchestrator(*argv),
+        "jot-diag-collect": lambda argv: o.jot_collectDiagnostics(*argv),
+    }
+    monkeypatch.setattr(o, "_ARGV_DISPATCH", rebuilt)
+
+
+@pytest.mark.parametrize(
+    "subcmd,target,argv_args",
+    [
+        # Scenario: each argv subcommand routes through dispatch_main with
+        # argv[1:] unpacked into positional args of the target lib function.
+        ("jot-session-start", "jot_sessionStart", ["/tmp/in", "/tmp/inv"]),
+        ("jot-session-end", "jot_sessionEnd", ["/tmp/inv"]),
+        ("jot-stop", "jot_stop", ["/tmp/in", "/tmp/inv", "/tmp/state"]),
+        ("scan-open-todos", "todo_scanOpen", ["/tmp/dir"]),
+        ("todo-launcher", "todo_launcher", ["sess", "idea", "/tmp/p"]),
+        ("todo-stop", "todo_stop", ["/tmp/in", "/tmp/inv", "/tmp/state"]),
+        ("todo-session-start", "todo_sessionStart", ["/tmp/in", "/tmp/inv"]),
+        ("todo-session-end", "todo_sessionEnd", ["/tmp/inv"]),
+        ("plate-summary-stop", "plate_summaryStop", ["repo", "branch", "/tmp/out"]),
+        ("plate-summary-watch", "plate_summaryWatch", ["pane", "/tmp/out"]),
+        (
+            "debate-tmux-orchestrator",
+            "debate_tmuxOrchestrator",
+            ["/tmp/d", "sess", "win", "/tmp/s.json", "/cwd", "/repo", "/plug"],
+        ),
+        ("jot-diag-collect", "jot_collectDiagnostics", ["/tmp/out"]),
+    ],
+)
+def test_argv_dispatch_unpacks_args_positionally(monkeypatch, subcmd, target, argv_args):
+    # Setup: replace the target lib fn with a recorder, rebuild dispatch.
+    calls: list = []
+    _record_calls(monkeypatch, target, calls)
+    _rebuild_argv_dispatch(monkeypatch)
+    # Test action: dispatch the subcommand with the argv args.
+    rc = dispatch_main([subcmd, *argv_args])
+    # Test verification: rc=0 and the lib fn received argv args as positional.
+    assert rc == 0
+    assert calls == [tuple(argv_args)]

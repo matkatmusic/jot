@@ -2,7 +2,7 @@
 
 The hook entry in hooks/hooks.json synthesizes a `/plate` prompt by
 piping the SessionEnd JSON payload through `jq` (which inserts
-`prompt:"/plate"`) and into `scripts/orchestrator.sh`. These tests
+`prompt:"/plate"`) and into `scripts/jot_plugin_orchestrator.py`. These tests
 exercise that exact pipeline via subprocess.run with shell=True.
 """
 from __future__ import annotations
@@ -16,12 +16,12 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-_ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot-plugin-orchestrator.sh"
+_ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
 
 
 def _run_session_end(payload: dict, repo_path: Path) -> tuple[str, str, int]:
     """Replicate the hooks.json SessionEnd command exactly:
-        jq '. + {prompt: "/plate"}' | bash <orchestrator.sh>
+        jq '. + {prompt: "/plate"}' | python3 <orchestrator.py>
     Returns (stdout, stderr, exit_code).
     """
     env = {
@@ -36,7 +36,7 @@ def _run_session_end(payload: dict, repo_path: Path) -> tuple[str, str, int]:
     }
     Path(env["CLAUDE_PLUGIN_DATA"]).mkdir(parents=True, exist_ok=True)
     cmd = (
-        f"jq '. + {{prompt: \"/plate\"}}' | bash {shlex.quote(str(_ORCHESTRATOR))}"
+        f"jq '. + {{prompt: \"/plate\"}}' | python3 {shlex.quote(str(_ORCHESTRATOR))}"
     )
     proc = subprocess.run(
         cmd,
@@ -74,7 +74,7 @@ def _plate_refs(repo: Path) -> list[str]:
 def test_session_end_with_dirty_wt_creates_plate_ref(empty_repo: Path) -> None:
     """End-to-end proof of the SessionEnd hook contract: dirty WT plus a
     SessionEnd payload (no `prompt` field) goes through the
-    `jq → orchestrator.sh` pipe and produces a <branch>-plate ref."""
+    `jq → jot_plugin_orchestrator.py` pipe and produces a <branch>-plate ref."""
     (empty_repo / "wip.txt").write_text("uncommitted work\n")
     assert _plate_refs(empty_repo) == [], "precondition: no plate refs yet"
 

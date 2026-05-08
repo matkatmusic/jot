@@ -51,20 +51,22 @@ from common.scripts.debate_lib import (
 time_sleep = time.sleep
 
 
-# Argv subcommand -> function map. Order mirrors the bash case block.
+# Argv subcommand -> adapter lambda. Each adapter unpacks argv into the
+# typed positional contract of the underlying lib function. Order mirrors
+# the bash case block.
 _ARGV_DISPATCH: dict = {
-    "jot-session-start": jot_sessionStart,
-    "jot-session-end": jot_sessionEnd,
-    "jot-stop": jot_stop,
-    "scan-open-todos": todo_scanOpen,
-    "todo-launcher": todo_launcher,
-    "todo-stop": todo_stop,
-    "todo-session-start": todo_sessionStart,
-    "todo-session-end": todo_sessionEnd,
-    "plate-summary-stop": plate_summaryStop,
-    "plate-summary-watch": plate_summaryWatch,
-    "debate-tmux-orchestrator": debate_tmuxOrchestrator,
-    "jot-diag-collect": jot_collectDiagnostics,
+    "jot-session-start": lambda argv: jot_sessionStart(*argv),
+    "jot-session-end": lambda argv: jot_sessionEnd(*argv),
+    "jot-stop": lambda argv: jot_stop(*argv),
+    "scan-open-todos": lambda argv: todo_scanOpen(*argv),
+    "todo-launcher": lambda argv: todo_launcher(*argv),
+    "todo-stop": lambda argv: todo_stop(*argv),
+    "todo-session-start": lambda argv: todo_sessionStart(*argv),
+    "todo-session-end": lambda argv: todo_sessionEnd(*argv),
+    "plate-summary-stop": lambda argv: plate_summaryStop(*argv),
+    "plate-summary-watch": lambda argv: plate_summaryWatch(*argv),
+    "debate-tmux-orchestrator": lambda argv: debate_tmuxOrchestrator(*argv),
+    "jot-diag-collect": lambda argv: jot_collectDiagnostics(*argv),
 }
 
 # Prompt prefix -> stdin-mode entrypoint.
