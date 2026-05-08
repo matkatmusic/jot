@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from common.scripts.plate_lib import plate_summaryWatch
+from common.scripts.plate_dispatcher import plate_summaryWatch
 from tests.fixtures.fakes import FakeClock, FakeTmux
 
 

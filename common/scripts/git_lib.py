@@ -1,9 +1,9 @@
 """Shared git utilities used by /plate and other jot scripts.
 
-Self-contained: re-exports the `run()` subprocess wrapper from util_lib,
-defines git CLI flag constants, test-config constants (USER_EMAIL_*,
+Defines git CLI flag constants, test-config constants (USER_EMAIL_*,
 USER_NAME_*), and the default GITIGNORE_CONTENTS string used by the
-test harness.
+test harness. Generic helpers `run` and `currentTimestampMs` live in
+`common.scripts.util_lib` — import them from there directly.
 """
 from __future__ import annotations
 
@@ -13,9 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-# `run` and `currentTimestampMs` are generic utilities — moved to util_lib.
-# Re-imported here so existing callers `from git_lib import run` keep working.
-from common.scripts.util_lib import run, currentTimestampMs  # noqa: F401
+from common.scripts.util_lib import (
+    run,
+    currentTimestampMs,
+)
 
 # ── git CLI flag constants ────────────────────────────────────────────
 QUIET_OUTPUT = "-q"

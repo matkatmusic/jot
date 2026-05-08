@@ -10,8 +10,8 @@ Note on import ordering: this module pulls a handful of names
 (`createRandomBranchName`, `TEST_FILENAME`, `TEST_FILE_CONTENTS`,
 `B_FILENAME`, `B_FILE_CONTENTS`, `F1_FILENAME`, `F1_FILE_CONTENTS`)
 from `plate_lib`. plate_lib defines those names *before* it executes
-its `from common.scripts.git_test_funcs_lib import *` re-export, so
-the cycle resolves cleanly.
+its explicit `from common.scripts.git_test_funcs_lib import (...)` pull,
+so the cycle resolves cleanly.
 """
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ from common.scripts.git_lib import (
     createGitBranch,
     createGitCommit,
     createGitUserConfig,
-    run,
     writeGitIgnore,
 )
+from common.scripts.util_lib import run
 
 
 def makeEmptyRepo(path: Path) -> Path:

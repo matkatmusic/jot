@@ -835,6 +835,37 @@ def test_always_calls_debate_main() -> None:
     main_mock.assert_called_once_with()
 
 
+def test_skipTerminalCheck_envBypassesDarwinTerminalProbe(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Scenario: DEBATE_SKIP_TERMINAL_CHECK=1 must short-circuit the macOS Terminal.app
+    # probe entirely, so neither _terminal_running nor _launch_terminal_background
+    # fires - even when the platform is Darwin and Terminal is "not running".
+    # Setup: env var set, simulate Darwin, sentinel-fail both terminal hooks so any
+    # call would raise. Inject debate_main mock so we don't run real orchestration.
+    monkeypatch.setenv("DEBATE_SKIP_TERMINAL_CHECK", "1")
+    main_mock = _make_main_mock()
+    probe_calls: list[bool] = []
+
+    def _explode_probe() -> bool:
+        probe_calls.append(True)
+        raise AssertionError("terminal probe ran despite DEBATE_SKIP_TERMINAL_CHECK=1")
+
+    def _explode_launch() -> None:
+        raise AssertionError("Terminal.app launched despite DEBATE_SKIP_TERMINAL_CHECK=1")
+
+    # Test action: call debate_launch on a "Darwin" platform with the skip env set.
+    debate_launch(
+        scripts_dir=Path("/fake/scripts"),
+        plugin_root=Path("/fake/plugin"),
+        _debate_main_fn=main_mock,
+        _is_darwin=True,
+        _terminal_running_fn=_explode_probe,
+        _launch_terminal_fn=_explode_launch,
+    )
+    # Test verification: neither terminal hook ran; debate_main still delegated.
+    assert probe_calls == []
+    main_mock.assert_called_once_with()
+
+
 def test_plugin_root_exported_to_environment() -> None:
     # Scenario: debate_launch sets PLUGIN_ROOT env var so debate_main sees it.
     # Setup:

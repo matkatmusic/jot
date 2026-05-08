@@ -11,8 +11,8 @@ import sys
 
 import jot_plugin_orchestrator
 from jot_plugin_orchestrator import dispatch_main
-from common.scripts import plate_lib as _plate_mod
-from common.scripts.plate_lib import plate_main
+from common.scripts import plate_dispatcher as _plate_mod
+from common.scripts.plate_dispatcher import plate_main
 
 _dm = jot_plugin_orchestrator
 

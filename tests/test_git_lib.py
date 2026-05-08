@@ -59,7 +59,6 @@ from common.scripts.git_lib import (
     isGitRepo,
     makeTempGitIndexPath,
     readGitTreeAt,
-    run,
     saveChangesToGitPatch,
     setGitIndexFileForEnv,
     setGitUserConfigValue,
@@ -67,6 +66,7 @@ from common.scripts.git_lib import (
     writeGitIgnore,
     writeGitTree,
 )
+from common.scripts.util_lib import run
 from common.scripts.plate.plate_lib import (
     TEST_COMMIT_MESSAGE,
     TEST_FILE_CONTENTS,

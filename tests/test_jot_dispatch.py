@@ -314,3 +314,80 @@ def test_argv_dispatch_unpacks_args_positionally(monkeypatch, subcmd, target, ar
     # Test verification: rc=0 and the lib fn received argv args as positional.
     assert rc == 0
     assert calls == [tuple(argv_args)]
+
+
+# --- _PROMPT_DISPATCH regression coverage (section 5) ---
+#
+# Each test confirms dispatch_main routes a stdin-mode prompt to exactly the
+# matching *_main entry point, that the JSON payload is forwarded on stdin,
+# and that no other entry point is invoked.
+
+
+@pytest.mark.parametrize(
+    "prefix,target_attr",
+    [
+        ("/jot", "jot_main"),
+        ("/plate", "plate_main"),
+        ("/debate", "debate_launch"),
+        ("/debate-retry", "debateRetry_main"),
+        ("/debate-abort", "debateAbort_main"),
+        ("/todo", "todo_main"),
+        ("/todo-list", "todoList_main"),
+    ],
+)
+def test_promptDispatch_routesPrefixToMatchingMain(monkeypatch, prefix, target_attr):
+    # Scenario: a "<prefix> ..." prompt invokes its matching *_main exactly once
+    # with the original JSON forwarded on stdin.
+    # Setup: stub the target on the orchestrator module; rebuild _PROMPT_DISPATCH
+    # so the dispatch tuple captures the stub.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, target_attr, calls, prefix)
+    payload = json.dumps({"prompt": f"{prefix} fixture"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action: dispatch with empty argv triggers stdin-mode routing.
+    rc = dispatch_main([])
+    # Test verification: rc=0, stub called exactly once, stdin forwarded.
+    assert rc == 0
+    assert len(calls) == 1
+    forwarded = json.loads(calls[0][1])
+    assert forwarded["prompt"] == f"{prefix} fixture"
+
+
+def test_promptDispatch_rewritesJotNamespaceToBareSkill(monkeypatch):
+    # Scenario: "/jot:todo-list ..." rewrites to "/todo-list ..." and routes
+    # to todoList_main with the rewritten JSON forwarded on stdin.
+    # Setup: stub todoList_main; payload uses the namespaced prefix.
+    calls: list = []
+    _stub_prompt_disp(monkeypatch, "todoList_main", calls, "/todo-list")
+    payload = json.dumps({"prompt": "/jot:todo-list show me"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action: dispatch in stdin-mode.
+    rc = dispatch_main([])
+    # Test verification: rc=0, todoList_main got the rewritten prompt.
+    assert rc == 0
+    assert len(calls) == 1
+    forwarded = json.loads(calls[0][1])
+    assert forwarded["prompt"] == "/todo-list show me"
+
+
+def test_promptDispatch_unknownPrefixInvokesNothing(monkeypatch):
+    # Scenario: a prompt that does not match any known prefix is a silent no-op.
+    # Setup: install tripwires on every known target; unknown prompt on stdin.
+    tripwire: list = []
+    for prefix, target_attr in [
+        ("/jot", "jot_main"),
+        ("/plate", "plate_main"),
+        ("/debate", "debate_launch"),
+        ("/debate-retry", "debateRetry_main"),
+        ("/debate-abort", "debateAbort_main"),
+        ("/todo", "todo_main"),
+        ("/todo-list", "todoList_main"),
+    ]:
+        _stub_prompt_disp(monkeypatch, target_attr, tripwire, prefix)
+    payload = json.dumps({"prompt": "/unknownthing fixture"})
+    monkeypatch.setattr(sys, "stdin", _io_dispatch.StringIO(payload))
+    # Test action: dispatch in stdin-mode with unknown prefix.
+    rc = dispatch_main([])
+    # Test verification: rc=0 and no target invoked.
+    assert rc == 0
+    assert tripwire == []

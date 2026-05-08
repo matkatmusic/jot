@@ -5,6 +5,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import platform
 import re
 import shutil
 import signal
@@ -844,12 +845,20 @@ def debate_launch(
     os.environ.setdefault("PLUGIN_ROOT", str(plugin_root))
 
     # Step 2: Darwin Terminal.app guard (no-op on non-Darwin or already running).
+    # DEBATE_SKIP_TERMINAL_CHECK=1 short-circuits the entire macOS guard so
+    # tests / dry-runs never spawn Terminal.app or pgrep. Mirrors JOT_SKIP_LAUNCH.
+    skip_terminal_check = os.environ.get("DEBATE_SKIP_TERMINAL_CHECK") == "1"
     is_darwin = (platform.system() == "Darwin") if _is_darwin is None else _is_darwin
-    terminal_running_fn = _terminal_running_fn or _terminal_running
-    launch_terminal_fn = _launch_terminal_fn or _launch_terminal_background
 
-    if is_darwin and not terminal_running_fn():
-        launch_terminal_fn()
+    if is_darwin and not skip_terminal_check:
+        from common.scripts.util_lib import (
+            _launch_terminal_background as _default_launch_terminal,
+            _terminal_running as _default_terminal_running,
+        )
+        terminal_running_fn = _terminal_running_fn or _default_terminal_running
+        launch_terminal_fn = _launch_terminal_fn or _default_launch_terminal
+        if not terminal_running_fn():
+            launch_terminal_fn()
 
     # Step 3: delegate all real work.
     main_fn = _debate_main_fn or debate_main
@@ -1757,12 +1766,12 @@ def debateAbort_main() -> int:
 
     # Empty transcript_path - hook payload didn't carry one. Bail politely.
     if not transcript_path:
-        hookjson_emitBlock("/debate-abort: no transcript_path in hook payload")
+        print(hookjson_emitBlock("/debate-abort: no transcript_path in hook payload"))
         return 0
 
     # Empty repo_root - cwd isn't inside a git repo; nowhere to look.
     if not repo_root:
-        hookjson_emitBlock("/debate-abort requires a git repository")
+        print(hookjson_emitBlock("/debate-abort requires a git repository"))
         return 0
 
     # Scan <repo>/Debates/*/ for dirs whose invoking_transcript matches.
@@ -1793,21 +1802,21 @@ def debateAbort_main() -> int:
                 best = entry
 
     if best is None:
-        hookjson_emitBlock("/debate-abort: no debate found in this conversation")
+        print(hookjson_emitBlock("/debate-abort: no debate found in this conversation"))
         return 0
 
     # If any lock file references a live tmux pane, refuse to delete.
     if debate_anyLiveLock(str(best)):
         live = debate_liveSession(str(best)) or "<unknown>"
-        hookjson_emitBlock(
+        print(hookjson_emitBlock(
             f"/debate-abort: debate is running. to force-kill: "
             f"tmux kill-session -t {live}"
-        )
+        ))
         return 0
 
     # Happy path: tear down the debate dir tree and report.
     shutil.rmtree(best, ignore_errors=False)
-    hookjson_emitBlock(f"/debate-abort: deleted {best}")
+    print(hookjson_emitBlock(f"/debate-abort: deleted {best}"))
     return 0
 
 
@@ -1898,9 +1907,9 @@ def debate_startOrResume(
     )
     session = debate_claimSession(keepalive_cmd=keepalive_cmd)
     if not session:
-        hookjson_emitBlock(
+        print(hookjson_emitBlock(
             "/debate: could not claim debate-<N> session (1000 already in use)"
-        )
+        ))
         sys.exit(0)
 
     # Apply session-scoped tmux options and name the keepalive pane.
@@ -1965,10 +1974,10 @@ def debate_startOrResume(
     agents_str = ", ".join(available_agents)
     rel = f"Debates/{debate_dir.name}"
     verb = "resumed" if resuming else "spawned"
-    hookjson_emitBlock(
+    print(hookjson_emitBlock(
         f"/debate {verb} ({agents_str}) -> {rel}/synthesis.md "
         f"(~10-30 min). View: tmux attach -t {session}"
-    )
+    ))
 
 
 def debate_main() -> int:
@@ -2014,10 +2023,10 @@ def debate_main() -> int:
         topic = topic[1:]
 
     if not topic:
-        hookjson_emitBlock("debate: no topic provided. Usage: /debate <topic>")
+        print(hookjson_emitBlock("debate: no topic provided. Usage: /debate <topic>"))
         return 0
     if not repo_root:
-        hookjson_emitBlock("debate requires a git repository.")
+        print(hookjson_emitBlock("debate requires a git repository."))
         return 0
 
     detect_result = debate_detectAvailableAgents()
@@ -2032,30 +2041,30 @@ def debate_main() -> int:
     if existing:
         existing_path = Path(existing)
         if (existing_path / "synthesis.md").exists():
-            hookjson_emitBlock(
+            print(hookjson_emitBlock(
                 f"/debate: already complete, see {existing}/synthesis.md - "
                 f"or 'rm -rf {existing}' to re-run"
-            )
+            ))
             return 0
         if debate_anyLiveLock(existing):
             try:
                 live = debate_liveSession(existing) or "<unknown>"
             except Exception:
                 live = "<unknown>"
-            hookjson_emitBlock(
+            print(hookjson_emitBlock(
                 f"/debate: already running for this topic -> tmux attach -t {live}"
-            )
+            ))
             return 0
         debate_dir = existing_path
         resuming = True
     else:
         if len(available_agents) < 2:
             names = " ".join(available_agents)
-            hookjson_emitBlock(
+            print(hookjson_emitBlock(
                 f"/debate: needs >=2 agents, got: {names}. "
                 "All configured models for missing agents failed smoke tests. "
                 "Fix credentials/quota and re-run '/debate <topic>'."
-            )
+            ))
             return 0
 
         timestamp = _dt.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -2142,10 +2151,10 @@ def debateRetry_main() -> int:
     hookjson_checkRequirements("debate-retry", "jq", "python3", "tmux", "claude")
 
     if not transcript_path:
-        hookjson_emitBlock("/debate-retry: no transcript_path in hook payload")
+        print(hookjson_emitBlock("/debate-retry: no transcript_path in hook payload"))
         return 0
     if not repo_root:
-        hookjson_emitBlock("/debate-retry requires a git repository")
+        print(hookjson_emitBlock("/debate-retry requires a git repository"))
         return 0
 
     debates_root = Path(repo_root) / "Debates"
@@ -2171,13 +2180,13 @@ def debateRetry_main() -> int:
                 best = entry
 
     if best is None:
-        hookjson_emitBlock("/debate-retry: no debate found in this conversation")
+        print(hookjson_emitBlock("/debate-retry: no debate found in this conversation"))
         return 0
 
     if (best / "synthesis.md").exists():
-        hookjson_emitBlock(
+        print(hookjson_emitBlock(
             f"/debate-retry: already complete, see {best}/synthesis.md"
-        )
+        ))
         return 0
 
     if debate_anyLiveLock(str(best)):
@@ -2185,9 +2194,9 @@ def debateRetry_main() -> int:
             live = debate_liveSession(str(best)) or "<unknown>"
         except Exception:
             live = "<unknown>"
-        hookjson_emitBlock(
+        print(hookjson_emitBlock(
             f"/debate-retry: still running -> tmux attach -t {live}"
-        )
+        ))
         return 0
 
     debate_dir = best

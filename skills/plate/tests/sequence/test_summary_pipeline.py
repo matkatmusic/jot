@@ -24,8 +24,8 @@ from plate_lib import (
     getCurrentGitBranchName as getCurrentGitBranchName,
     TEST_FILENAME,
     _writeFakeTranscriptWithToolUse,
-    run,
 )
+from util_lib import run
 from git_test_funcs_lib import makeTestRepoWithSingleCommit
 
 # stripConvoSummaryFromCommit and regenerateTipSummary are RED features not yet

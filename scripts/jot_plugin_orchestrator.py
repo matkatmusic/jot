@@ -35,7 +35,7 @@ from common.scripts.todo_lib import (
     todo_sessionStart,
     todo_stop,
 )
-from common.scripts.plate_lib import (
+from common.scripts.plate_dispatcher import (
     plate_main,
     plate_summaryStop,
     plate_summaryWatch,

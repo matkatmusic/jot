@@ -45,6 +45,7 @@ from typing import Optional
 # injection by conftest.py / cli.py.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from git_lib import *  # noqa: E402,F401,F403  (re-export for tests + callers)
+from util_lib import run, currentTimestampMs  # noqa: E402  (canonical home; shim removed)
 from git_lib import (  # noqa: E402  (explicit pulls so static checkers see them)
     QUIET_OUTPUT,
     COMMIT_MESSAGE_FLAG,
@@ -54,8 +55,6 @@ from git_lib import (  # noqa: E402  (explicit pulls so static checkers see them
     USER_NAME_KEY,
     USER_NAME_VALUE,
     GITIGNORE_CONTENTS,
-    run,
-    currentTimestampMs,
     addFileToGit,
     checkGitForCleanWorkTree,
     checkIfGitBranchExists,
@@ -111,9 +110,9 @@ def createRandomBranchName() -> str:
     return prefix + suffix
 
 # Constants used by both plate_lib internals and the git_test_funcs_lib
-# helpers that were extracted out of this module. Kept here so the
-# late `from common.scripts.git_test_funcs_lib import *` re-export below
-# can pull them back in alongside the moved functions.
+# helpers that were extracted out of this module. Importers needing the
+# scaffolding functions should import them directly from
+# common.scripts.git_test_funcs_lib (its canonical home).
 TEST_COMMIT_MESSAGE = "test commit"
 TEST_FILENAME = "a.txt"
 TEST_FILE_CONTENTS = "A\n"
@@ -127,12 +126,14 @@ def random_string(length: int = 8, rng: random.Random = random) -> str:
     return "".join(rng.choices(string.ascii_lowercase, k=length))
 
 
-# Re-export the 10 git-test scaffolding helpers that were moved to
-# common/scripts/git_test_funcs_lib.py. Constants + createRandomBranchName
+# Explicit pulls of the 10 git-test scaffolding helpers that were moved
+# to common/scripts/git_test_funcs_lib.py. Constants + createRandomBranchName
 # + random_string above are defined first so the new module can import
-# them back during its own load without a circular-import error.
-from common.scripts.git_test_funcs_lib import *  # noqa: E402,F401,F403
-from common.scripts.git_test_funcs_lib import (  # noqa: E402  (explicit pulls so static checkers see them)
+# them back during its own load without a circular-import error. The
+# back-compat wildcard re-export was dropped per Section 4 of
+# plans/python-migration-complete.md; importers needing these helpers
+# should import them directly from common.scripts.git_test_funcs_lib.
+from common.scripts.git_test_funcs_lib import (  # noqa: E402
     makeEmptyRepo,
     makeTestRepo,
     makeTestRepoWithSingleCommit,
@@ -796,7 +797,7 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     deleteGitBranchByForce(repo, plateBranchName)
 
 # currentTimestampUtcCompact moved to common/scripts/git_test_funcs_lib.py
-# (re-exported above via `from common.scripts.git_test_funcs_lib import *`).
+# (explicitly pulled in alongside the other 9 scaffolding helpers above).
 
 
 def _trashBranchDir(repo: Path, branch: str) -> Path:
