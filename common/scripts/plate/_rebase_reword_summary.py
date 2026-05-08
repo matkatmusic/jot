@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """_rebase_reword_summary.py — dual-role git editor script for the
-`rewriteBranchTipSummary` rebase pipeline.
+`plate_rewriteBranchTipSummary` rebase pipeline.
 
 Two roles selected by argv[1]:
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""cli.py — single argv entry point for the /plate slash command.
+"""plate_cli.py — single argv entry point for the /plate slash command.
 
 Invoked by skills/plate/scripts/plate.sh:
-    python3 -m common.scripts.plate.cli <variant> [args...]
+    python3 -m common.scripts.plate.plate_cli <variant> [args...]
 
 Or directly:
-    python3 common/scripts/plate/cli.py <variant> [args...]
+    python3 common/scripts/plate/plate_cli.py <variant> [args...]
 
 Variants and their argv contracts:
     push    <convo_id> <transcript_path> <cwd>
@@ -52,17 +52,17 @@ def _cmd_push(argv: list[str]) -> str:
     repo = Path(cwd)
 
     tp = Path(transcript_path) if transcript_path else None
-    convo_name = plate_lib.extractConvoNameFromTranscript(tp) if tp else None
+    convo_name = plate_lib.plate_extractConvoNameFromTranscript(tp) if tp else None
     # convo_summary is left as None on push; a background agent (spawned
     # below) writes it to the new tip's trailer asynchronously via
-    # `cli.py set-plate-summary`.
+    # `plate_cli.py set-plate-summary`.
     sha = plate_lib.plate_push(
         repo,
         convo_id=convo_id or None,
         convo_name=convo_name,
         convo_summary=None,
         # Pass transcript_path explicitly: the multi-agent extraction
-        # path (`_buildExtractedTree`) needs the actual transcript file
+        # path (`_plate_buildExtractedTree`) needs the actual transcript file
         # to scan for tool_use entries. Production passes a session UUID
         # as convo_id, NOT a path; without this, extraction falls back
         # to `Path(convo_id)` which doesn't exist, returns no edits, and
@@ -161,8 +161,8 @@ def _cmd_set_plate_summary(argv: list[str]) -> str:
     tip of <branch>-plate, replacing the placeholder commit subject
     with the agent's subject (line 1 of the payload).
 
-    Routes through `plate_lib.regenerateTipSummary`, which uses
-    `git commit-tree` directly. The legacy `rewriteBranchTipSummary`
+    Routes through `plate_lib.plate_regenerateTipSummary`, which uses
+    `git commit-tree` directly. The legacy `plate_rewriteBranchTipSummary`
     rebase-and-worktree path was leaking orphan worktrees and
     corrupting trailer blocks in production; the commit-tree path
     avoids both failure modes.
@@ -171,7 +171,7 @@ def _cmd_set_plate_summary(argv: list[str]) -> str:
         return "plate: usage: set-plate-summary <repo> <branch> <summary-file>"
     repo, branch, summary_file = Path(argv[0]), argv[1], Path(argv[2])
     summary_text = summary_file.read_text()
-    new_tip = plate_lib.regenerateTipSummary(
+    new_tip = plate_lib.plate_regenerateTipSummary(
         repo,
         branch,
         prior_summary="",  # unused — agent already produced summary_text

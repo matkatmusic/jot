@@ -12,7 +12,7 @@ import pytest
 # After the test_* functions migrated out of plate_lib.py, every library
 # symbol the tests reference must be importable into this namespace —
 # including underscore-prefixed scenario callables (`_check_*`) and
-# private helpers (`_writeFakeTranscriptWithToolUse`, etc.) that
+# private helpers (`_plate_writeFakeTranscriptWithToolUse`, etc.) that
 # `from plate_lib import *` would skip. Pull them in explicitly via vars().
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
@@ -230,7 +230,7 @@ def test_sequence_12_derived_agent_first_child_records_parent_trailers(
     repo: Path,
 ) -> None:
     # 1. User creates parent <branch>-plate.
-    # 2. A new agent starts from that parent via simulate_derived_agent().
+    # 2. A new agent starts from that parent via plate_simulate_derived_agent().
     # 3. New branch is <parent_plate>-derived1, parented to plate tip,
     #    with parent-plate and convo-id trailers.
     _check_first_derived_agent_records_trailers(repo)

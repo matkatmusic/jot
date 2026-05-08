@@ -23,21 +23,21 @@ from plate_lib import (
     getGitCommitTrailers as getGitCommitTrailers,
     getCurrentGitBranchName as getCurrentGitBranchName,
     TEST_FILENAME,
-    _writeFakeTranscriptWithToolUse,
+    _plate_writeFakeTranscriptWithToolUse,
 )
 from util_lib import run
 from git_test_funcs_lib import makeTestRepoWithSingleCommit
 
-# stripConvoSummaryFromCommit and regenerateTipSummary are RED features not yet
+# plate_stripConvoSummaryFromCommit and plate_regenerateTipSummary are RED features not yet
 # implemented. Skip collection until they exist so the rest of the suite runs.
 try:
     from plate_lib import (
-        stripConvoSummaryFromCommit,
-        regenerateTipSummary,
+        plate_stripConvoSummaryFromCommit,
+        plate_regenerateTipSummary,
     )
 except ImportError:
     pytest.skip(
-        "stripConvoSummaryFromCommit/regenerateTipSummary not yet implemented",
+        "plate_stripConvoSummaryFromCommit/plate_regenerateTipSummary not yet implemented",
         allow_module_level=True,
     )
 
@@ -61,13 +61,13 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
     # agent needs a real transcript with Edit entries for the file they
     # touched, otherwise extraction stages nothing and push no-ops.
     transcript_a = tmp_path / "transcript_A.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_a,
         [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
           "input": {"file_path": str(repo / TEST_FILENAME)}}],
     )
     transcript_b = tmp_path / "transcript_B.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_b,
         [{"timestamp": "2099-01-01T00:01:00.000Z", "tool": "Edit",
           "input": {"file_path": str(repo / TEST_FILENAME)}}],
@@ -97,7 +97,7 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
     assert "convo-summary" not in b_pre, b_pre
 
     # ── Action 1: strip A's convo-summary ─────────────────────────────
-    stripConvoSummaryFromCommit(repo, branch, target_ref=f"{plate_branch}~1")
+    plate_stripConvoSummaryFromCommit(repo, branch, target_ref=f"{plate_branch}~1")
 
     # A no longer has convo-summary; B unchanged (still no trailer).
     a_mid = getGitCommitTrailers(repo, f"{plate_branch}~1")
@@ -115,7 +115,7 @@ def test_strip_prior_then_regenerate_tip_summary(tmp_path: Path) -> None:
         fake_agent_calls.append(prior_summary)
         return f"NEW: rewrote based on {prior_summary}"
 
-    regenerateTipSummary(
+    plate_regenerateTipSummary(
         repo,
         branch,
         prior_summary="OLD: original summary",
@@ -147,7 +147,7 @@ def test_regenerate_tip_summary_splits_subject_and_body(tmp_path: Path):
       Lines 3+: 5-section body (`what:`/`why:`/`how:`/...; becomes the
                                  convo-summary trailer value)
 
-    `regenerateTipSummary` must:
+    `plate_regenerateTipSummary` must:
       1. replace the tip's commit subject with line 1 of the payload,
       2. put ONLY the body into the convo-summary trailer (NOT the
          subject line),
@@ -167,7 +167,7 @@ def test_regenerate_tip_summary_splits_subject_and_body(tmp_path: Path):
 
     # Setup: tip commit on plate (no convo-summary yet).
     transcript = tmp_path / "transcript.jsonl"
-    _writeFakeTranscriptWithToolUse(transcript, [
+    _plate_writeFakeTranscriptWithToolUse(transcript, [
         {"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
          "input": {"file_path": str(repo / TEST_FILENAME)}},
     ])
@@ -188,7 +188,7 @@ def test_regenerate_tip_summary_splits_subject_and_body(tmp_path: Path):
         "lib + cli + shim pattern.\n"
     )
 
-    regenerateTipSummary(
+    plate_regenerateTipSummary(
         repo, branch,
         prior_summary="",
         agent_callable=lambda _prior: realistic_payload,

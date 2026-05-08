@@ -2,20 +2,20 @@
 
 Plate operations (all implemented):
     plate_push, plate_done, plate_drop, plate_trash, plate_recycle,
-    plate_next, simulate_derived_agent, applyGitPatch
+    plate_next, plate_simulate_derived_agent, applyGitPatch
 
 `plate_push` writes commit trailers — `parent-branch` always; `convo-id`,
 `convo-name`, `convo-summary` when the matching kwarg is non-None.
 
 Transcript helpers (read Claude Code JSONL session files):
-    extractConvoNameFromTranscript, extractConvoCwdFromTranscript,
-    localTranscriptIsReadable
+    plate_extractConvoNameFromTranscript, plate_extractConvoCwdFromTranscript,
+    plate_localTranscriptIsReadable
 
 Listing / formatting helpers:
-    formatPlateAge, listPlateBranches
+    plate_formatPlateAge, plate_listPlateBranches
 
 Repo / commit utilities:
-    setup_repo, makeTestRepoWithSingleCommit, performRandomEdit,
+    setup_repo, makeTestRepoWithSingleCommit, plate_performRandomEdit,
     getCurrentGitBranchName, checkIfGitBranchExists, countGitCommitsReachableFromRef,
     getGitTreeSHA, getGitStatus, checkGitForCleanWorkTree, getGitCommitSubject,
     getGitCommitTrailers, saveChangesToGitPatch, gitResetHardToHead,
@@ -92,7 +92,7 @@ from git_lib import (  # noqa: E402
 
 # ── Implemented: repo setup ───────────────────────────────────────────
 
-def createRandomBranchName() -> str:
+def plate_createRandomBranchName() -> str:
     """Generate a varied branch name to simulate real user environments
     with diverse branch naming conventions. Uses one of several common
     prefixes plus a random alphanumeric suffix."""
@@ -122,13 +122,13 @@ F1_FILENAME = "fix.txt"
 F1_FILE_CONTENTS = "F1\n"
 
 
-def random_string(length: int = 8, rng: random.Random = random) -> str:
+def plate_random_string(length: int = 8, rng: random.Random = random) -> str:
     return "".join(rng.choices(string.ascii_lowercase, k=length))
 
 
 # Explicit pulls of the 10 git-test scaffolding helpers that were moved
-# to common/scripts/git_test_funcs_lib.py. Constants + createRandomBranchName
-# + random_string above are defined first so the new module can import
+# to common/scripts/git_test_funcs_lib.py. Constants + plate_createRandomBranchName
+# + plate_random_string above are defined first so the new module can import
 # them back during its own load without a circular-import error. The
 # back-compat wildcard re-export was dropped per Section 4 of
 # plans/python-migration-complete.md; importers needing these helpers
@@ -147,7 +147,7 @@ from common.scripts.git_test_funcs_lib import (  # noqa: E402
 )
 
 
-def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
+def plate_performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
     """Make a random edit to the repo to simulate user activity.
 
     Picks one of:
@@ -178,18 +178,18 @@ def performRandomEdit(repo: Path, seed: Optional[int] = None) -> dict:
 # ── Helpers used by the plate operations ─────────────────────────────
 
 
-def formatPlateAge(seconds: int) -> str:
+def plate_formatPlateAge(seconds: int) -> str:
     """Format an age in seconds as the listing-style age string.
 
     Drops sub-minute precision. Skips leading zero units. Always shows
     minutes as the smallest unit.
 
-        formatPlateAge(0)       == "0m"
-        formatPlateAge(59)      == "0m"
-        formatPlateAge(60)      == "1m"
-        formatPlateAge(32 * 60) == "32m"
-        formatPlateAge(14 * 3600 + 7 * 60) == "14h 7m"
-        formatPlateAge(3 * 86400 + 2 * 3600 + 5 * 60) == "3d 2h 5m"
+        plate_formatPlateAge(0)       == "0m"
+        plate_formatPlateAge(59)      == "0m"
+        plate_formatPlateAge(60)      == "1m"
+        plate_formatPlateAge(32 * 60) == "32m"
+        plate_formatPlateAge(14 * 3600 + 7 * 60) == "14h 7m"
+        plate_formatPlateAge(3 * 86400 + 2 * 3600 + 5 * 60) == "3d 2h 5m"
     """
     if seconds < 0:
         seconds = 0
@@ -203,7 +203,7 @@ def formatPlateAge(seconds: int) -> str:
     return f"{minutes}m"
 
 # ── Transcript helpers (Claude Code JSONL session files) ──────────────
-def localTranscriptIsReadable(transcript_path: Optional[str]) -> bool:
+def plate_localTranscriptIsReadable(transcript_path: Optional[str]) -> bool:
     """True iff transcript_path points at a readable file on this machine.
 
     Used by jump-mode to decide between the local-resume and remote-handoff
@@ -217,7 +217,7 @@ def localTranscriptIsReadable(transcript_path: Optional[str]) -> bool:
     except OSError:
         return False
 
-def extractConvoNameFromTranscript(transcript_path: Path) -> Optional[str]:
+def plate_extractConvoNameFromTranscript(transcript_path: Path) -> Optional[str]:
     """Return the latest customTitle from a Claude Code JSONL transcript.
 
     Walks the file line-by-line, JSON-decoding each, and tracks the most
@@ -249,7 +249,7 @@ def extractConvoNameFromTranscript(transcript_path: Path) -> Optional[str]:
     except OSError:
         return None
 
-def extractConvoCwdFromTranscript(transcript_path: Path) -> Optional[str]:
+def plate_extractConvoCwdFromTranscript(transcript_path: Path) -> Optional[str]:
     """Return the cwd of the conversation as recorded in the transcript.
 
     Walks the file line-by-line and returns the first `cwd` field found.
@@ -279,7 +279,7 @@ _FILE_MODIFYING_TOOL_NAMES = frozenset(
     {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 )
 
-def extractFilesEditedSinceTimestamp(
+def plate_extractFilesEditedSinceTimestamp(
     transcript_path: Path,
     since_iso: Optional[str],
 ) -> list[str]:
@@ -326,7 +326,7 @@ def extractFilesEditedSinceTimestamp(
         return []
     return sorted(files)
 
-def _writeFakeTranscriptWithToolUse(
+def _plate_writeFakeTranscriptWithToolUse(
     path: Path,
     entries: list[dict],
 ) -> Path:
@@ -356,7 +356,7 @@ def _writeFakeTranscriptWithToolUse(
 
 _SHELL_EXPANSION_CHARS = frozenset("$`*?[]{}()<>")
 
-def _parseRmTargets(cmd: str, repo_root_resolved: Path) -> set[str]:
+def _plate_parseRmTargets(cmd: str, repo_root_resolved: Path) -> set[str]:
     """Find literal file path arguments after `rm` (or `/bin/rm`) tokens in a
     shell command string. Returns repo-relative paths for arguments that
     resolve inside `repo_root_resolved`. Skips shell-expanded args
@@ -396,7 +396,7 @@ def _parseRmTargets(cmd: str, repo_root_resolved: Path) -> set[str]:
         targets.add(str(rel))
     return targets
 
-def listPlateBranches(repo: Path) -> list[dict]:
+def plate_listPlateBranches(repo: Path) -> list[dict]:
     """Return all plate-related branch refs in the repo, newest first.
 
     A ref is considered plate-related if its short name ends in `-plate`
@@ -439,7 +439,7 @@ def listPlateBranches(repo: Path) -> list[dict]:
 # ── Stubs: plate operations ───────────────────────────────────────────
 # Each stub raises NotImplementedError. Implementations should follow
 # the canonical sequences locked in plate-walkthrough-log-2026-04-28.md.
-def findMyLastPlate(
+def plate_findMyLastPlate(
     repo: Path,
     plate_branch: str,
     convo_id: str,
@@ -475,7 +475,7 @@ def findMyLastPlate(
             return (sha, date_iso)
     return (None, None)
 
-def _resolveTargetPlate(
+def _plate_resolveTargetPlate(
     repo: Path,
     base_plate_name: str,
     convo_id: Optional[str],
@@ -495,13 +495,13 @@ def _resolveTargetPlate(
     `<branch>-plate-derivedN` branches. That auto-derived behavior was
     replaced by the shared-plate-branch + transcript-extraction model.
     The chained-derived workflow (explicit delegation via
-    `simulate_derived_agent`) is unrelated and remains in the codebase.
+    `plate_simulate_derived_agent`) is unrelated and remains in the codebase.
     """
     if not checkIfGitBranchExists(repo, base_plate_name):
         return base_plate_name, getSHAForGitRefViaRevParse(repo, "HEAD")
     return base_plate_name, getSHAForGitRefViaRevParse(repo, base_plate_name)
 
-def _buildFullWtTree(repo: Path) -> str:
+def _plate_buildFullWtTree(repo: Path) -> str:
     """Snapshot the working tree via a temp index and return its tree SHA.
 
     Same-author / first-plate path: the commit tree IS the full WT, so
@@ -517,7 +517,7 @@ def _buildFullWtTree(repo: Path) -> str:
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
 
-def _buildExtractedTree(
+def _plate_buildExtractedTree(
     repo: Path,
     plate_branch: str,
     convo_id: str,
@@ -548,15 +548,15 @@ def _buildExtractedTree(
     The other agent's intervening WT changes stay in WT (unstaged), to
     be captured by their next plate.
     """
-    _, cutoff = findMyLastPlate(repo, plate_branch, convo_id)
+    _, cutoff = plate_findMyLastPlate(repo, plate_branch, convo_id)
 
     # In production cli.py passes a session UUID as `convo_id` and the
     # transcript path separately. Fall back to treating `convo_id` as a
     # path only when no `transcript_path` was supplied (legacy test
     # callers pass `convo_id=str(transcript_file)` directly).
     transcript_arg = Path(transcript_path) if transcript_path else Path(convo_id)
-    edited_abs = extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
-    deleted_candidates = extractFilesDeletedSinceTimestamp(
+    edited_abs = plate_extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
+    deleted_candidates = plate_extractFilesDeletedSinceTimestamp(
         transcript_arg, since_iso=cutoff, repo_root=repo
     )
 
@@ -600,7 +600,7 @@ def _buildExtractedTree(
     finally:
         Path(tmp_index_path).unlink(missing_ok=True)
 
-def _formatTrailerBody(text: str) -> str:
+def _plate_formatTrailerBody(text: str) -> str:
     """Format a long body for a multi-line git trailer value.
 
     Git trailers can span multiple lines if every line after the first
@@ -658,7 +658,7 @@ def plate_push(
 
     # Always-shared plate branch; parent is HEAD if no plate exists, else
     # the current plate tip (regardless of who pushed it).
-    target_plate, parent = _resolveTargetPlate(repo, base_plate_name, convo_id)
+    target_plate, parent = _plate_resolveTargetPlate(repo, base_plate_name, convo_id)
 
     # Choose between two tree-build strategies:
     #   - Mixed-author path: previous plate exists with a different convo-id
@@ -673,12 +673,12 @@ def plate_push(
     )
 
     if use_extraction:
-        commit_tree = _buildExtractedTree(
+        commit_tree = _plate_buildExtractedTree(
             repo, base_plate_name, convo_id, parent,
             transcript_path=transcript_path,
         )
     else:
-        commit_tree = _buildFullWtTree(repo)
+        commit_tree = _plate_buildFullWtTree(repo)
 
     parent_tree = getSHAForGitRefViaRevParse(repo=repo, ref=getGitTreeRevOf(parent))
     if commit_tree == parent_tree:
@@ -691,7 +691,7 @@ def plate_push(
     if convo_name is not None:
         trailerLines.append(f"convo-name: {convo_name}")
     if convo_summary is not None:
-        trailerLines.append(f"convo-summary: {_formatTrailerBody(convo_summary)}")
+        trailerLines.append(f"convo-summary: {_plate_formatTrailerBody(convo_summary)}")
 
     commitMessage = f"plate: WIP on {branch}\n\n" + "\n".join(trailerLines)
 
@@ -739,7 +739,7 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
     # any WT divergence (uncommitted edits OR a stale checkout) is the user's
     # signal to run /plate first. Tree-SHA equality is byte-identical content
     # equality (git tree objects are content-addressed).
-    wt_tree = _buildFullWtTree(repo)
+    wt_tree = _plate_buildFullWtTree(repo)
     plate_tip_tree = getGitTreeSHA(repo, plateBranchName)
     if wt_tree != plate_tip_tree:
         print(
@@ -800,12 +800,12 @@ def plate_done(repo: Path, branch: Optional[str] = None) -> None:
 # (explicitly pulled in alongside the other 9 scaffolding helpers above).
 
 
-def _trashBranchDir(repo: Path, branch: str) -> Path:
+def _plate_trashBranchDir(repo: Path, branch: str) -> Path:
     """Per-branch container under .plate/trash/ that holds session dirs."""
     return repo / ".plate" / "trash" / branch
 
 
-def _writeTrashSession(
+def _plate_writeTrashSession(
     repo: Path,
     branch: str,
     action: str,
@@ -825,7 +825,7 @@ def _writeTrashSession(
     """
     ts = currentTimestampUtcCompact()
     short_sha = tip_sha[:7] if tip_sha else "0000000"
-    session_dir = _trashBranchDir(repo, branch) / f"{ts}_{action}_{short_sha}"
+    session_dir = _plate_trashBranchDir(repo, branch) / f"{ts}_{action}_{short_sha}"
     session_dir.mkdir(parents=True, exist_ok=False)
 
     for filename, patch_text in patches:
@@ -843,9 +843,9 @@ def _writeTrashSession(
     return session_dir
 
 
-def _listTrashSessions(repo: Path, branch: str) -> list[Path]:
+def _plate_listTrashSessions(repo: Path, branch: str) -> list[Path]:
     """Lex-sorted list of session dirs under .plate/trash/<branch>/."""
-    branch_dir = _trashBranchDir(repo, branch)
+    branch_dir = _plate_trashBranchDir(repo, branch)
     if not branch_dir.is_dir():
         return []
     return sorted(d for d in branch_dir.iterdir() if d.is_dir())
@@ -887,7 +887,7 @@ def plate_drop(repo: Path, branch: Optional[str] = None) -> Optional[Path]:
         cwd=repo,
     )
 
-    session_dir = _writeTrashSession(
+    session_dir = _plate_writeTrashSession(
         repo=repo,
         branch=branch,
         action="dropped",
@@ -955,7 +955,7 @@ def plate_trash(
         patches.append((f"plate_{i:03d}.patch", patch_text))
         trailer_records.append(getGitCommitTrailers(repo, plate_sha))
 
-    session_dir = _writeTrashSession(
+    session_dir = _plate_writeTrashSession(
         repo=repo,
         branch=branch,
         action="trashed",
@@ -982,7 +982,7 @@ def plate_recycle_list(repo: Path, branch: Optional[str] = None) -> str:
     """
     if branch is None:
         branch = getCurrentGitBranchName(repo)
-    sessions = _listTrashSessions(repo, branch)
+    sessions = _plate_listTrashSessions(repo, branch)
     if not sessions:
         return f"plate: no trash sessions for '{branch}'"
     lines = [f"trash sessions for '{branch}' (newest last):"]
@@ -999,7 +999,7 @@ def plate_recycle_list(repo: Path, branch: Optional[str] = None) -> str:
     return "\n".join(lines)
 
 
-def stripConvoSummaryFromCommit(
+def plate_stripConvoSummaryFromCommit(
     repo: Path, branch: str, target_ref: str,
 ) -> str:
     """Remove the convo-summary trailer from a commit on <branch>-plate.
@@ -1067,7 +1067,7 @@ def stripConvoSummaryFromCommit(
     return prev_sha
 
 
-def regenerateTipSummary(
+def plate_regenerateTipSummary(
     repo: Path,
     branch: str,
     prior_summary: str,
@@ -1151,7 +1151,7 @@ def plate_recycle(
         branch = getCurrentGitBranchName(repo)
     plateBranchName = f"{branch}-plate"
 
-    sessions = _listTrashSessions(repo, branch)
+    sessions = _plate_listTrashSessions(repo, branch)
     if not sessions:
         print(
             f"warning: no trashed plate '{plateBranchName}' - nothing to recycle",
@@ -1238,18 +1238,18 @@ def plate_next(repo: Path, index: Optional[str] = None) -> str:
 
     Selecting the current plate as the target is a no-op with a message.
     """
-    plates = listPlateBranches(repo)
+    plates = plate_listPlateBranches(repo)
     if index is None:
         return _plate_next_list(repo, plates)
     return _plate_next_jump(repo, plates, index)
 
-def _resolvePlateTitle(plate: dict) -> str:
+def _plate_resolvePlateTitle(plate: dict) -> str:
     """Title precedence: live customTitle (if transcript readable here) →
     convo-name trailer → parent-branch trailer → ref name."""
     trailers = plate["trailers"]
     transcript_path = trailers.get("convo-id")
-    if localTranscriptIsReadable(transcript_path):
-        live = extractConvoNameFromTranscript(Path(transcript_path))
+    if plate_localTranscriptIsReadable(transcript_path):
+        live = plate_extractConvoNameFromTranscript(Path(transcript_path))
         if live:
             return live
     if "convo-name" in trailers:
@@ -1285,8 +1285,8 @@ def _plate_next_list(repo: Path, plates: list[dict]) -> str:
     now = int(time.time())
     lines = []
     for i, p in enumerate(plates, start=1):
-        title = _resolvePlateTitle(p)
-        age = formatPlateAge(now - p["committer_unix"])
+        title = _plate_resolvePlateTitle(p)
+        age = plate_formatPlateAge(now - p["committer_unix"])
         if p["ref"] == currentPlateRef:
             lines.append(f"{i}. `{title}` (current)  age: {age}")
         else:
@@ -1310,7 +1310,7 @@ def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
     branch = getCurrentGitBranchName(repo)
     currentPlateRef = f"{branch}-plate"
     if target["ref"] == currentPlateRef:
-        title = _resolvePlateTitle(target)
+        title = _plate_resolvePlateTitle(target)
         return f"already on plate '{title}'; worktree unchanged"
 
     # 1. Capture current WIP into the current-branch plate (no-op when clean).
@@ -1330,10 +1330,10 @@ def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
 
     # 5. Build the resume command.
     transcript_path = target["trailers"].get("convo-id")
-    if localTranscriptIsReadable(transcript_path):
-        cwd = extractConvoCwdFromTranscript(Path(transcript_path))
+    if plate_localTranscriptIsReadable(transcript_path):
+        cwd = plate_extractConvoCwdFromTranscript(Path(transcript_path))
         title = (
-            extractConvoNameFromTranscript(Path(transcript_path))
+            plate_extractConvoNameFromTranscript(Path(transcript_path))
             or target["trailers"].get("convo-name")
             or Path(transcript_path).stem
         )
@@ -1345,7 +1345,7 @@ def _plate_next_jump(repo: Path, plates: list[dict], index: str) -> str:
     #    the convo-summary trailer (if present) directly from git.
     return PLATE_NEXT_LOST_MESSAGE
 
-def simulate_derived_agent(
+def plate_simulate_derived_agent(
     repo: Path,
     parent_plate: str,
     convo_id: str,
@@ -1397,7 +1397,7 @@ def simulate_derived_agent(
     return newBranchName
 
 
-def extractFilesDeletedSinceTimestamp(
+def plate_extractFilesDeletedSinceTimestamp(
     transcript_path: Path,
     since_iso: Optional[str],
     repo_root: Path,
@@ -1446,14 +1446,14 @@ def extractFilesDeletedSinceTimestamp(
                     cmd = block.get("input", {}).get("command", "")
                     if not isinstance(cmd, str):
                         continue
-                    files.update(_parseRmTargets(cmd, repo_root_resolved))
+                    files.update(_plate_parseRmTargets(cmd, repo_root_resolved))
     except OSError:
         return []
     return sorted(files)
 
 # ── plate_next scenarios ─────────────────────────────────────────────
 
-def _writeTranscriptFile(
+def _plate_writeTranscriptFile(
     path: Path,
     cwd: str,
     custom_title: Optional[str] = None,
@@ -1461,7 +1461,7 @@ def _writeTranscriptFile(
     """Write a minimal Claude Code JSONL transcript with cwd + optional title.
 
     Used by plate_next jump-mode tests to fabricate a "real" local transcript
-    that extractConvoCwdFromTranscript and extractConvoNameFromTranscript can
+    that plate_extractConvoCwdFromTranscript and plate_extractConvoNameFromTranscript can
     read successfully.
     """
     lines = [json.dumps({"type": "system", "cwd": cwd, "subtype": "init"})]
@@ -1472,7 +1472,7 @@ def _writeTranscriptFile(
     path.write_text("\n".join(lines) + "\n")
     return path
 
-def _buildTwoBranchPlateTopology(
+def _plate_buildTwoBranchPlateTopology(
     repo: Path,
     transcript_for_fixy: Path,
     include_summary: bool = True,
@@ -1606,7 +1606,7 @@ def _buildTwoBranchPlateTopology(
     }
 
 # ──────────────────────────────────────────────────────────────────────
-# rewriteBranchTipSummary — strip convo-summary trailer from older plate
+# plate_rewriteBranchTipSummary — strip convo-summary trailer from older plate
 # commits and add (or replace) it on the new tip. Uses `git rebase -i
 # --reword` driven by the dual-role editor at
 # common/scripts/plate/_rebase_reword_summary.py.
@@ -1628,7 +1628,7 @@ from _rebase_reword_summary import (  # noqa: E402
     _replace_subject as _replaceCommitSubject,
 )
 
-def rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
+def plate_rewriteBranchTipSummary(repo: Path, branch: str, summary_text: str) -> str:
     """Rebase the <branch>-plate ref so only the tip carries a
     convo-summary trailer (set to summary_text). Earlier commits with a
     convo-summary trailer get it stripped. Returns the new tip SHA.

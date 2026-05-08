@@ -69,7 +69,7 @@ Python entry point. Old shell scripts and Python helpers tied to the
 stash-ref + JSON-instance model still exist on disk but are no longer
 reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 
-- `common/scripts/plate/cli.py` (NEW, 175 LoC) — single argv dispatcher
+- `common/scripts/plate/plate_cli.py` (NEW, 175 LoC) — single argv dispatcher
   for 8 variants: `push`, `done`, `drop`, `trash`, `recycle`, `next`,
   `next <#>`, `show` (currently returns `"TODO"`; design deferred).
   Uses `sys.path` injection to import `helpers.py` as `plate_lib`.
@@ -180,11 +180,11 @@ reachable from `/plate` (Stage 2 purge tracked in PLATE STATE.md).
 | `skills/plate/tests/sequence/helpers.py` | Plate ops + sub-functions + helpers + per-function unit tests + `_check_*` scenarios |
 | `skills/plate/tests/sequence/test_helpers.py` | Helper smoke tests + `test_sequence_NN` integration tests |
 | `skills/plate/tests/sequence/test_plate_cli.py` | Mock-based CLI argv routing + trailer kwarg propagation |
-| `skills/plate/tests/sequence/test_plate_e2e_wiring.py` | Hook JSON → orchestrator → cli.py → emit_block contract |
+| `skills/plate/tests/sequence/test_plate_e2e_wiring.py` | Hook JSON → orchestrator → plate_cli.py → emit_block contract |
 | `skills/plate/tests/sequence/test_session_end_hook.py` | Auto-`/plate` SessionEnd pipeline |
 | `skills/plate/tests/sequence/conftest.py` | Pytest `repo` fixture |
-| `common/scripts/plate/cli.py` | Single Python entry point — production dispatcher |
-| `skills/plate/scripts/plate.sh` | UserPromptSubmit hook → cli.py wiring |
+| `common/scripts/plate/plate_cli.py` | Single Python entry point — production dispatcher |
+| `skills/plate/scripts/plate.sh` | UserPromptSubmit hook → plate_cli.py wiring |
 | `hooks/hooks.json` | UserPromptSubmit + SessionEnd hook entries |
 | `scripts/jot-plugin-orchestrator.sh` | Central UserPromptSubmit dispatcher (jot/plate/debate/todo) |
 | `skills/plate/SKILL.md` | Slash-command stub (collapsed to /jot-style) |

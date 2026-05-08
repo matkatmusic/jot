@@ -1,4 +1,4 @@
-"""Tests for plate-specific helpers (listPlateBranches, findMyLastPlate,
+"""Tests for plate-specific helpers (plate_listPlateBranches, plate_findMyLastPlate,
 plate_push/done/drop/trash/recycle/next, etc.).
 
 Split from test_helpers.py per MIGRATION_TO_PYTHON.md bucket [plate].
@@ -14,7 +14,7 @@ import pytest
 # After the test_* functions migrated out of plate_lib.py, every library
 # symbol the tests reference must be importable into this namespace —
 # including underscore-prefixed scenario callables (`_check_*`) and
-# private helpers (`_writeFakeTranscriptWithToolUse`, etc.) that
+# private helpers (`_plate_writeFakeTranscriptWithToolUse`, etc.) that
 # `from plate_lib import *` would skip. Pull them in explicitly via vars().
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
@@ -40,16 +40,16 @@ globals().update({
 })
 
 def test_formatPlateAge():
-    assert formatPlateAge(0) == "0m"
-    assert formatPlateAge(59) == "0m"
-    assert formatPlateAge(60) == "1m"
-    assert formatPlateAge(32 * 60) == "32m"
-    assert formatPlateAge(14 * 3600 + 7 * 60) == "14h 7m"
-    assert formatPlateAge(3 * 86400 + 2 * 3600 + 5 * 60) == "3d 2h 5m"
+    assert plate_formatPlateAge(0) == "0m"
+    assert plate_formatPlateAge(59) == "0m"
+    assert plate_formatPlateAge(60) == "1m"
+    assert plate_formatPlateAge(32 * 60) == "32m"
+    assert plate_formatPlateAge(14 * 3600 + 7 * 60) == "14h 7m"
+    assert plate_formatPlateAge(3 * 86400 + 2 * 3600 + 5 * 60) == "3d 2h 5m"
     # Edge: exactly one hour with no remaining minutes.
-    assert formatPlateAge(3600) == "1h 0m"
+    assert plate_formatPlateAge(3600) == "1h 0m"
     # Negative seconds clamp to zero.
-    assert formatPlateAge(-5) == "0m"
+    assert plate_formatPlateAge(-5) == "0m"
 
 def test_listPlateBranches(tmp_path: Path):
     """Two plate branches across two working branches → both listed, newest first."""
@@ -68,7 +68,7 @@ def test_listPlateBranches(tmp_path: Path):
     (repo / TEST_FILENAME).write_text("edit on feature\n")
     plate_push(repo, convo_id="t2.jsonl", convo_name="convo-on-feature")
 
-    result = listPlateBranches(repo)
+    result = plate_listPlateBranches(repo)
     assert len(result) == 2
     # Newest first.
     assert result[0]["ref"] == "feature-x-plate"
@@ -86,16 +86,16 @@ def test_listPlateBranches_excludes_non_plate_refs(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
     createAndCheckoutGitBranch(repo, "feature-y")
     # No plate pushed; `feature-y` and `main` are plain branches.
-    assert listPlateBranches(repo) == []
+    assert plate_listPlateBranches(repo) == []
 
 def test_findMyLastPlate(tmp_path: Path):
-    """findMyLastPlate walks the branch and returns most recent matching trailer."""
+    """plate_findMyLastPlate walks the branch and returns most recent matching trailer."""
     repo = makeTestRepoWithSingleCommit(tmp_path)
     branch = getCurrentGitBranchName(repo)
     plate_branch = f"{branch}-plate"
 
     # No branch yet → (None, None).
-    assert findMyLastPlate(repo, plate_branch, "A") == (None, None)
+    assert plate_findMyLastPlate(repo, plate_branch, "A") == (None, None)
 
     # Push 3 plates with alternating convo_ids: A, B, A.
     (repo / TEST_FILENAME).write_text("A1\n")
@@ -105,8 +105,8 @@ def test_findMyLastPlate(tmp_path: Path):
     (repo / TEST_FILENAME).write_text("A1\nB1\nA2\n")
     sha_a2 = plate_push(repo, convo_id="A")
 
-    # findMyLastPlate("A") returns the most recent A commit (sha_a2) with date.
-    sha, date = findMyLastPlate(repo, plate_branch, "A")
+    # plate_findMyLastPlate("A") returns the most recent A commit (sha_a2) with date.
+    sha, date = plate_findMyLastPlate(repo, plate_branch, "A")
     assert sha == sha_a2
     assert sha != sha_a1
     assert date is not None
@@ -114,10 +114,10 @@ def test_findMyLastPlate(tmp_path: Path):
     assert len(date) >= len("2026-04-30 14:47:14 -0700")
 
     # convo_id not present → (None, None).
-    assert findMyLastPlate(repo, plate_branch, "C") == (None, None)
+    assert plate_findMyLastPlate(repo, plate_branch, "C") == (None, None)
 
     # Non-existent branch → (None, None).
-    assert findMyLastPlate(repo, "nonexistent-plate", "A") == (None, None)
+    assert plate_findMyLastPlate(repo, "nonexistent-plate", "A") == (None, None)
 
 def test_plate_push_1x(tmp_path: Path):
     """Per-function: plate_push contract + fixture-specific stash/checkout flow.
@@ -238,7 +238,7 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
 
     cli.py passes a session UUID as ``convo_id`` and the transcript file
     path as a SEPARATE ``transcript_path`` argument. Earlier code in
-    ``_buildExtractedTree`` did ``Path(convo_id)`` and treated the UUID
+    ``_plate_buildExtractedTree`` did ``Path(convo_id)`` and treated the UUID
     as a path; that path doesn't exist, so the extracted tree wound up
     empty and equal to parent_tree, making the second agent's push
     silently no-op even though the transcript actually carried real
@@ -262,7 +262,7 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
     # Agent A: UUID-style convo_id, transcript stored at a separate path.
     uuid_A = "9f2be37f-0620-4877-b2e5-03c4ac2cdf35"
     transcript_A = tmp_path / f"{uuid_A}.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_A,
         [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
           "input": {"file_path": str(repo / "a.txt")}}],
@@ -274,7 +274,7 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
     # Agent B: different UUID, different transcript with a Write entry.
     uuid_B = "11111111-2222-3333-4444-555555555555"
     transcript_B = tmp_path / f"{uuid_B}.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_B,
         [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",
           "input": {"file_path": str(repo / "b.txt")}}],
@@ -318,7 +318,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     # 1 & 2: Agent A's transcript with one Edit-on-a.txt entry (timestamps far
     # in the future so the cutoff filter never excludes them in this test).
     transcript_A = tmp_path / "transcript_A.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_A,
         [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
           "input": {"file_path": str(repo / "a.txt")}}],
@@ -334,7 +334,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     # 5: Agent A makes an unplated WT edit to a.txt; transcript adds a 2nd entry
     # (still far-future timestamp; multiple entries deduplicate to one file).
     (repo / "a.txt").write_text("base\nA1\nA2-not-yet-plated\n")
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_A,
         [
             {"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
@@ -346,7 +346,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
 
     # 6 & 7: Agent B's transcript with one Write-on-b.txt entry; create b.txt.
     transcript_B = tmp_path / "transcript_B.jsonl"
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_B,
         [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",
           "input": {"file_path": str(repo / "b.txt")}}],
@@ -383,7 +383,7 @@ def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
 
     # 12: Agent B "deletes" b.txt — append a Bash rm entry to Agent B's
     #     transcript; actually unlink the file from WT to mirror the rm.
-    _writeFakeTranscriptWithToolUse(
+    _plate_writeFakeTranscriptWithToolUse(
         transcript_B,
         [
             {"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Write",

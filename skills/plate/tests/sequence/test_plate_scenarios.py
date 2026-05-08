@@ -23,8 +23,8 @@ from plate.plate_lib import *  # noqa: F401,F403
 # Underscore-prefixed helpers are not pulled in by `import *`. Import them
 # explicitly so the scenarios that build complex topologies can call them.
 from plate.plate_lib import (  # noqa: F401
-    _writeTranscriptFile,
-    _buildTwoBranchPlateTopology,
+    _plate_writeTranscriptFile,
+    _plate_buildTwoBranchPlateTopology,
 )
 
 
@@ -211,7 +211,7 @@ def _check_plate_recycle_restores_stack(repo: Path) -> None:
     assert getSHAForGitRefViaRevParse(repo, branch) == branch_tip_before
 
 def _check_first_derived_agent_records_trailers(repo: Path) -> None:
-    """Scenario: parent plate exists → simulate_derived_agent creates
+    """Scenario: parent plate exists → plate_simulate_derived_agent creates
     `<parent_plate>-derived1` parented to plate tip with trailers
     parent-plate=<plate tip SHA> and convo-id=<convo_id>."""
     branch = getCurrentGitBranchName(repo)
@@ -221,7 +221,7 @@ def _check_first_derived_agent_records_trailers(repo: Path) -> None:
     plate_push(repo)
     parent_plate_sha = getSHAForGitRefViaRevParse(repo, plateBranchName)
 
-    derived = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
+    derived = plate_simulate_derived_agent(repo, plateBranchName, "CONVO-A")
 
     assert derived == f"{plateBranchName}-derived1"
     assert checkIfGitBranchExists(repo, derived)
@@ -231,7 +231,7 @@ def _check_first_derived_agent_records_trailers(repo: Path) -> None:
     assert trailers["convo-id"] == "CONVO-A"
 
 def _check_second_derived_agent_extends_chain(repo: Path) -> None:
-    """Scenario: parent plate + derived1 exist → simulate_derived_agent
+    """Scenario: parent plate + derived1 exist → plate_simulate_derived_agent
     creates `<parent_plate>-derived2` parented to derived1's tip, with
     parent-convo trailer = derived1's convo-id."""
     branch = getCurrentGitBranchName(repo)
@@ -240,10 +240,10 @@ def _check_second_derived_agent_extends_chain(repo: Path) -> None:
     (repo / TEST_FILENAME).write_text("modified\n")
     plate_push(repo)
 
-    derived1 = simulate_derived_agent(repo, plateBranchName, "CONVO-A")
+    derived1 = plate_simulate_derived_agent(repo, plateBranchName, "CONVO-A")
     derived1_tip = getSHAForGitRefViaRevParse(repo, derived1)
 
-    derived2 = simulate_derived_agent(repo, plateBranchName, "CONVO-B")
+    derived2 = plate_simulate_derived_agent(repo, plateBranchName, "CONVO-B")
 
     assert derived2 == f"{plateBranchName}-derived2"
     assert checkIfGitBranchExists(repo, derived2)
@@ -545,7 +545,7 @@ def _check_plate_next_list_shows_plates_sorted_with_current_marker(repo: Path) -
     )
     gitResetHardToHead(repo)
 
-    # Force a measurable timestamp gap so listPlateBranches sort is deterministic.
+    # Force a measurable timestamp gap so plate_listPlateBranches sort is deterministic.
     time.sleep(1)
 
     # Second plate on a new feature-y branch off main.
@@ -584,9 +584,9 @@ def _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes
       4. Resume command uses cwd + customTitle from the readable transcript.
     """
     transcript = tmp_path / "fixy-transcript.jsonl"
-    _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
+    _plate_writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
 
-    shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
+    shas = _plate_buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
     assert getCurrentGitBranchName(repo) == "feature-x"
 
     # Add dirty WIP on feature-x so jump-mode's implicit pre-push has work to capture.
@@ -595,9 +595,9 @@ def _check_plate_next_jump_restores_plate_tree_without_post_plate_branch_changes
     )
     feature_plate_count_before = countGitCommitsReachableFromRef(repo, "feature-x-plate")
 
-    # Find the index of fix-y-plate via listPlateBranches (same source the
+    # Find the index of fix-y-plate via plate_listPlateBranches (same source the
     # listing uses, so indices match deterministically).
-    plates_in_order = listPlateBranches(repo)
+    plates_in_order = plate_listPlateBranches(repo)
     fixy_index = next(
         i + 1 for i, p in enumerate(plates_in_order) if p["ref"] == "fix-y-plate"
     )
@@ -657,14 +657,14 @@ def _check_plate_next_jump_lost_message_when_transcript_unreadable(base: Path) -
         sub.mkdir(parents=True, exist_ok=True)
         repo = makeTestRepoWithSingleCommit(sub)
 
-        shas = _buildTwoBranchPlateTopology(
+        shas = _plate_buildTwoBranchPlateTopology(
             repo,
             transcript_for_fixy=fake_transcript_path,
             include_summary=include_summary,
         )
         assert getCurrentGitBranchName(repo) == "feature-x"
 
-        plates = listPlateBranches(repo)
+        plates = plate_listPlateBranches(repo)
         fixy_index = next(
             i + 1 for i, p in enumerate(plates) if p["ref"] == "fix-y-plate"
         )
@@ -696,9 +696,9 @@ def _check_plate_next_jump_self_index_is_noop(repo: Path, tmp_path: Path) -> Non
     no WT change.
     """
     transcript = tmp_path / "fixy-transcript.jsonl"
-    _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
+    _plate_writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
 
-    shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
+    shas = _plate_buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
     assert getCurrentGitBranchName(repo) == "feature-x"
 
     # Snapshot pre-call state so we can prove nothing changed.
@@ -709,7 +709,7 @@ def _check_plate_next_jump_self_index_is_noop(repo: Path, tmp_path: Path) -> Non
     feature_txt_before = (repo / "feature.txt").read_text()
     wt_clean_before = checkGitForCleanWorkTree(repo)
 
-    plates = listPlateBranches(repo)
+    plates = plate_listPlateBranches(repo)
     self_index = next(
         i + 1 for i, p in enumerate(plates) if p["ref"] == "feature-x-plate"
     )
@@ -744,8 +744,8 @@ def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
     #    parented to C2; fix-y with fix-y-plate parented to B1). Use a real
     #    transcript file for fix-y-plate so the local-resume path will fire.
     transcript = tmp_path / "fixy-transcript.jsonl"
-    _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
-    shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
+    _plate_writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
+    shas = _plate_buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
 
     # 2. Move HEAD to a brand-new branch `explore` off `main` that has NO
     #    associated `<branch>-plate` ref. WT is clean after the checkout.
@@ -758,7 +758,7 @@ def _check_plate_next_jump_proceeds_when_head_on_branch_with_no_plate(
     # 3. Resolve the index of fix-y-plate so we have a deterministic target.
     #    fix-y-plate has the readable transcript, so a successful jump should
     #    return the local-resume form.
-    plates = listPlateBranches(repo)
+    plates = plate_listPlateBranches(repo)
     fixy_index = next(
         i + 1 for i, p in enumerate(plates) if p["ref"] == "fix-y-plate"
     )
@@ -806,10 +806,10 @@ def _check_plate_next_jump_invalid_index_returns_message(repo: Path, tmp_path: P
     #    repo (feature-x-plate, fix-y-plate). HEAD ends on feature-x with a
     #    clean WT.
     transcript = tmp_path / "fixy-transcript.jsonl"
-    _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
-    shas = _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
+    _plate_writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
+    shas = _plate_buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
     assert getCurrentGitBranchName(repo) == "feature-x"
-    assert len(listPlateBranches(repo)) == 2
+    assert len(plate_listPlateBranches(repo)) == 2
 
     # 2. Snapshot pre-call state so we can prove the rejected call had no
     #    side effects.
@@ -856,7 +856,7 @@ def _check_plate_next_list_empty_when_no_plates(repo: Path) -> None:
     """
     # 1. Confirm precondition: the repo has no plate-related refs at all.
     #    (No `*-plate` and no `*-plate-derived*` branches.)
-    assert listPlateBranches(repo) == []
+    assert plate_listPlateBranches(repo) == []
 
     # 2. Call list mode.
     result = plate_next(repo)
@@ -879,8 +879,8 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
     #    deterministically); feature-x-plate transcript is fake (falls back
     #    to convo-name trailer).
     transcript = tmp_path / "fixy-transcript.jsonl"
-    _writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
-    _buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
+    _plate_writeTranscriptFile(transcript, cwd="/Users/me/jot", custom_title="fix-y bug investigation")
+    _plate_buildTwoBranchPlateTopology(repo, transcript_for_fixy=transcript)
 
     # 2. Switch HEAD to a fresh `explore` branch off `main` that has no
     #    associated plate ref.
@@ -916,7 +916,7 @@ def _check_plate_next_list_no_marker_when_head_has_no_plate(
 def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     repo: Path,
 ) -> None:
-    """Realistic mainline case for rewriteBranchTipSummary.
+    """Realistic mainline case for plate_rewriteBranchTipSummary.
 
     Setup: a plate branch with two commits.
       commit-1 (parent of tip) carries convo-summary: "old summary" plus
@@ -926,7 +926,7 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
         convo-summary (the new push just landed; agent hasn't written
         the new summary yet).
 
-    After running rewriteBranchTipSummary(repo, branch, "<new text>"):
+    After running plate_rewriteBranchTipSummary(repo, branch, "<new text>"):
       - commit-1 has NO convo-summary trailer.
       - commit-2 (new tip) has convo-summary == "<new text>".
       - All other trailers (convo-id, convo-name, parent-branch) are
@@ -982,7 +982,7 @@ def _check_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary(
     assert "convo-summary" not in pre_trailers_2
 
     # Run.
-    new_tip_sha = rewriteBranchTipSummary(repo, branch, "the new summary text")
+    new_tip_sha = plate_rewriteBranchTipSummary(repo, branch, "the new summary text")
 
     # The branch ref must have advanced (or at least changed SHA).
     assert getSHAForGitRefViaRevParse(repo, plate_branch) == new_tip_sha

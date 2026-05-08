@@ -47,12 +47,12 @@ def plate_summaryStop(repo: str, branch: str, output_file: str) -> int:
     if not Path(output_file).is_file():
         return 0
 
-    # Resolve cli.py: bash uses `cd "$(dirname "$0")/../../.." && pwd`. In the
+    # Resolve plate_cli.py: bash uses `cd "$(dirname "$0")/../../.." && pwd`. In the
     # Python migration the equivalent is the repo root above scripts/. We
     # locate it relative to this module so the function works whether installed
     # in the plugin tree or run from the migration workspace.
     repo_root = Path(__file__).resolve().parents[2]
-    cli_path = repo_root / "common" / "scripts" / "plate" / "cli.py"
+    cli_path = repo_root / "common" / "scripts" / "plate" / "plate_cli.py"
 
     # Resolve the audit log location with the same precedence as bash:
     #   1) $PLATE_LOG_FILE     (test/override hook)
@@ -233,7 +233,7 @@ def plate_main(
     except OSError:
         pass
 
-    cli_path = os.path.join(plugin_root, "common", "scripts", "plate", "cli.py")
+    cli_path = os.path.join(plugin_root, "common", "scripts", "plate", "plate_cli.py")
 
     if prompt == "/plate":
         args = ["push", session_id, transcript_path, repo_root]

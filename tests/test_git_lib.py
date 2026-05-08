@@ -5,7 +5,7 @@ bash-to-python migration; this file isolates git_lib coverage so future
 git_lib changes are exercised by a focused, plate-independent suite.
 
 Plate-side test helpers (makeTestRepo*, makeTestFile, createUntrackedFile,
-modifyTrackedFile, createRandomBranchName) and their constants are still
+modifyTrackedFile, plate_createRandomBranchName) and their constants are still
 re-imported from plate_lib for now. They will move to a neutral location
 once the broader migration progresses.
 """
@@ -71,7 +71,7 @@ from common.scripts.plate.plate_lib import (
     TEST_COMMIT_MESSAGE,
     TEST_FILE_CONTENTS,
     TEST_FILENAME,
-    createRandomBranchName,
+    plate_createRandomBranchName,
 )
 from common.scripts.git_test_funcs_lib import (
     createUntrackedFile,
@@ -116,7 +116,7 @@ def test_createGitUserConfig(tmp_path: Path):
 def test_createGitBranch(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(base=tmp_path)
     original_head = getCurrentGitBranchName(repo)
-    branch_name = createRandomBranchName()
+    branch_name = plate_createRandomBranchName()
     createGitBranch(repo, branch_name)
     branches = getGitBranchList(repo)
     print(branch_name)
@@ -128,7 +128,7 @@ def test_createGitBranch(tmp_path: Path):
 
 def test_checkOutGitBranch(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(base=tmp_path)
-    branch_name = createRandomBranchName()
+    branch_name = plate_createRandomBranchName()
     createGitBranch(repo, branch_name)
     checkOutGitBranch(repo=repo, branch_name=branch_name)
     assert getCurrentGitBranchName(repo) == branch_name
@@ -136,7 +136,7 @@ def test_checkOutGitBranch(tmp_path: Path):
 
 def test_createAndCheckoutGitBranch(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(base=tmp_path)
-    branch_name = createRandomBranchName()
+    branch_name = plate_createRandomBranchName()
     createAndCheckoutGitBranch(repo, branch_name)
     branches = getGitBranchList(repo)
     print(branch_name)
@@ -375,7 +375,7 @@ def test_gitCleanWorkTree(tmp_path: Path):
 
 def test_deleteGitBranchByForce(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    name = createRandomBranchName()
+    name = plate_createRandomBranchName()
     createGitBranch(repo, name)
     assert checkIfGitBranchExists(repo, name)
     deleteGitBranchByForce(repo, name)

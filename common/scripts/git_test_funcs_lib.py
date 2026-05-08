@@ -7,7 +7,7 @@ the /plate sequence test harness and by tests/test_git_lib.py.
 Extracted per MIGRATION_TO_PYTHON.md (NEEDS_MIGRATION_TO: git_test_funcs_lib.py).
 
 Note on import ordering: this module pulls a handful of names
-(`createRandomBranchName`, `TEST_FILENAME`, `TEST_FILE_CONTENTS`,
+(`plate_createRandomBranchName`, `TEST_FILENAME`, `TEST_FILE_CONTENTS`,
 `B_FILENAME`, `B_FILE_CONTENTS`, `F1_FILENAME`, `F1_FILE_CONTENTS`)
 from `plate_lib`. plate_lib defines those names *before* it executes
 its explicit `from common.scripts.git_test_funcs_lib import (...)` pull,
@@ -70,7 +70,7 @@ def makeTestFile(repo: Path, fileName: str) -> Path:
 # ── Implemented: simulate user edits ──────────────────────────────────
 def modifyTrackedFile(repo: Path, file: str, rng: random.Random) -> dict:
     path = repo / file
-    path.write_text(path.read_text() + f"random-{random_string(rng=rng)}\n")
+    path.write_text(path.read_text() + f"random-{plate_random_string(rng=rng)}\n")
     return {"action": "modify_tracked", "file": path.name}
 
 def modifyRandomlyChosenTrackedFile(
@@ -84,9 +84,9 @@ def modifyRandomlyChosenTrackedFile(
     return modifyTrackedFile(repo, fileName, rng=rng)
 
 def createUntrackedFile(repo: Path, rng: random.Random) -> dict:
-    name = f"new-{random_string(rng=rng)}.txt"
+    name = f"new-{plate_random_string(rng=rng)}.txt"
     path = repo / name
-    path.write_text(f"content-{random_string(rng=rng)}\n")
+    path.write_text(f"content-{plate_random_string(rng=rng)}\n")
     return {"action": "create_untracked", "file": name}
 
 
@@ -119,7 +119,7 @@ def setup_git_plate_test_repo(base: Path) -> Path:
     createGitCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
-    branch_name = createRandomBranchName()
+    branch_name = plate_createRandomBranchName()
     createGitBranch(repo, branch_name)
     checkOutGitBranch(repo=repo, branch_name=branch_name)
 
@@ -163,7 +163,7 @@ def setup_repo(base: Path) -> Path:
     createGitCommit(repo=repo, message="A")
 
     # randomly-named branch off main, with B and F1 commits
-    branch_name = createRandomBranchName()
+    branch_name = plate_createRandomBranchName()
     createGitBranch(repo, branch_name)
     checkOutGitBranch(repo=repo, branch_name=branch_name)
 
@@ -186,7 +186,7 @@ def currentTimestampUtcCompact() -> str:
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
 
-# Late import: pulls constants + createRandomBranchName + random_string from
+# Late import: pulls constants + plate_createRandomBranchName + plate_random_string from
 # plate_lib AFTER they are bound there. plate_lib's `from ...git_test_funcs_lib
 # import *` runs after those definitions, so this resolves without a cycle.
 from common.scripts.plate.plate_lib import (  # noqa: E402
@@ -197,6 +197,6 @@ from common.scripts.plate.plate_lib import (  # noqa: E402
     TEST_COMMIT_MESSAGE,
     TEST_FILENAME,
     TEST_FILE_CONTENTS,
-    createRandomBranchName,
-    random_string,
+    plate_createRandomBranchName,
+    plate_random_string,
 )

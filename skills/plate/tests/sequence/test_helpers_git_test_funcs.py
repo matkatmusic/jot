@@ -1,5 +1,5 @@
 """Smoke tests for git_test_funcs_lib helpers (makeEmptyRepo, makeTestRepo,
-performRandomEdit, setup_repo, etc.).
+plate_performRandomEdit, setup_repo, etc.).
 
 Split from test_helpers.py per MIGRATION_TO_PYTHON.md bucket [git_test_funcs].
 """
@@ -14,7 +14,7 @@ import pytest
 # After the test_* functions migrated out of plate_lib.py, every library
 # symbol the tests reference must be importable into this namespace —
 # including underscore-prefixed scenario callables (`_check_*`) and
-# private helpers (`_writeFakeTranscriptWithToolUse`, etc.) that
+# private helpers (`_plate_writeFakeTranscriptWithToolUse`, etc.) that
 # `from plate_lib import *` would skip. Pull them in explicitly via vars().
 # (sys.path setup already done by conftest.py.)
 import plate_lib as _plate_lib
@@ -144,7 +144,7 @@ monkeypatch):
 
     # seed=0 forces rng = random.Random(0), whose .choice honors the patch
     # (the module-level `random.choice` is a pre-bound method and would not).
-    result = performRandomEdit(repo, seed=0)
+    result = plate_performRandomEdit(repo, seed=0)
 
     assert result["action"] == "modify_tracked"
     assert result["file"] in getGitTrackedFilesList(repo)
@@ -159,7 +159,7 @@ def test_performRandomEdit_create_untracked_when_tracked_exists(tmp_path: Path, 
     monkeypatch.setattr(random.Random, "choice", lambda self, seq: seq[-1])
 
     # seed=0 forces rng = random.Random(0); see test_..._modify_tracked for why.
-    result = performRandomEdit(repo, seed=0)
+    result = plate_performRandomEdit(repo, seed=0)
 
     assert result["action"] == "create_untracked"
     assert result["file"] in getGitUntrackedFilesList(repo)
@@ -171,18 +171,18 @@ def test_performRandomEdit_no_tracked_forces_create_untracked(tmp_path: Path):
     # Only one branch reachable; no monkeypatch needed.
     repo = makeTestRepo(base=tmp_path)
 
-    result = performRandomEdit(repo)
+    result = plate_performRandomEdit(repo)
 
     assert result["action"] == "create_untracked"
     assert result["file"] in getGitUntrackedFilesList(repo)
 
 def test_performRandomEdit_seeded_is_deterministic_simple(tmp_path: Path):
     repo = makeTestRepoWithSingleCommit(tmp_path)
-    a = performRandomEdit(repo, seed=42)
+    a = plate_performRandomEdit(repo, seed=42)
     # reset and replay
     run(["git", "reset", "--hard"], cwd=repo)
     run(["git", "clean", "-fd"], cwd=repo)
-    b = performRandomEdit(repo, seed=42)
+    b = plate_performRandomEdit(repo, seed=42)
     # expect the same results from two deterministic (same seed) calls
     assert a == b
 
@@ -243,16 +243,16 @@ def test_setup_repo_no_plate_branch_initially(repo: Path) -> None:
     assert not checkIfGitBranchExists(repo, plate)
 
 
-# ── performRandomEdit ───────────────────────────────────────────────────────
+# ── plate_performRandomEdit ───────────────────────────────────────────────────────
 
 def test_performRandomEdit_dirties_wt(repo: Path) -> None:
     assert checkGitForCleanWorkTree(repo)
-    performRandomEdit(repo, seed=0)
+    plate_performRandomEdit(repo, seed=0)
     assert not checkGitForCleanWorkTree(repo)
 
 
 def test_performRandomEdit_returns_action_record(repo: Path) -> None:
-    result = performRandomEdit(repo, seed=0)
+    result = plate_performRandomEdit(repo, seed=0)
     assert result["action"] in ("modify_tracked", "create_untracked")
     assert "file" in result
 
@@ -262,7 +262,7 @@ def test_performRandomEdit_modify_tracked_appends_line(repo: Path) -> None:
     # Drive enough seeds to hit modify_tracked at least once.
     for s in range(50):
         before = (repo / "fix.txt").read_text()
-        result = performRandomEdit(repo, seed=s)
+        result = plate_performRandomEdit(repo, seed=s)
         if result["action"] == "modify_tracked" and result["file"] == "fix.txt":
             after = (repo / "fix.txt").read_text()
             assert after.startswith(before)
@@ -275,7 +275,7 @@ def test_performRandomEdit_create_untracked_makes_new_file(repo: Path) -> None:
     """With a seed that picks create_untracked, a new file appears in WT."""
     for s in range(50):
         files_before = set(p.name for p in repo.iterdir() if p.is_file())
-        result = performRandomEdit(repo, seed=s)
+        result = plate_performRandomEdit(repo, seed=s)
         if result["action"] == "create_untracked":
             files_after = set(p.name for p in repo.iterdir() if p.is_file())
             new_files = files_after - files_before
@@ -287,17 +287,17 @@ def test_performRandomEdit_create_untracked_makes_new_file(repo: Path) -> None:
 
 def test_performRandomEdit_seeded_is_deterministic(repo: Path, tmp_path: Path) -> None:
     """Same seed → same action."""
-    a = performRandomEdit(repo, seed=12345)
+    a = plate_performRandomEdit(repo, seed=12345)
     # Reset by setting up a parallel repo from the same fixture base
     from git_test_funcs_lib import setup_git_plate_test_repo as setup_repo
 
     other = setup_repo(tmp_path / "other")
-    b = performRandomEdit(other, seed=12345)
+    b = plate_performRandomEdit(other, seed=12345)
     assert a == b
 
 
 def test_performRandomEdit_unseeded_works(repo: Path) -> None:
     """No seed → still produces a valid edit (non-deterministic)."""
-    result = performRandomEdit(repo)
+    result = plate_performRandomEdit(repo)
     assert result["action"] in ("modify_tracked", "create_untracked")
     assert not checkGitForCleanWorkTree(repo)

@@ -1,4 +1,4 @@
-"""Unit tests for common/scripts/plate/cli.py — argv routing + trailer kwarg propagation.
+"""Unit tests for common/scripts/plate/plate_cli.py — argv routing + trailer kwarg propagation.
 
 These tests exercise the CLI dispatcher in isolation: every plate_* function
 is mocked, so no git, no temp repos, no transcript files. The underlying
@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-# cli.py lives in common/scripts/plate/ alongside plate_lib.py.
+# plate_cli.py lives in common/scripts/plate/ alongside plate_lib.py.
 # conftest.py has already added that directory to sys.path.
-import cli  # noqa: E402
+import plate_cli as cli  # noqa: E402
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ def test_routes_push_to_plate_push() -> None:
     agent fills in the trailer asynchronously via set-plate-summary.
     """
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="abc123def456") as mp, \
-         mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value="my-convo") as mn, \
+         mock.patch.object(cli.plate_lib, "plate_extractConvoNameFromTranscript", return_value="my-convo") as mn, \
          mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="feature-x"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         out, rc = _run(["push", "sid-123", "/tmp/transcript.jsonl", "/repos/myproj"])
@@ -177,8 +177,8 @@ def test_routes_show_returns_todo_stub() -> None:
 
 def test_set_plate_summary_cli_routing(tmp_path: Path) -> None:
     """set-plate-summary <repo> <branch> <summary-file> must dispatch
-    to plate_lib.regenerateTipSummary (the commit-tree based path) —
-    NOT rewriteBranchTipSummary (the rebase-based path that has been
+    to plate_lib.plate_regenerateTipSummary (the commit-tree based path) —
+    NOT plate_rewriteBranchTipSummary (the rebase-based path that has been
     leaking orphan worktrees and corrupting trailer blocks in
     production). The agent's preserved summary.txt content is fed in
     via an agent_callable so the file's content lands as-is in the
@@ -197,7 +197,7 @@ def test_set_plate_summary_cli_routing(tmp_path: Path) -> None:
     summary_file.write_text(summary_text)
 
     with mock.patch.object(
-        cli.plate_lib, "regenerateTipSummary", return_value="abc12345deadbeef",
+        cli.plate_lib, "plate_regenerateTipSummary", return_value="abc12345deadbeef",
     ) as mr:
         out, rc = _run(
             ["set-plate-summary", "/repos/myproj", "feature-x", str(summary_file)],
@@ -236,7 +236,7 @@ def test_push_propagates_none_when_extract_returns_none() -> None:
     """When the transcript extractor returns None (no custom-title in transcript),
     plate_push must receive convo_name=None — not a stringified None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
-         mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value=None), \
+         mock.patch.object(cli.plate_lib, "plate_extractConvoNameFromTranscript", return_value=None), \
          mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="main"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "/tmp/tp.jsonl", "/repo"])
@@ -252,7 +252,7 @@ def test_push_with_empty_transcript_path_skips_extractors() -> None:
     """If transcript_path is empty (hook didn't supply one), extractors are
     NOT called and convo_name/convo_summary are None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value="sha") as mp, \
-         mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript") as mn, \
+         mock.patch.object(cli.plate_lib, "plate_extractConvoNameFromTranscript") as mn, \
          mock.patch.object(cli.plate_lib, "getCurrentGitBranchName", return_value="main"), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         _run(["push", "sid", "", "/repo"])
@@ -269,7 +269,7 @@ def test_push_no_changes_returns_no_op_message() -> None:
     """plate_push returns None when the WT tree matches the parent — CLI
     surfaces 'no changes to stack' instead of crashing on .[ :8] slicing of None."""
     with mock.patch.object(cli.plate_lib, "plate_push", return_value=None), \
-         mock.patch.object(cli.plate_lib, "extractConvoNameFromTranscript", return_value=None), \
+         mock.patch.object(cli.plate_lib, "plate_extractConvoNameFromTranscript", return_value=None), \
          mock.patch.dict(os.environ, {"PLATE_SKIP_LAUNCH": "1"}):
         out, rc = _run(["push", "sid", "", "/repo"])
     assert rc == 0

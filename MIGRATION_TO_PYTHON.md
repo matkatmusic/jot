@@ -2,7 +2,7 @@
 
 Authoritative list of top-level functions and classes (with one level of method nesting) for every Python file in this worktree. Used as input when deciding how to split large modules into smaller, area-focused files.
 
-Last generated: 2026-05-07
+Last generated: 2026-05-08
 
 Regenerate from the worktree root with:
 
@@ -72,20 +72,6 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 (0 functions, 0 classes)
 
-### common/scripts/plate/cli.py
-
-- _cmd_push
-- _cmd_done
-- _cmd_drop
-- _cmd_trash
-- _cmd_recycle
-- _cmd_next
-- _cmd_show
-- _cmd_set_plate_summary
-- main
-
-(9 functions, 0 classes)
-
 ### common/scripts/plate/commit_message.py
 
 - format_commit_message
@@ -113,6 +99,20 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 *(no top-level functions or classes)*
 
 (0 functions, 0 classes)
+
+### common/scripts/plate/plate_cli.py
+
+- _cmd_push
+- _cmd_done
+- _cmd_drop
+- _cmd_trash
+- _cmd_recycle
+- _cmd_next
+- _cmd_show
+- _cmd_set_plate_summary
+- main
+
+(9 functions, 0 classes)
 
 ### common/scripts/plate/plate_lib.py
 
@@ -961,9 +961,9 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 ### tests/test_debate_e2e_wiring.py
 
-- test_debatePrompt_e2e_routesTo_debate_launch_writesHookInputLog
-- test_debateRetryPrompt_e2e_routesTo_debateRetry_main_createsLogParentDir
-- test_debateAbortPrompt_e2e_routesTo_debateAbort_main_createsLogParentDir
+- test_debatePrompt_emitsBlockDecisionWhenTopicMissing
+- test_debateRetryPrompt_emitsBlockDecisionWhenTranscriptPathMissing
+- test_debateAbortPrompt_emitsBlockDecisionWhenTranscriptPathMissing
 
 (3 functions, 0 classes)
 

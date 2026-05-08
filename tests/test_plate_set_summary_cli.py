@@ -55,7 +55,7 @@ def test_nonexistent_output_file_is_noop(tmp_path):
 
 
 def test_invokes_cli_set_plate_summary_with_args(tmp_path):
-    # Scenario: happy path forwards repo/branch/output_file to cli.py set-plate-summary.
+    # Scenario: happy path forwards repo/branch/output_file to plate_cli.py set-plate-summary.
     # Setup: existing repo dir + output file; capture subprocess.run call.
     out = tmp_path / "summary.txt"
     out.write_text("agent summary")
