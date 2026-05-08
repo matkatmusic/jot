@@ -25,16 +25,17 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Optional
+
+from common.scripts.util_lib import terminal_spawnIfNeeded
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PLATE_SKILL = _REPO_ROOT / "skills" / "plate"
 _PROMPT_FILE = _PLATE_SKILL / "scripts" / "prompts" / "summary-agent.md"
 _TEMPLATE_FILE = _PLATE_SKILL / "summary-template.md"
-_STOP_HOOK = _PLATE_SKILL / "scripts" / "plate-summary-stop.sh"
-_WATCH_SCRIPT = _PLATE_SKILL / "scripts" / "plate-summary-watch.sh"
-_PLATFORM_SH = _REPO_ROOT / "common" / "scripts" / "platform.sh"
+_ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
 
 # Read-only git verbs the agent legitimately needs. NO destructive verbs
 # (add, commit, branch, checkout, clean, reset, rebase, rm, update-ref,
@@ -105,7 +106,7 @@ def spawn(
     # by the spawned claude because this per-invocation settings.json
     # supplies its own hooks block.
     stop_command = (
-        f"bash {shlex.quote(str(_STOP_HOOK))} "
+        f"python3 {shlex.quote(str(_ORCHESTRATOR))} plate-summary-stop "
         f"{shlex.quote(str(repo))} {shlex.quote(branch)} "
         f"{shlex.quote(str(output_file))}"
     )
@@ -221,12 +222,9 @@ def spawn(
     # pattern, but uses `/exit` instead of kill-pane so SessionEnd has
     # a chance to fire normally.
     pane_target = f"{session_name}:{window_name}"
-    watcher_cmd = (
-        f"bash {shlex.quote(str(_WATCH_SCRIPT))} "
-        f"{shlex.quote(pane_target)} {shlex.quote(str(output_file))}"
-    )
     subprocess.Popen(
-        ["bash", "-c", watcher_cmd],
+        ["python3", str(_ORCHESTRATOR), "plate-summary-watch",
+         pane_target, str(output_file)],
         env=spawn_env,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -234,17 +232,21 @@ def spawn(
     )
 
     # Open a Terminal.app window attached to this session (parity with
-    # /debate). `compact` clamps the new window to a centered 1000×700
-    # rect — without it, Terminal.app inherits the bounds of the most
-    # recent window, which means after a /debate run (which maximizes)
-    # the plate window would also open maximized. Single-pane sessions
-    # don't need that real estate.
-    terminal_log_arg = shlex.quote(log_file) if log_file else "/dev/null"
-    terminal_cmd = (
-        f'source {shlex.quote(str(_PLATFORM_SH))} && '
-        f'spawn_terminal_if_needed {shlex.quote(session_name)} '
-        f'{terminal_log_arg} plate compact'
-    )
-    subprocess.Popen(["bash", "-c", terminal_cmd], env=spawn_env)
+    # /debate). `compact` clamps the new window to a centered 1000x700
+    # rect so the plate window doesn't inherit a maximized bound from
+    # a previous /debate run. terminal_spawnIfNeeded blocks on
+    # osascript, so run it in a daemon thread to preserve the original
+    # fire-and-forget contract — daemon=True ensures it does not
+    # prevent process exit if the parent terminates first.
+    terminal_log_arg = log_file if log_file else "/dev/null"
+
+    def _spawnTerminalBestEffort() -> None:
+        try:
+            terminal_spawnIfNeeded(session_name, terminal_log_arg, "plate", "compact")
+        except Exception:
+            # Best-effort: terminal launch must never block /plate push.
+            pass
+
+    threading.Thread(target=_spawnTerminalBestEffort, daemon=True).start()
 
     return f"tmux attach -t {session_name}:{window_name}"
