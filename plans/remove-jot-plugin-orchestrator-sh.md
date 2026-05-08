@@ -201,13 +201,13 @@ Both lines must be updated together with the source changes; if you change only 
 
 11. **Also delete** `scripts/jot-plugin-orchestrator-historic.sh` (90B stub — no live references). For `scripts/test_monolith.sh` (117KB), run `grep -rn "test_monolith.sh" --include="*.py" --include="*.sh" --include="*.json" --include="*.md"` first — if any LIVE call site exists, leave it and surface to the user. Otherwise delete.
 
-12. **Final pytest** — must still show ≥877 passing.
+12. **Final pytest** — must still show ≥877 passing.  The end user will run these.  tell them when the changes are ready for pytest to be run by them before proceeding. 
 
 13. **Final grep** — `grep -rn "jot-plugin-orchestrator\.sh" --include="*.py" --include="*.json"` should return only docstring/comment hits in `common/scripts/jot_lib.py:605`, `common/scripts/debate_lib.py:1240,1365,1612`, and `scripts/jot-plugin-orchestrator-historic.py:9` (if not deleted). All other .py/.json hits must be gone.
 
 ## Verification
 
-**Hard requirement: pytest must show ≥877 passing tests at the end (baseline established 2026-05-07).** A drop in pass count means a regression.
+**Hard requirement: pytest must show ≥877 passing tests at the end (baseline established 2026-05-07).** A drop in pass count means a regression.  The end user will run this test. 
 
 - `grep -rn "jot-plugin-orchestrator\.sh" --include="*.py" --include="*.json" .` should return ONLY docstring/comment hits (provenance anchors at `jot_lib.py:605`, `debate_lib.py:1240/1365/1612`). No live import, subprocess, or hook-JSON hits.
 - `grep -rn "bash.*jot-plugin-orchestrator\|bash.*orchestrator\.sh" --include="*.py" --include="*.json" .` returns zero hits.
@@ -223,6 +223,7 @@ Both lines must be updated together with the source changes; if you change only 
 - **Do NOT touch** `.claude/agent-memory-local/**`, `TO_DELETE/**`, or `plans/migration_to_python/**` (historical artefacts).
 - **Preserve all docstring/comment references** to `jot-plugin-orchestrator.sh` line numbers — they are migration provenance anchors that future debuggers rely on.
 - If you discover an argv contract mismatch in step 1, STOP and report. Do not invent argv translation.
+- **Do NOT run pytest**.  that is the end user's job. 
 
 ## Critical files
 
