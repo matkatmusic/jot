@@ -1,10 +1,65 @@
 # Python function audit
 
-Authoritative list of top-level functions and classes (with one level of method nesting) for every Python file in this worktree. Used as input when deciding how to split large modules into smaller, area-focused files.
+## Purpose
+
+This document is the planning artifact for the **post-migration refactor**: splitting large `_lib.py` modules and their test files into smaller, area-focused files now that the bash-to-Python migration is complete. It lists every top-level function and class in every `*.py` file in this worktree (with one level of method nesting), tagged with a target bucket so a fresh agent can pick a slice and execute without re-deciding the shape.
+
+The function lists are auto-generated; the inline annotations are hand-curated decisions captured during a planning session. Re-running the generator overwrites annotations, so changes to taxonomy go through this file, not the generator.
+
+## How to use this document
+
+A fresh agent picking up the work should:
+
+1. Pick a file flagged `NEEDS_SPLIT`, `NEEDS_RENAME_TO`, or with per-line bucket tags.
+2. For each tagged group, create the target file (e.g., `tests/test_jot_diag.py`) and move the tagged entries into it. Update imports.
+3. Delete entries marked `SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE` outright — the canonical copy already lives in `tests/test_git_lib.py`. Verified byte-identical via AST + rename normalization.
+4. Move entries marked `MOVE_TO: <path>` into the target file. They live in the wrong file, not the wrong shape.
+5. Resolve `INTERNAL_DUPLICATE` markers by deleting the older copy or merging.
+6. Run `pytest` after each split to confirm nothing broke.
+
+## Marker glossary
+
+| Marker | Meaning | Action |
+|---|---|---|
+| `[<bucket>]` after a `- name` line | The function belongs in this subject bucket | Move into the bucket's target file when the file is split |
+| `NEEDS_SPLIT: <buckets>` on a section header | The whole file should be split per the bucket tags below it | Create one target file per bucket, distribute entries |
+| `NEEDS_RENAME_TO: <new_name>` on a section header | File is a `test_cli.py`-style legacy name; rename only | Just rename, no internal redistribution |
+| `NEEDS_MIGRATION_TO: <target_lib>` on a `- name` line | This source-file function belongs in a different `_lib.py` | Move the function definition; update imports in callers |
+| `SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: <path>::<name>` | This test is a verbatim copy of one in `tests/test_git_lib.py` | Delete this copy outright; canonical version already exists |
+| `MOVE_TO: <path>` on a `- name` line | The function/test is in the wrong file (e.g., jot tests living in test_todo_lib.py) | Move to the target file |
+| `INTERNAL_DUPLICATE: <note>` | The same name appears twice within one file (pytest collects only the last) | Delete the dead copy or rename one |
+| `(<n> functions, <m> classes)` footer per block | AST-derived totals | Spot-check after edits to confirm count drift |
+
+## Bucket conventions
+
+Where a source `_lib.py` file already had a category split (git_lib, tmux_lib, util_lib), the matching `tests/test_*_lib.py` mirrors those buckets — e.g., `test_git_lib.py` uses Reader/Checker/Creator/Modifier/Destroyer because `git_lib.py` does. Where no source split exists (jot, plate, todo, claude, debate), tests are bucketed by **subject under test**: the public function or class being exercised. Avoid axes like "writes/reads" or "failures" — those split single tests across multiple homes.
+
+| File family | Bucket axis |
+|---|---|
+| `git_lib.py` / `test_git_lib.py` | Reader, Checker, Creator, Modifier, Destroyer |
+| `tmux_lib.py` / `test_tmux_lib.py` | Create, Destroy, Read, Communicate, Monitor, Configure (+ `[live]` suffix on integration tests) |
+| `util_lib.py` / `test_util_lib.py` | Util, Terminal, FileLock |
+| `test_jot_lib.py` | state, audit, buildcmd, phase2, stop, diag, dispatch |
+| `test_plate_lib.py` | main, summary_watch, set_summary_cli |
+| `test_todo_lib.py` | list, capture, stop, send |
+| `test_claude_lib.py` | buildcmd, permissions, misc |
+| `test_debate_lib.py` | main, daemon, retry, agents, prompts, tmux, locks, capacity, archive_io |
+| `test_helpers.py` (plate sequence) | git_test_funcs, convo, plate, plate_sequence (+ 27 SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE) |
+
+## Headline findings
+
+- **27 verbatim duplicate tests** in `skills/plate/tests/sequence/test_helpers.py` mirror tests already in `tests/test_git_lib.py`. Verified byte-identical after normalizing 12 callee renames (e.g., `resetHardToHead` → `gitResetHardToHead`, `createCommit` → `createGitCommit`). Delete, don't move.
+- **8 jot tests + 3 helpers** in `tests/test_todo_lib.py` actually exercise `jot_main()`. The author already documented the smell: `# Bind a local alias for the jot_main section (these tests target jot_lib).` They MOVE_TO `tests/test_jot_lib.py`.
+- **`FakeClock` / `FakeTmux`** are duplicated across `test_plate_lib.py` and `test_tmux_lib.py`. Hoist into `tests/fixtures/`.
+- **10 source-file entries in `plate_lib.py`** are git-test scaffolding (`makeEmptyRepo`, `setup_repo`, `createUntrackedFile`, etc.) and are tagged `NEEDS_MIGRATION_TO: git_test_funcs_lib.py` — a new module that should live next to `git_lib.py`.
+- **2 entries in `git_lib.py`** (`run`, `currentTimestampMs`) are generic utilities tagged `MOVE_TO: util_lib.py`.
+- **3 INTERNAL_DUPLICATE name collisions** in `test_debate_lib.py` (e.g., `test_unknown_agent_returns_empty_string` defined twice) silently shadow each other; pytest collects only the last definition.
+
+## Generation
 
 Last generated: 2026-05-07
 
-Regenerate from the worktree root with:
+Regenerate the function lists (drops all annotations — re-apply by hand):
 
 ```
 python3 audit_gen.py > MIGRATION_TO_PYTHON.md
@@ -533,24 +588,24 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 (11 functions, 0 classes)
 
-### skills/plate/tests/sequence/test_helpers.py — NEEDS_SPLIT: 4 groups (git / git_test_funcs / convo / plate / plate sequences). Many [git] entries are DUPLICATES of tests/test_git_lib.py and should be deleted, not moved.
+### skills/plate/tests/sequence/test_helpers.py — NEEDS_SPLIT: 4 groups (git_test_funcs / convo / plate / plate sequences). 27 entries tagged SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — verified byte-identical to tests/test_git_lib.py counterparts via AST + rename normalization (12 callee renames hide the duplication: stashFiles/unstashFiles → gitStashFiles/Unstash, createCommit → createGitCommit, branchExists → checkIfGitBranchExists, etc.). Delete the duplicates after moving git_test_funcs/convo/plate/plate-sequence groups out.
 
-- test_run [git — DUPLICATE_OF: tests/test_git_lib.py::test_run]
+- test_run [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_run]
 - test_makeEmptyRepo [git_test_funcs]
-- test_writeGitIgnore [git — DUPLICATE_OF: tests/test_git_lib.py::test_writeGitIgnore]
+- test_writeGitIgnore [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_writeGitIgnore]
 - test_makeTestRepoWithSingleCommit [git_test_funcs]
-- test_setGitUserConfigValue [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_createGitUserConfig [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_createGitBranch [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_checkOutGitBranch [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_createAndCheckoutGitBranch [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_getCurrentGitBranchName [git — DUPLICATE_OF: tests/test_git_lib.py]
+- test_setGitUserConfigValue [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_createGitUserConfig [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_createGitBranch [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_checkOutGitBranch [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_createAndCheckoutGitBranch [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_getCurrentGitBranchName [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
 - test_makeTestFile [git_test_funcs]
-- test_stashFiles [git — DUPLICATE_OF: tests/test_git_lib.py::test_gitStashFiles (renamed)]
-- test_unstashFiles [git — DUPLICATE_OF: tests/test_git_lib.py::test_gitUnstashFiles (renamed)]
-- test_addFileToGit [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_stageFiles [git — DUPLICATE_OF: tests/test_git_lib.py::test_stageFiles]
-- test_createCommit [git — DUPLICATE_OF: tests/test_git_lib.py::test_createGitCommit (renamed)]
+- test_stashFiles [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_gitStashFiles (renamed)]
+- test_unstashFiles [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_gitUnstashFiles (renamed)]
+- test_addFileToGit [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_stageFiles [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_stageFiles]
+- test_createCommit [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_createGitCommit (renamed)]
 - test_modifyTrackedFile [git_test_funcs]
 - test_modifyRandomlyChosenTrackedFile [git_test_funcs]
 - test_createUntrackedFile [git_test_funcs]
@@ -560,18 +615,18 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_performRandomEdit_no_tracked_forces_create_untracked [git_test_funcs]
 - test_performRandomEdit_seeded_is_deterministic [git_test_funcs — also appears below; INTERNAL_DUPLICATE]
 - test_performRandomEdit_seeded_is_deterministic_simple [git_test_funcs]
-- test_branchExists [git — DUPLICATE_OF: tests/test_git_lib.py::test_checkIfGitBranchExists (renamed)]
-- test_countGitCommitsReachableFromRef [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_getSHAForRefViaRevParse [git — DUPLICATE_OF: tests/test_git_lib.py::test_getSHAForGitRefViaRevParse (renamed)]
-- test_readWriteGitTree [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_getTreeRevOf [git — DUPLICATE_OF: tests/test_git_lib.py::test_getGitTreeRevOf (renamed)]
-- test_getGitStatus [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_checkForCleanWorkTree [git — DUPLICATE_OF: tests/test_git_lib.py::test_checkGitForCleanWorkTree (renamed)]
-- test_getCommitSubject [git — DUPLICATE_OF: tests/test_git_lib.py::test_getGitCommitSubject (renamed)]
-- test_getGitCommitTrailers [git — DUPLICATE_OF: tests/test_git_lib.py]
-- test_resetHardToHead [git — DUPLICATE_OF: tests/test_git_lib.py::test_gitResetHardToHead (renamed)]
-- test_cleanWorkTree [git — DUPLICATE_OF: tests/test_git_lib.py::test_gitCleanWorkTree (renamed)]
-- test_deleteBranchForce [git — DUPLICATE_OF: tests/test_git_lib.py::test_deleteGitBranchByForce (renamed)]
+- test_branchExists [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_checkIfGitBranchExists (renamed)]
+- test_countGitCommitsReachableFromRef [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_getSHAForRefViaRevParse [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_getSHAForGitRefViaRevParse (renamed)]
+- test_readWriteGitTree [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_getTreeRevOf [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_getGitTreeRevOf (renamed)]
+- test_getGitStatus [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_checkForCleanWorkTree [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_checkGitForCleanWorkTree (renamed)]
+- test_getCommitSubject [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_getGitCommitSubject (renamed)]
+- test_getGitCommitTrailers [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py]
+- test_resetHardToHead [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_gitResetHardToHead (renamed)]
+- test_cleanWorkTree [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_gitCleanWorkTree (renamed)]
+- test_deleteBranchForce [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_deleteGitBranchByForce (renamed)]
 - test_formatPlateAge [plate]
 - test_localTranscriptIsReadable [convo]
 - test_extractConvoNameFromTranscript_returns_latest_custom_title [convo]
@@ -585,7 +640,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_extractFilesDeletedSinceTimestamp [convo]
 - test_listPlateBranches [plate]
 - test_listPlateBranches_excludes_non_plate_refs [plate]
-- test_saveChangesToPatch [git — DUPLICATE_OF: tests/test_git_lib.py::test_saveChangesToGitPatch (renamed)]
+- test_saveChangesToPatch [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_saveChangesToGitPatch (renamed)]
 - test_findMyLastPlate [plate]
 - test_plate_push_1x [plate]
 - test_plate_push_with_convo_id [plate]
@@ -600,7 +655,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_plate_recycle [plate]
 - test_simulate_derived_agent_first [plate]
 - test_simulate_derived_agent_second [plate]
-- test_applyGitPatch [git — DUPLICATE_OF: tests/test_git_lib.py::test_applyGitPatch]
+- test_applyGitPatch [SOURCE_FROM_GIT_LIB_INSTEAD_AND_DELETE — DUPLICATE_OF: tests/test_git_lib.py::test_applyGitPatch]
 - test_plate_drop_no_branch [plate]
 - test_plate_trash_no_branch [plate]
 - test_plate_recycle_no_branch [plate]
