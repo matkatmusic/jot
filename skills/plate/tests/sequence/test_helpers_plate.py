@@ -296,6 +296,105 @@ def test_plate_push_extraction_uses_explicit_transcript_path_arg(tmp_path: Path)
         "trailer must carry the UUID we passed, not the transcript path"
     )
 
+
+def test_buildExtractedTree_includes_bash_created_files(tmp_path: Path):
+    # Scenario: a file authored only via a Bash redirect (no Edit/Write tool_use)
+    # must appear in the extracted tree once the parser is wired in. Without the
+    # B5 wiring, _plate_buildExtractedTree would emit a tree equal to parent_tree
+    # and plate_push would silently no-op.
+    # Setup: standard 1-commit repo + first plate from convo A, then second-agent
+    # convo B issues a transcript whose ONLY tool_use is a Bash `>` redirect.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
+    git_createUserConfig(repo)
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
+    (repo / "a.txt").write_text("base\n")
+    git_addFile(repo, "a.txt")
+    git_createCommit(repo, "initial")
+
+    uuid_A = "9f2be37f-0620-4877-b2e5-03c4ac2cdf35"
+    transcript_A = tmp_path / f"{uuid_A}.jsonl"
+    _plate_writeFakeTranscriptWithToolUse(
+        transcript_A,
+        [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
+          "input": {"file_path": str(repo / "a.txt")}}],
+    )
+    (repo / "a.txt").write_text("base\nA1\n")
+    pa_sha = plate_push(repo, convo_id=uuid_A, transcript_path=str(transcript_A))
+    assert pa_sha is not None
+
+    uuid_B = "11111111-2222-3333-4444-555555555555"
+    transcript_B = tmp_path / f"{uuid_B}.jsonl"
+    _plate_writeFakeTranscriptWithToolUse(
+        transcript_B,
+        [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Bash",
+          "input": {"command": "printf 'x' > newfile.txt"}}],
+    )
+    # Test setup mirroring a real Bash redirect: file is in WT.
+    (repo / "newfile.txt").write_text("x\n")
+
+    # Test action: second agent push.
+    pb_sha = plate_push(repo, convo_id=uuid_B, transcript_path=str(transcript_B))
+    assert pb_sha is not None, (
+        "Bash-only authored file must promote to a real plate commit"
+    )
+
+    # Test verification: plate tip's tree contains newfile.txt.
+    listing = run(["git", "ls-tree", "-r", "--name-only", "main-plate"], cwd=repo)
+    assert "newfile.txt" in listing.splitlines()
+
+
+def test_buildExtractedTree_includes_subagent_authored_files(tmp_path: Path):
+    # Scenario: a file authored by a Task-spawned subagent (whose tool_use record
+    # lives only in <parent_stem>/subagents/agent-001.jsonl) must surface in the
+    # parent's extracted tree. Without B2+B3+B5 the file is invisible to plate_push.
+    # Setup: 1-commit repo + first plate from convo A, then convo B with an
+    # empty parent transcript and one Bash record in a sidechain transcript.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init", QUIET_OUTPUT, CREATE_BRANCH_AND_CHECKOUT_FLAG, "main"], cwd=repo)
+    git_createUserConfig(repo)
+    git_writeGitignore(repo)
+    git_addFile(repo, ".gitignore")
+    (repo / "a.txt").write_text("base\n")
+    git_addFile(repo, "a.txt")
+    git_createCommit(repo, "initial")
+
+    uuid_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    transcript_A = tmp_path / f"{uuid_A}.jsonl"
+    _plate_writeFakeTranscriptWithToolUse(
+        transcript_A,
+        [{"timestamp": "2099-01-01T00:00:00.000Z", "tool": "Edit",
+          "input": {"file_path": str(repo / "a.txt")}}],
+    )
+    (repo / "a.txt").write_text("base\nA1\n")
+    pa_sha = plate_push(repo, convo_id=uuid_A, transcript_path=str(transcript_A))
+    assert pa_sha is not None
+
+    uuid_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    transcript_B = tmp_path / f"{uuid_B}.jsonl"
+    # Parent JSONL is empty — only the sidechain has the tool_use record.
+    transcript_B.write_text("")
+    sub_dir = tmp_path / uuid_B / "subagents"
+    sub_dir.mkdir(parents=True)
+    _plate_writeFakeTranscriptWithToolUse(
+        sub_dir / "agent-001.jsonl",
+        [{"timestamp": "2099-01-01T00:02:00.000Z", "tool": "Bash",
+          "input": {"command": "touch child.txt"}}],
+    )
+    (repo / "child.txt").write_text("x\n")
+
+    pb_sha = plate_push(repo, convo_id=uuid_B, transcript_path=str(transcript_B))
+    assert pb_sha is not None, (
+        "subagent-authored file via sidechain JSONL must promote to a real plate commit"
+    )
+
+    listing = run(["git", "ls-tree", "-r", "--name-only", "main-plate"], cwd=repo)
+    assert "child.txt" in listing.splitlines()
+
+
 def test_plate_push_shared_branch_two_agents_isolates_each_authors_changes(
     tmp_path: Path,
 ):

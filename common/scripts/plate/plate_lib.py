@@ -396,6 +396,113 @@ def _plate_parseRmTargets(cmd: str, repo_root_resolved: Path) -> set[str]:
         targets.add(str(rel))
     return targets
 
+
+def _plate_parseFilesCreatedFromBashCommand(
+    cmd: str, repo_root_resolved: Path
+) -> set[str]:
+    """Find literal file path arguments that `cmd` would create or rewrite.
+
+    Mirror of `_plate_parseRmTargets` for the creation side; both share the
+    same shell-expansion safety filter and repo-root anchoring rules.
+
+    Recognized forms (each independent within a single shell segment):
+        `> path`, `>> path`            output redirects
+        `tee [-a] path`                pipeline output
+        `touch <path>...`              empty-file creation
+        `cp [-flags] <src...> <dst>`   destination only
+        `mv [-flags] <src...> <dst>`   destination only
+        `git add <pathspec>...`        explicit user staging
+
+    Resets state on shell separators (`&&`, `||`, `;`, `|`). Skips flag
+    tokens (`-X`, `--long`) and tokens containing shell-expansion chars.
+    Returns repo-relative paths only when the resolved path falls inside
+    `repo_root_resolved`.
+    """
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return set()
+
+    targets: set[str] = set()
+
+    def _addIfInsideRepo(tok: str) -> None:
+        if any(c in tok for c in _SHELL_EXPANSION_CHARS):
+            return
+        if tok.startswith("-"):
+            return
+        try:
+            p = (repo_root_resolved / tok).resolve()
+            rel = p.relative_to(repo_root_resolved)
+        except (OSError, ValueError):
+            return
+        targets.add(str(rel))
+
+    cmd_mode: Optional[str] = None
+    pending_redirect = False
+    pending_positionals: list[str] = []
+
+    def _flushCpMvDestination() -> None:
+        if pending_positionals:
+            _addIfInsideRepo(pending_positionals[-1])
+
+    i = 0
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok in ("&&", "||", ";", "|"):
+            if cmd_mode == "cp_mv":
+                _flushCpMvDestination()
+            cmd_mode = None
+            pending_redirect = False
+            pending_positionals = []
+            i += 1
+            continue
+        if tok in (">", ">>"):
+            pending_redirect = True
+            i += 1
+            continue
+        if pending_redirect:
+            _addIfInsideRepo(tok)
+            pending_redirect = False
+            i += 1
+            continue
+        if cmd_mode is None:
+            if tok == "git" and i + 1 < n and tokens[i + 1] == "add":
+                cmd_mode = "git_add"
+                i += 2
+                continue
+            if tok == "touch":
+                cmd_mode = "touch"
+                i += 1
+                continue
+            if tok == "tee":
+                cmd_mode = "tee"
+                i += 1
+                continue
+            if tok in ("cp", "mv"):
+                cmd_mode = "cp_mv"
+                pending_positionals = []
+                i += 1
+                continue
+            i += 1
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        if any(c in tok for c in _SHELL_EXPANSION_CHARS):
+            i += 1
+            continue
+        if cmd_mode in ("touch", "tee", "git_add"):
+            _addIfInsideRepo(tok)
+        elif cmd_mode == "cp_mv":
+            pending_positionals.append(tok)
+        i += 1
+
+    if cmd_mode == "cp_mv":
+        _flushCpMvDestination()
+    return targets
+
+
 def plate_listPlateBranches(repo: Path) -> list[dict]:
     """Return all plate-related branch refs in the repo, newest first.
 
@@ -501,6 +608,54 @@ def _plate_resolveTargetPlate(
         return base_plate_name, git_getSHAForRefViaRevParse(repo, "HEAD")
     return base_plate_name, git_getSHAForRefViaRevParse(repo, base_plate_name)
 
+def _plate_resolvePlateLogFile(repo: Path) -> Path:
+    """Return the path the plate log line should append to.
+
+    Resolution order:
+      1. PLATE_LOG_FILE env var (set by plate.sh, also used by tests)
+      2. <repo>/.plate/plate-log.txt   (per-repo fallback)
+
+    The parent directory is created on demand so the caller can write
+    without separately ensuring the dir exists.
+    """
+    env_path = os.environ.get("PLATE_LOG_FILE")
+    if env_path:
+        target = Path(env_path)
+    else:
+        target = Path(repo) / ".plate" / "plate-log.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _plate_logExtractEmptyButWtDirty(
+    repo: Path,
+    branch: str,
+    convo_id: str,
+    wt_tree: str,
+    parent_tree: str,
+) -> None:
+    """Append a single plate-extract-empty diagnostic line to the plate log.
+
+    Format (one line, space-separated key=value pairs):
+        <iso8601> plate-extract-empty repo=<repo> branch=<branch> \
+            convo=<id> wt_tree=<sha> parent_tree=<sha>
+
+    Called by plate_push when the extraction-path produces a tree
+    identical to the parent's (silent no-op territory) but the full WT
+    actually differs from the parent. Diagnostic only — does not block
+    the push.
+    """
+    import datetime
+    ts = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    line = (
+        f"{ts} plate-extract-empty repo={repo} branch={branch} "
+        f"convo={convo_id} wt_tree={wt_tree} parent_tree={parent_tree}\n"
+    )
+    log_path = _plate_resolvePlateLogFile(repo)
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(line)
+
+
 def _plate_buildFullWtTree(repo: Path) -> str:
     """Snapshot the working tree via a temp index and return its tree SHA.
 
@@ -555,7 +710,19 @@ def _plate_buildExtractedTree(
     # path only when no `transcript_path` was supplied (legacy test
     # callers pass `convo_id=str(transcript_file)` directly).
     transcript_arg = Path(transcript_path) if transcript_path else Path(convo_id)
-    edited_abs = plate_extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
+    edited_abs_set: set[str] = set(
+        plate_extractFilesEditedSinceTimestamp(transcript_arg, since_iso=cutoff)
+    )
+    # Bash-driven file creations (touch, > redirect, cp/mv dest, git add, tee)
+    # are recorded as relative-to-repo paths. Convert to absolute to match
+    # plate_extractFilesEditedSinceTimestamp's output shape before unioning.
+    repo_resolved_for_created = repo.resolve()
+    bash_created_rel = plate_extractFilesCreatedSinceTimestamp(
+        transcript_arg, since_iso=cutoff, repo_root=repo
+    )
+    for rel in bash_created_rel:
+        edited_abs_set.add(str(repo_resolved_for_created / rel))
+    edited_abs = sorted(edited_abs_set)
     deleted_candidates = plate_extractFilesDeletedSinceTimestamp(
         transcript_arg, since_iso=cutoff, repo_root=repo
     )
@@ -682,6 +849,19 @@ def plate_push(
 
     parent_tree = git_getSHAForRefViaRevParse(repo=repo, ref=git_getTreeRevOf(parent))
     if commit_tree == parent_tree:
+        # Diagnostic: when extraction yields the parent tree but the FULL
+        # WT differs, the agent's edits were invisible to the transcript
+        # scanners. Log so the silent no-op is auditable.
+        if use_extraction:
+            full_wt_tree = _plate_buildFullWtTree(repo)
+            if full_wt_tree != parent_tree:
+                _plate_logExtractEmptyButWtDirty(
+                    repo=repo,
+                    branch=branch,
+                    convo_id=convo_id or "",
+                    wt_tree=full_wt_tree,
+                    parent_tree=parent_tree,
+                )
         return None
     wt_tree = commit_tree
 
@@ -1395,6 +1575,110 @@ def plate_simulate_derived_agent(
     )
     run(["git", "update-ref", f"refs/heads/{newBranchName}", new_commit], cwd=repo)
     return newBranchName
+
+
+def plate_enumerateSubagentTranscripts(parent_transcript_path: Path) -> list[Path]:
+    """Return all subagent JSONL transcripts authored by `Task` invocations
+    spawned from `parent_transcript_path`, sorted by filename.
+
+    Convention (verified against live `~/.claude/projects/` data):
+        <parent_dir>/<parent_uuid>.jsonl                      parent
+        <parent_dir>/<parent_uuid>/subagents/agent-*.jsonl    subagents
+
+    Single-level scan only. Returns `[]` when no `<uuid>/subagents/` dir
+    exists alongside the parent.
+    """
+    parent = Path(parent_transcript_path)
+    sub_dir = parent.parent / parent.stem / "subagents"
+    if not sub_dir.is_dir():
+        return []
+    return sorted(p for p in sub_dir.glob("agent-*.jsonl") if p.is_file())
+
+
+def _plate_iterToolUseRecordsSinceTimestamp(
+    transcript_path: Path,
+    since_iso: Optional[str],
+):
+    """Yield each `tool_use` content block from the parent JSONL transcript
+    and any subagent transcripts spawned from it
+    (`<parent_dir>/<parent_stem>/subagents/agent-*.jsonl`), filtered to
+    records with `timestamp > since_iso` (strict).
+
+    `since_iso=None` yields everything from every source. Yields nothing
+    from a transcript that can't be opened.
+    """
+    sources: list[Path] = [Path(transcript_path)]
+    sources.extend(plate_enumerateSubagentTranscripts(transcript_path))
+    for src in sources:
+        try:
+            f = src.open("r", encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    record = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                ts = record.get("timestamp")
+                if since_iso is not None:
+                    if not isinstance(ts, str) or ts <= since_iso:
+                        continue
+                content = record.get("message", {}).get("content", [])
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    yield block
+
+
+def _plate_iterBashCommandsSinceTimestamp(
+    transcript_path: Path,
+    since_iso: Optional[str],
+):
+    """Yield each `Bash` tool_use `command` string from parent + subagent
+    transcripts. Thin filter on top of `_plate_iterToolUseRecordsSinceTimestamp`.
+    """
+    for block in _plate_iterToolUseRecordsSinceTimestamp(transcript_path, since_iso):
+        if block.get("name") != "Bash":
+            continue
+        cmd = block.get("input", {}).get("command", "")
+        if not isinstance(cmd, str):
+            continue
+        yield cmd
+
+
+def plate_extractFilesCreatedSinceTimestamp(
+    transcript_path: Path,
+    since_iso: Optional[str],
+    repo_root: Path,
+) -> list[str]:
+    """Return repo-relative file paths from `Bash` tool_use commands that
+    look like file-creating shell forms (`touch`, `>`, `tee`, `cp`/`mv`
+    destination, `git add`) and resolve INSIDE `repo_root`.
+
+    Filtered to records with `timestamp > since_iso` (strict greater-than).
+    `since_iso=None` returns all matching entries. Returns `[]` when the
+    transcript can't be opened.
+
+    The returned set is INTERSECTED with files currently present in the
+    WT, so a transient created-then-deleted file does not leak into the
+    plate tree. Symmetric counterpart to `plate_extractFilesEditedSinceTimestamp`
+    (which handles `Edit`/`Write`/etc.) and `plate_extractFilesDeletedSinceTimestamp`
+    (which handles `rm`).
+    """
+    repo_root_resolved = Path(repo_root).resolve()
+    files: set[str] = set()
+    for cmd in _plate_iterBashCommandsSinceTimestamp(transcript_path, since_iso):
+        files.update(_plate_parseFilesCreatedFromBashCommand(cmd, repo_root_resolved))
+    present = [rel for rel in files if (repo_root_resolved / rel).exists()]
+    return sorted(present)
 
 
 def plate_extractFilesDeletedSinceTimestamp(

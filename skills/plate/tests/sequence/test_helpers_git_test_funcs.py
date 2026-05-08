@@ -243,6 +243,21 @@ def test_setup_repo_no_plate_branch_initially(repo: Path) -> None:
     assert not git_checkIfBranchExists(repo, plate)
 
 
+def test_git_checkIfBranchExists_returns_false_for_substring_only_match(tmp_path: Path) -> None:
+    # Scenario: git_checkIfBranchExists must match refs exactly, not by substring.
+    # Bug history: previous impl scanned `git branch --list` output, so a query
+    # like "python-migration-plate" matched "DNU-python-migration-plate" and
+    # downstream `_resolveTargetPlate` crashed with rev-parse exit 128.
+    # Setup: empty repo with one commit on main; create a decoy branch whose
+    # name contains the query as a strict substring.
+    repo = git_test_makeRepoWithSingleCommit(tmp_path)
+    run(["git", "branch", "DNU-python-migration-plate"], cwd=repo)
+    # Test action + verification: query for the inner substring must NOT match.
+    assert git_checkIfBranchExists(repo, "python-migration-plate") is False
+    # Sanity: querying the actual decoy branch name must still match.
+    assert git_checkIfBranchExists(repo, "DNU-python-migration-plate") is True
+
+
 # ── plate_performRandomEdit ───────────────────────────────────────────────────────
 
 def test_performRandomEdit_dirties_wt(repo: Path) -> None:

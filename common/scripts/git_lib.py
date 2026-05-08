@@ -138,13 +138,22 @@ def git_createCommit(repo: Path, message: str) -> None:
     run(["git", "commit", QUIET_OUTPUT, COMMIT_MESSAGE_FLAG, message], cwd=repo)
 
 def git_checkIfBranchExists(repo: Path, branchName: str) -> bool:
-    """True iff refs/heads/<branchName> exists."""
-    # git branch --list <branchName>
-    list_output = run(["git", "branch", "--list"], cwd=repo)
-    # strip out any * in the branch names
-    list_output = list_output.replace("*", "")
-    # the branch exists if its name appears in the list of branches
-    return branchName in list_output
+    """True iff refs/heads/<branchName> exists, exact-match only.
+
+    Uses `git show-ref --verify` against the fully qualified ref so that
+    a query like "python-migration-plate" does NOT collide with an
+    unrelated branch like "DNU-python-migration-plate". A prior impl
+    scanned `git branch --list` output and substring-matched, which sent
+    `_resolveTargetPlate` down the wrong code path and crashed
+    `git rev-parse` (exit 128).
+    """
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branchName}"],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 def git_countCommitsReachableFromRef(repo: Path, ref: str) -> int:
     """Number of commits reachable from <ref>."""
