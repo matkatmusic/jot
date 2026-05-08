@@ -19,7 +19,7 @@ summary from `git log` to pick up where the previous work left off.
 - `template_path`: absolute path to the template that defines the section structure
 
 ## Steps
-
+0. Do not use compound Bash commands (no expressions with `&&`, `;`, `||`). Only use single Bash commands.
 1. Read the template at `template_path` for the required structure.
 2. Read every commit on `<branch>-plate`:
      git log <branch>-plate --format='%H%n%(trailers)%n---' --name-only
