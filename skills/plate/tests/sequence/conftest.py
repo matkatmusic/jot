@@ -10,10 +10,13 @@ import pytest
 # common/scripts/plate/. Inject that on sys.path so this conftest and
 # every test in this directory can `import plate_lib`.
 _REPO_ROOT = Path(__file__).resolve().parents[4]
-sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" / "plate"))
+sys.path.insert(0, str(_REPO_ROOT / "common" / "scripts" ))
 
-from plate_lib import setup_git_plate_test_repo  # noqa: E402
+# plate_lib's '_check' functions now live at skills/plate/tests/sequence/
+sys.path.insert(0, str(_REPO_ROOT / "skills" / "plate" / "tests" / "sequence"))
 
+from plate.plate_lib import setup_git_plate_test_repo  # noqa: E402
+from git_lib import getCurrentGitBranchName
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:

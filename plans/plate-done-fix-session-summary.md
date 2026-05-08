@@ -33,7 +33,7 @@ No auto-plating ever. Helpers reused: `_buildFullWtTree(repo)` for WT-tree side,
 
 In a new conversation, paste this prompt:
 
-> Read `plans/plate-done-no-auto-plate.md` and `plans/plate-done-fix-session-summary.md` first. Then implement the plan: edit `plate_done()` in `common/scripts/plate/plate_lib.py` (currently around line 821), add the two new `_check_plate_done_*` helpers in plate_lib.py, and add the two corresponding `test_plate_done_*` wrappers in `skills/plate/tests/sequence/test_helpers.py`. Verify with `python3 -m pytest skills/plate/tests/sequence/test_helpers.py -k plate_done` (5 tests should pass) and then `python3 -m pytest` (903 total passing). Do not commit until I confirm.
+> Read `plans/plate-done-no-auto-plate.md` and `plans/plate-done-fix-session-summary.md` first. Then implement the plan: edit `plate_done()` in `common/scripts/plate/plate_lib.py` (currently around line 821), add the two new `_check_plate_done_*` helpers in plate_lib.py, and add the two corresponding `test_plate_done_*` wrappers in `skills/plate/tests/sequence/test_helpers.py`. Verify with `python3 -m pytest skills/plate/tests/sequence/test_helpers.py -k plate_done` (5 tests should pass) and then `python3 -m pytest` (903 total passing). Do not make any commits of code changes you make.
 
 ## Notes for the resumer
 
@@ -43,6 +43,4 @@ In a new conversation, paste this prompt:
 - **Hash references in plan** (`afe138e`, `1ba6bb2`, etc.) are real, in-repo SHAs as of the end of this session. `1ba6bb2` is no longer reachable from any branch but exists in the object DB (kept alive by the backup branch's ancestry).
 - **End-to-end regression test** in the plan's "Future test" section is intentionally deferred. Only the 2 unit tests in this plan are required to pass.
 
-## Open questions for the user (none required to start)
 
-None. The plan is fully specified.
