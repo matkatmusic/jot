@@ -120,9 +120,12 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - plate_extractFilesEditedSinceTimestamp
 - _plate_writeFakeTranscriptWithToolUse
 - _plate_parseRmTargets
+- _plate_parseFilesCreatedFromBashCommand
 - plate_listPlateBranches
 - plate_findMyLastPlate
 - _plate_resolveTargetPlate
+- _plate_resolvePlateLogFile
+- _plate_logExtractEmptyButWtDirty
 - _plate_buildFullWtTree
 - _plate_buildExtractedTree
 - _plate_formatTrailerBody
@@ -142,12 +145,16 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - _plate_next_list
 - _plate_next_jump
 - plate_simulate_derived_agent
+- plate_enumerateSubagentTranscripts
+- _plate_iterToolUseRecordsSinceTimestamp
+- _plate_iterBashCommandsSinceTimestamp
+- plate_extractFilesCreatedSinceTimestamp
 - plate_extractFilesDeletedSinceTimestamp
 - _plate_writeTranscriptFile
 - _plate_buildTwoBranchPlateTopology
 - plate_rewriteBranchTipSummary
 
-(36 functions, 0 classes)
+(43 functions, 0 classes)
 
 ### common/scripts/plate/print_resume_pointer.py
 
@@ -491,6 +498,25 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 ## skills/plate/tests/sequence/
 
+### skills/plate/tests/sequence/test_enumerate_subagent_transcripts.py
+
+- test_returns_empty_when_no_subagents_dir
+- test_returns_all_agent_jsonl_files_in_subagents_dir
+- test_ignores_non_agent_jsonl_in_subagents_dir
+
+(3 functions, 0 classes)
+
+### skills/plate/tests/sequence/test_extract_files_created_since_timestamp.py
+
+- _writeTranscript
+- test_extracts_files_from_bash_redirect
+- test_extracts_files_from_bash_touch
+- test_extracts_files_from_subagent_bash
+- test_filters_out_files_no_longer_in_wt
+- test_returns_repo_relative_paths
+
+(6 functions, 0 classes)
+
 ### skills/plate/tests/sequence/test_helpers_convo.py
 
 - test_localTranscriptIsReadable
@@ -528,6 +554,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_setup_repo_has_expected_subjects
 - test_setup_repo_diverges_from_main
 - test_setup_repo_no_plate_branch_initially
+- test_git_checkIfBranchExists_returns_false_for_substring_only_match
 - test_performRandomEdit_dirties_wt
 - test_performRandomEdit_returns_action_record
 - test_performRandomEdit_modify_tracked_appends_line
@@ -535,7 +562,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_performRandomEdit_seeded_is_deterministic
 - test_performRandomEdit_unseeded_works
 
-(26 functions, 0 classes)
+(27 functions, 0 classes)
 
 ### skills/plate/tests/sequence/test_helpers_plate.py
 
@@ -547,6 +574,8 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_plate_push_with_convo_id
 - test_plate_push_convo_summary_preserves_section_labels_on_own_lines
 - test_plate_push_extraction_uses_explicit_transcript_path_arg
+- test_buildExtractedTree_includes_bash_created_files
+- test_buildExtractedTree_includes_subagent_authored_files
 - test_plate_push_shared_branch_two_agents_isolates_each_authors_changes
 - test_plate_push_omits_convo_trailers_when_kwargs_unset
 - test_plate_done
@@ -574,7 +603,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_plate_next_list_no_marker_when_head_has_no_plate
 - test_rewriteBranchTipSummary_strips_old_tip_and_adds_new_tip_summary
 
-(34 functions, 0 classes)
+(36 functions, 0 classes)
 
 ### skills/plate/tests/sequence/test_helpers_plate_sequence.py
 
@@ -599,6 +628,32 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_sequence_20_plate_done_leaves_sha_recoverable_after_branch_delete
 
 (19 functions, 0 classes)
+
+### skills/plate/tests/sequence/test_iter_tool_use_records_since_timestamp.py
+
+- _writeTranscript
+- test_yields_parent_records_only_when_no_subagents
+- test_yields_chained_records_from_parent_then_subagents
+- test_filters_records_before_timestamp
+
+(4 functions, 0 classes)
+
+### skills/plate/tests/sequence/test_parse_files_created_from_bash_command.py
+
+- _resolved
+- test_parses_single_redirect
+- test_parses_append_redirect
+- test_parses_tee_destination
+- test_parses_tee_append
+- test_parses_touch
+- test_parses_cp_destination
+- test_parses_mv_destination
+- test_parses_git_add_arguments
+- test_skips_shell_expansion_globs
+- test_skips_command_substitution
+- test_skips_paths_outside_repo
+
+(12 functions, 0 classes)
 
 ### skills/plate/tests/sequence/test_plate_cli.py
 
@@ -628,6 +683,7 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 ### skills/plate/tests/sequence/test_plate_e2e_wiring.py
 
 - _run_hook
+- _writeFakeTranscript
 - _parse_block
 - empty_repo
 - test_next_list_mode_returns_empty_list_message
@@ -638,8 +694,23 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 - test_push_with_dirty_wt_creates_plate_branch
 - test_unrelated_prompt_exits_silently
 - test_typo_variant_exits_silently
+- _platePathOf
+- _establishFirstPlateFromAgentA
+- test_push_captures_bash_created_file_via_transcript
+- test_push_captures_subagent_authored_file_via_sidechain_transcript
+- test_push_logs_plate_extract_empty_when_wt_dirty_but_extract_matches_parent
 
-(11 functions, 0 classes)
+(17 functions, 0 classes)
+
+### skills/plate/tests/sequence/test_plate_extract_empty_log.py
+
+- test_resolvePlateLogFile_returns_path_under_repo_dot_plate
+- test_resolvePlateLogFile_honors_env_var
+- test_logExtractEmptyButWtDirty_writes_diagnostic_line
+- test_plate_push_logs_when_extract_tree_equals_parent_but_wt_dirty
+- test_plate_push_does_not_log_when_extract_tree_differs_from_parent
+
+(5 functions, 0 classes)
 
 ### skills/plate/tests/sequence/test_plate_scenarios.py
 
@@ -1928,5 +1999,5 @@ Excluded: every `conftest.py` and `scripts/jot-plugin-orchestrator-historic.py`.
 
 ---
 
-**Totals:** 96 files, 1374 functions, 27 classes.
+**Totals:** 101 files, 1420 functions, 27 classes.
 
