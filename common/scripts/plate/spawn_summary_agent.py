@@ -1,7 +1,6 @@
 """spawn_summary_agent.py — fire a background tmux pane running a claude
 agent that writes a recovery summary for the just-pushed plate.
 
-Mirrors the shape of `skills/jot/scripts/jot.sh::phase2_launch_window`:
 build a per-invocation tmpdir with a custom hooks.json, compose the agent
 prompt + job payload as the first user message, launch claude in a tmux
 window. The agent runs synchronously inside its pane, writes a single

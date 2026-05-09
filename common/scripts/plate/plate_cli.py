@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """plate_cli.py — single argv entry point for the /plate slash command.
 
-Invoked by skills/plate/scripts/plate.sh:
-    python3 -m common.scripts.plate.plate_cli <variant> [args...]
-
-Or directly:
-    python3 common/scripts/plate/plate_cli.py <variant> [args...]
+usage: python3 common/scripts/plate/plate_cli.py <variant> [args...]
 
 Variants and their argv contracts:
     push    <convo_id> <transcript_path> <cwd>

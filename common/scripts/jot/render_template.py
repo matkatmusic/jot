@@ -11,7 +11,6 @@
 # missing template inputs fail fast instead of silently shipping literal
 # `${FOO}` text to a downstream consumer.
 #
-# Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md (commit 5).
 import os
 import re
 import sys

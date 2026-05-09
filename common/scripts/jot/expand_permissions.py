@@ -15,8 +15,6 @@
 #   and absolute "//${REPO_ROOT}/Todos/**" rules are injected into the
 #   in-memory allow array. The on-disk file is never modified.
 #
-# Extracted from scripts/jot.sh per plans/jot-generalizing-refactor.md
-# (commit 2). Behavior is identical to the previous inline block.
 import json
 import os
 import sys
