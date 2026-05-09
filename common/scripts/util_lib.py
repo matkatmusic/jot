@@ -190,13 +190,24 @@ def terminal_spawnIfNeeded(
             _terminal_appendAdvisory(log_file, log_prefix, session)
             return 0
         script = _terminal_buildOsascript(session, maximize)
+        # start_new_session=True detaches osascript from the caller's
+        # process group so it survives parent exit (e.g. when /plate runs
+        # as a UserPromptSubmit hook and the orchestrator returns within
+        # milliseconds). We do NOT call .communicate() / .wait() — write
+        # the script to stdin, close it, and return. osascript runs to
+        # completion under launchd after we exit.
         try:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 ["osascript"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-            ).communicate(input=script.encode("utf-8"), timeout=None)
+                start_new_session=True,
+            )
+            try:
+                proc.stdin.write(script.encode("utf-8"))
+            finally:
+                proc.stdin.close()
         except (OSError, subprocess.SubprocessError):
             pass
         return 0

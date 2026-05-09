@@ -384,14 +384,17 @@ def git_getUncommittedFilenames(path: Path) -> list[str]:
 
 
 def git_ensureGitignoreEntry(repo_root: Path, pattern: str) -> None:
-    """Idempotently append <pattern> as a line in <repo_root>/.gitignore.
+    """Idempotently ensure <pattern> appears as a line in <repo_root>/.gitignore.
 
-    Mirrors `git_ensure_gitignore_entry` in git.sh: if <pattern> already
-    appears as a complete line, no-op; otherwise append "\\n<pattern>\\n".
-    Creates the file if missing.
+    Creates the .gitignore file with `<pattern>\\n` when missing. When the
+    file exists but lacks the pattern, appends `\\n<pattern>\\n`. When the
+    pattern is already present as a full line, no-ops.
     """
     gitignore = repo_root / ".gitignore"
-    existing = gitignore.read_text() if gitignore.exists() else ""
+    if not gitignore.exists():
+        gitignore.write_text(f"{pattern}\n")
+        return
+    existing = gitignore.read_text()
     # Match the bash `grep -qxF` semantics: full-line, fixed-string match.
     if pattern in existing.splitlines():
         return

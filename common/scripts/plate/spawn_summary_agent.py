@@ -25,7 +25,6 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-import threading
 from pathlib import Path
 from typing import Optional
 
@@ -44,6 +43,14 @@ _ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
 _READ_ONLY_GIT_VERBS = (
     "log", "diff", "show", "rev-parse", "rev-list", "for-each-ref",
     "ls-tree", "ls-files", "merge-base", "status", "cat-file",
+)
+
+# Read-only text-processing Bash commands the agent reaches for when
+# inspecting large JSONL transcripts. Listed both bare and rtk-prefixed
+# (the user's `rtk` shim rewrites unprefixed invocations).
+_READ_ONLY_TEXT_TOOLS = (
+    "grep", "head", "tail", "wc", "cut", "awk", "sed", "sort", "uniq",
+    "tr", "cat",
 )
 
 
@@ -119,6 +126,15 @@ def spawn(
         git_allows.append(f"Bash(rtk git {verb}:*)")
         git_allows.append(f"Bash(git {verb}:*)")
 
+    # Read-only text-processing tools (grep/tail/head/etc.) the agent
+    # uses to inspect transcripts. Allow both bare and rtk-prefixed
+    # forms because the user's rtk shim rewrites unprefixed calls.
+    text_allows: list[str] = []
+    for tool in _READ_ONLY_TEXT_TOOLS:
+        text_allows.append(f"Bash({tool}:*)")
+        if not tool.startswith("rtk "):
+            text_allows.append(f"Bash(rtk {tool}:*)")
+
     # Permission rule shape: Claude Code's path matcher uses a leading
     # `//` to mark an absolute path. `expand_permissions.py:28` lstrips
     # the leading `/` from REPO_ROOT before pairing it with the literal
@@ -139,6 +155,7 @@ def spawn(
         f"Write({_abs(output_dir)}/**)",
         f"Edit({_abs(output_dir)}/**)",
         *git_allows,
+        *text_allows,
     ]
     # Restrict transcript Read to THIS conversation's project dir only —
     # not the whole ~/.claude/projects/ tree (would leak access to every
@@ -234,19 +251,17 @@ def spawn(
     # Open a Terminal.app window attached to this session (parity with
     # /debate). `compact` clamps the new window to a centered 1000x700
     # rect so the plate window doesn't inherit a maximized bound from
-    # a previous /debate run. terminal_spawnIfNeeded blocks on
-    # osascript, so run it in a daemon thread to preserve the original
-    # fire-and-forget contract — daemon=True ensures it does not
-    # prevent process exit if the parent terminates first.
+    # a previous /debate run. terminal_spawnIfNeeded is non-blocking:
+    # it Popens osascript with start_new_session=True so the spawned
+    # process is detached from this process group and survives parent
+    # exit (critical when /plate runs as a UserPromptSubmit hook and
+    # the orchestrator returns within milliseconds — a daemon thread
+    # here would be killed before it could even reach the Popen call).
     terminal_log_arg = log_file if log_file else "/dev/null"
-
-    def _spawnTerminalBestEffort() -> None:
-        try:
-            terminal_spawnIfNeeded(session_name, terminal_log_arg, "plate", "compact")
-        except Exception:
-            # Best-effort: terminal launch must never block /plate push.
-            pass
-
-    threading.Thread(target=_spawnTerminalBestEffort, daemon=True).start()
+    try:
+        terminal_spawnIfNeeded(session_name, terminal_log_arg, "plate", "compact")
+    except Exception:
+        # Best-effort: terminal launch must never block /plate push.
+        pass
 
     return f"tmux attach -t {session_name}:{window_name}"

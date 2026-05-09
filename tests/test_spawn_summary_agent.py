@@ -2,7 +2,8 @@
 shell-script residues identified in plans/develop-a-plan-for-nested-bengio.md
 have been replaced with Python equivalents.
 
-Each test stubs subprocess/threading so no real tmux/claude/osascript runs.
+Each test stubs subprocess and terminal_spawnIfNeeded so no real
+tmux/claude/osascript runs.
 """
 from __future__ import annotations
 
@@ -49,10 +50,7 @@ def test_spawnSummaryAgent_emitsPythonStopHookCommand(
     monkeypatch.setattr(mod.tempfile, "mkdtemp", lambda prefix=None: str(invocation_dir))
     monkeypatch.setattr(mod.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(mod.subprocess, "Popen", lambda *a, **kw: SimpleNamespace(pid=1))
-    monkeypatch.setattr(
-        mod.threading, "Thread",
-        lambda *a, **kw: SimpleNamespace(start=lambda: None),
-    )
+    monkeypatch.setattr(mod, "terminal_spawnIfNeeded", lambda *a, **kw: 0)
 
     # Test action: drive spawn() with concrete args.
     repo = tmp_path / "repo"
@@ -95,10 +93,7 @@ def test_spawnSummaryAgent_launchesPythonWatcherSubprocess(
     monkeypatch.setattr(mod.tempfile, "mkdtemp", lambda prefix=None: str(invocation_dir))
     monkeypatch.setattr(mod.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(mod.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(
-        mod.threading, "Thread",
-        lambda *a, **kw: SimpleNamespace(start=lambda: None),
-    )
+    monkeypatch.setattr(mod, "terminal_spawnIfNeeded", lambda *a, **kw: 0)
 
     # Test action.
     repo = tmp_path / "repo"
@@ -121,20 +116,24 @@ def test_spawnSummaryAgent_launchesPythonWatcherSubprocess(
         f"shell-script residue in watcher argv: {watcher_argv}"
     )
     # Test verification: there are EXACTLY two Popen calls (tmux + watcher).
-    # The terminal call has been moved off subprocess into a daemon thread.
+    # terminal_spawnIfNeeded is stubbed; its osascript Popen does not count.
     assert len(popen_calls) == 2, (
         f"expected exactly two Popen calls (tmux + watcher); saw {popen_calls}"
     )
 
 
-def test_spawnSummaryAgent_callsTerminalSpawnInDaemonThread(
+def test_spawnSummaryAgent_callsTerminalSpawnInline(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Scenario: the terminal-window auto-attach must be a direct call to
-    # util_lib.terminal_spawnIfNeeded inside a daemon=True threading.Thread,
-    # not a bash -c subprocess that sources platform.sh.
-    # Setup: capture Thread construction kwargs + .start() invocation;
-    # capture terminal_spawnIfNeeded calls when the thread target is run.
+    # Scenario: the terminal-window auto-attach must be a direct, inline
+    # call to util_lib.terminal_spawnIfNeeded -- NOT wrapped in a daemon
+    # thread or a bash -c subprocess. terminal_spawnIfNeeded is itself
+    # non-blocking (Popen osascript with start_new_session=True), so the
+    # earlier daemon-thread wrapper is unnecessary AND dangerous: when
+    # spawn() is reached via a UserPromptSubmit hook the orchestrator
+    # process exits within milliseconds, killing the daemon thread before
+    # it ever reaches the Popen call.
+    # Setup: capture terminal_spawnIfNeeded invocations directly.
     mod = _import_spawn_module()
     _make_baseline_env(monkeypatch, tmp_path)
 
@@ -152,23 +151,6 @@ def test_spawnSummaryAgent_callsTerminalSpawnInDaemonThread(
 
     monkeypatch.setattr(mod, "terminal_spawnIfNeeded", fake_terminal)
 
-    thread_records: list[dict] = []
-
-    class FakeThread:
-        def __init__(self, *args, target=None, daemon=None, **kwargs):
-            thread_records.append({
-                "target": target,
-                "daemon": daemon,
-                "args": args,
-                "kwargs": kwargs,
-                "started": False,
-            })
-
-        def start(self):
-            thread_records[-1]["started"] = True
-
-    monkeypatch.setattr(mod.threading, "Thread", FakeThread)
-
     # Test action.
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -179,19 +161,26 @@ def test_spawnSummaryAgent_callsTerminalSpawnInDaemonThread(
         transcript_path=None,
     )
 
-    # Test verification: exactly one Thread was constructed with daemon=True
-    # and .start() was called.
-    assert len(thread_records) == 1, f"expected one Thread; saw {thread_records}"
-    rec = thread_records[0]
-    assert rec["daemon"] is True, f"thread must be daemon=True; got {rec}"
-    assert rec["started"] is True, "thread.start() not called"
-    assert callable(rec["target"]), "Thread target must be callable"
-
-    # Test verification: invoking the captured target calls terminal_spawnIfNeeded
-    # with the spawn's session_name and log args (no shell hop).
-    rec["target"]()
+    # Test verification: terminal_spawnIfNeeded was invoked exactly once
+    # synchronously during spawn() with the per-invocation session_name
+    # and the documented prefix/maximize args.
     assert len(terminal_calls) == 1, f"terminal_spawnIfNeeded not invoked; saw {terminal_calls}"
     session_arg, _log_arg, prefix_arg, maximize_arg = terminal_calls[0]
     assert session_arg.startswith("plate-summary-"), f"unexpected session: {session_arg}"
     assert prefix_arg == "plate"
     assert maximize_arg == "compact"
+
+
+def test_spawnSummaryAgent_doesNotImportThreading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Scenario: the daemon-thread wrapper around terminal_spawnIfNeeded
+    # was the bug; once removed, the threading import should also be
+    # gone so a future regression that re-introduces the wrapper fails
+    # at import time.
+    mod = _import_spawn_module()
+    # Test verification: module exposes no threading attribute.
+    assert not hasattr(mod, "threading"), (
+        "spawn_summary_agent must not import threading; "
+        "the daemon-thread wrapper around terminal_spawnIfNeeded was the bug"
+    )

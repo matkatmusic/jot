@@ -212,15 +212,16 @@ def plate_main(
     cwd: str = payload.get("cwd") or os.getcwd()
 
     try:
-        repo_root: str = str(get_repo_root(cwd) or "")
+        repo_root_raw = get_repo_root(cwd)
     except GitError:
-        repo_root = ""
-    if not repo_root:
+        repo_root_raw = None
+    if not repo_root_raw:
         print(emit_block("plate requires a git repository. Run 'git init' in your project root."))
         return 0
+    repo_root: Path = Path(repo_root_raw)
 
     if not plate_log_override:
-        log_file = os.path.join(repo_root, ".plate", "plate-log.txt")
+        log_file = str(repo_root / ".plate" / "plate-log.txt")
         Path(log_file).parent.mkdir(parents=True, exist_ok=True)
         ensure_gitignore(repo_root, ".plate/plate-log.txt")
 
@@ -234,29 +235,30 @@ def plate_main(
         pass
 
     cli_path = os.path.join(plugin_root, "common", "scripts", "plate", "plate_cli.py")
+    repo_root_str = str(repo_root)
 
     if prompt == "/plate":
-        args = ["push", session_id, transcript_path, repo_root]
+        args = ["push", session_id, transcript_path, repo_root_str]
     elif prompt == "/plate --done":
-        args = ["done", repo_root]
+        args = ["done", repo_root_str]
     elif prompt == "/plate --drop":
-        args = ["drop", repo_root]
+        args = ["drop", repo_root_str]
     elif prompt == "/plate --trash":
-        args = ["trash", repo_root]
+        args = ["trash", repo_root_str]
     elif prompt == "/plate --recycle":
-        args = ["recycle", repo_root]
+        args = ["recycle", repo_root_str]
     elif prompt == "/plate --recycle --list":
-        args = ["recycle", repo_root, "--list"]
+        args = ["recycle", repo_root_str, "--list"]
     elif prompt.startswith("/plate --recycle "):
         name = prompt[len("/plate --recycle "):]
-        args = ["recycle", repo_root, name]
+        args = ["recycle", repo_root_str, name]
     elif prompt == "/plate --show":
-        args = ["show", repo_root]
+        args = ["show", repo_root_str]
     elif prompt == "/plate --next":
-        args = ["next", repo_root]
+        args = ["next", repo_root_str]
     elif prompt.startswith("/plate --next "):
         name = prompt[len("/plate --next "):]
-        args = ["next", repo_root, name]
+        args = ["next", repo_root_str, name]
     else:
         print(emit_block(f"plate: unrecognized variant '{prompt}'"))
         return 0

@@ -334,10 +334,14 @@ def test_plateMain_log_file_promoted_to_per_repo_path_when_no_override(tmp_path)
     deps = _make_deps_pm(repo_root=repo_root)
     # Test action:
     plate_main(_stdin=_make_payload_pm(), _environ=env, **deps)
-    # Test verification:
-    deps["_ensureGitignoreEntry"].assert_called_once_with(
-        repo_root, ".plate/plate-log.txt"
-    )
+    # Test verification: ensureGitignoreEntry receives a Path (not str) so
+    # downstream `Path / ".gitignore"` math works. The string value must
+    # round-trip equal to repo_root.
+    deps["_ensureGitignoreEntry"].assert_called_once()
+    call_args = deps["_ensureGitignoreEntry"].call_args
+    assert isinstance(call_args.args[0], Path)
+    assert str(call_args.args[0]) == repo_root
+    assert call_args.args[1] == ".plate/plate-log.txt"
 
 
 def test_plateMain_log_file_override_respected(tmp_path):

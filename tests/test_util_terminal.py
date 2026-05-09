@@ -36,27 +36,28 @@ def test_terminal_spawnIfNeeded_darwin_spawns_osascript_with_attach_command():
     # Scenario: no clients attached, osascript present, darwin host.
     # Setup: stub list_clients empty, which() finds osascript, mock Popen.
     fake_proc = MagicMock()
-    fake_proc.communicate.return_value = (b"", b"")
     with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/usr/bin/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
          patch.object(mod.subprocess, "Popen", return_value=fake_proc) as popen:
         # Test action: call with default maximize="".
         rc = terminal_spawnIfNeeded("mySess")
-    # Test verification: Popen called with osascript; script contains attach command and no maximize block.
+    # Test verification: Popen called with osascript and detached via
+    # start_new_session=True; script written to stdin and stdin closed.
     assert rc == 0
-    args, _kwargs = popen.call_args
+    args, kwargs = popen.call_args
     assert args[0] == ["osascript"]
-    sent = fake_proc.communicate.call_args.kwargs["input"].decode("utf-8")
+    assert kwargs.get("start_new_session") is True
+    sent = fake_proc.stdin.write.call_args.args[0].decode("utf-8")
     assert "tmux attach -t mySess" in sent
     assert "set bounds of front window" not in sent
+    fake_proc.stdin.close.assert_called_once()
 
 
 def test_terminal_spawnIfNeeded_darwin_maximize_yes_includes_full_desktop_block():
     # Scenario: caller requests maximize="yes" for a large pane layout.
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
-    fake_proc.communicate.return_value = (b"", b"")
     with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/x/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
@@ -64,7 +65,7 @@ def test_terminal_spawnIfNeeded_darwin_maximize_yes_includes_full_desktop_block(
         # Test action: invoke with maximize="yes".
         terminal_spawnIfNeeded("s", "/dev/null", "tmux", "yes")
     # Test verification: AppleScript stdin contains full-screen bounds assignment.
-    sent = fake_proc.communicate.call_args.kwargs["input"].decode("utf-8")
+    sent = fake_proc.stdin.write.call_args.args[0].decode("utf-8")
     assert "set bounds of front window to screenBounds" in sent
     assert "winW to 1000" not in sent
 
@@ -73,7 +74,6 @@ def test_terminal_spawnIfNeeded_darwin_maximize_compact_includes_centred_1000x70
     # Scenario: caller requests compact geometry for a single-pane spawner.
     # Setup: use darwin happy-path stubs.
     fake_proc = MagicMock()
-    fake_proc.communicate.return_value = (b"", b"")
     with patch.object(mod, "_terminal_listTmuxClients", return_value=""), \
          patch.object(mod.shutil, "which", return_value="/x/osascript"), \
          patch.object(mod.sys, "platform", "darwin"), \
@@ -81,7 +81,7 @@ def test_terminal_spawnIfNeeded_darwin_maximize_compact_includes_centred_1000x70
         # Test action: invoke with maximize="compact".
         terminal_spawnIfNeeded("s", "/dev/null", "tmux", "compact")
     # Test verification: stdin includes 1000x700 centering math.
-    sent = fake_proc.communicate.call_args.kwargs["input"].decode("utf-8")
+    sent = fake_proc.stdin.write.call_args.args[0].decode("utf-8")
     assert "winW to 1000" in sent
     assert "winH to 700" in sent
 
