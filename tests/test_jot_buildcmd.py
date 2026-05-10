@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from common.scripts.jot_lib import jot_buildClaudeCmd
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 # --- jot_buildClaudeCmd ---
@@ -90,13 +94,26 @@ def test_jot_buildClaudeCmd_permissions_file_under_plugin_data(plugin_layout):
     assert out["PERMISSIONS_FILE"] == f"{plugin_layout['plugin_data']}/permissions.local.json"
 
 
-def test_jot_buildClaudeCmd_orchestrator_script_copied_into_tmpdir(plugin_layout):
-    # Scenario: lifecycle-safe copy of orchestrator script into tmpdir.
+def test_jot_buildClaudeCmd_orchestrator_script_not_copied_into_tmpdir(plugin_layout):
+    # Scenario: hook commands reference the source orchestrator via ${CLAUDE_PLUGIN_ROOT}; no per-invocation copy.
     # Test action: invoke.
     _invoke_jot_build(plugin_layout)
-    # Test verification: tmpdir copy exists and matches source bytes.
+    # Test verification: tmpdir contains no orchestrator copy.
     copied = plugin_layout["tmp_inv"] / "jot_plugin_orchestrator.py"
-    assert copied.read_text() == "# fake orchestrator\n"
+    assert not copied.exists()
+
+
+def test_jot_buildClaudeCmd_hook_commands_reference_plugin_root_orchestrator(plugin_layout):
+    # Scenario: hook command strings must reference ${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py so the worker pane resolves the live source path.
+    # Test action: invoke and parse hooks.json.
+    out = _invoke_jot_build(plugin_layout)
+    parsed = json.loads(Path(out["HOOKS_JSON_FILE"]).read_text())
+    # Test verification: every hook command embeds the env-var token, never the tmpdir path for the orchestrator.
+    expected_token = "${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py"
+    for key in ("SessionStart", "Stop", "SessionEnd"):
+        cmd = parsed[key][0]["hooks"][0]["command"]
+        assert expected_token in cmd, f"{key} hook missing plugin-root token: {cmd}"
+        assert f"{plugin_layout['tmp_inv']}/jot_plugin_orchestrator.py" not in cmd
 
 
 def test_jot_buildClaudeCmd_plugin_data_dir_is_created(plugin_layout):
@@ -189,3 +206,20 @@ def test_jot_buildClaudeCmd_settings_file_written_with_expanded_allow_json(plugi
     body = Path(out["SETTINGS_FILE"]).read_text()
     assert '"Bash(echo:*)"' in body
     assert '"Read(*)"' in body
+
+
+def test_jot_pluginOrchestrator_isImportable_fromArbitraryCwd(tmp_path: Path):
+    # Scenario: SessionStart hook spawns the orchestrator from a worker pane whose cwd is the user's repo, not the plugin tree. The orchestrator must self-bootstrap its sys.path to find common/scripts/* without needing a sibling 'common/' subtree at its parent.
+    # Setup: invoke the real source orchestrator from tmp_path (no 'common/' sibling) so a regression to relative-parent path resolution would surface as ModuleNotFoundError.
+    src = REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
+    assert src.exists(), src
+    # Test action: invoke as the SessionStart hook would, with a non-existent input file (orchestrator may exit nonzero, but must not fail on import).
+    result = subprocess.run(
+        [sys.executable, str(src), "jot-session-start", "/no/such/input.txt", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+    )
+    # Test verification: stderr must be free of Python import errors. Other failures (missing sidecar, etc.) are acceptable here.
+    assert "ModuleNotFoundError" not in result.stderr, result.stderr
+    assert "ImportError" not in result.stderr, result.stderr

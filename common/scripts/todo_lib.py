@@ -398,10 +398,11 @@ def todo_launcher(session_id: str, idea: str, pending_file_path: str) -> int:
         allow_json = "{}"
         
     hooks_json_file = tmpdir_inv / "hooks.json"
+    orchestrator_path = "${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py"
     hooks_data = {
-        "SessionStart": [{"hooks": [{"type": "command", "command": f"python3 {tmpdir_inv}/jot_plugin_orchestrator.py todo-session-start '{input_file}' '{tmpdir_inv}'"}]}],
-        "Stop":         [{"hooks": [{"type": "command", "command": f"python3 {tmpdir_inv}/jot_plugin_orchestrator.py todo-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"}]}],
-        "SessionEnd":   [{"hooks": [{"type": "command", "command": f"python3 {tmpdir_inv}/jot_plugin_orchestrator.py todo-session-end '{tmpdir_inv}'"}]}]
+        "SessionStart": [{"hooks": [{"type": "command", "command": f"python3 {orchestrator_path} todo-session-start '{input_file}' '{tmpdir_inv}'"}]}],
+        "Stop":         [{"hooks": [{"type": "command", "command": f"python3 {orchestrator_path} todo-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"}]}],
+        "SessionEnd":   [{"hooks": [{"type": "command", "command": f"python3 {orchestrator_path} todo-session-end '{tmpdir_inv}'"}]}]
     }
     hooks_json_file.write_text(json.dumps(hooks_data))
     

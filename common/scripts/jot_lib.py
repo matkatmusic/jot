@@ -27,6 +27,7 @@ from common.scripts.hookjson_lib import (
 )
 from common.scripts import tmux_lib
 from common.scripts.tmux_lib import (
+    _tmux_run,
     _tmux_session_exists,
     tmux_ensureSession,
     tmux_requireVersion,
@@ -130,10 +131,7 @@ def jot_buildClaudeCmd(
     settings_file = f"{tmpdir_inv}/settings.json"
     permissions_file = f"{claude_plugin_data}/permissions.local.json"
 
-    shutil.copy(
-        f"{claude_plugin_root}/scripts/jot_plugin_orchestrator.py",
-        f"{tmpdir_inv}/jot_plugin_orchestrator.py",
-    )
+    orchestrator_path = "${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py"
 
     default_file = f"{claude_plugin_root}/skills/jot/scripts/assets/permissions.default.json"
     default_sha_file = f"{default_file}.sha256"
@@ -158,13 +156,13 @@ def jot_buildClaudeCmd(
     hooks_body = (
         "{\n"
         '  "SessionStart": [{"hooks": [{"type": "command", "command": "python3 '
-        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-session-start '{input_file}' '{tmpdir_inv}'"
+        f"{orchestrator_path} jot-session-start '{input_file}' '{tmpdir_inv}'"
         '"}]}],\n'
         '  "Stop":         [{"hooks": [{"type": "command", "command": "python3 '
-        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"
+        f"{orchestrator_path} jot-stop '{input_file}' '{tmpdir_inv}' '{state_dir}'"
         '"}]}],\n'
         '  "SessionEnd":   [{"hooks": [{"type": "command", "command": "python3 '
-        f"{tmpdir_inv}/jot_plugin_orchestrator.py jot-session-end '{tmpdir_inv}'"
+        f"{orchestrator_path} jot-session-end '{tmpdir_inv}'"
         '"}]}]\n'
         "}\n"
     )
