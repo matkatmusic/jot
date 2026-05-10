@@ -424,7 +424,7 @@ def tmux_ensureSession(
     return 0
 
 
-def _tmux_default_runner(argv: List[str]) -> int:
+def _tmux_default_runner(argv: list[str]) -> int:
     """Real tmux invocation: run `argv` and return the exit code.
 
     stdout/stderr suppressed because collisions are an expected control-flow

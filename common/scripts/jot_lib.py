@@ -27,6 +27,7 @@ from common.scripts.hookjson_lib import (
 )
 from common.scripts import tmux_lib
 from common.scripts.tmux_lib import (
+    _tmux_backgroundKill,
     _tmux_run,
     _tmux_session_exists,
     tmux_ensureSession,
