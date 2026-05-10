@@ -131,7 +131,7 @@ def jot_buildClaudeCmd(
     settings_file = f"{tmpdir_inv}/settings.json"
     permissions_file = f"{claude_plugin_data}/permissions.local.json"
 
-    orchestrator_path = "${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py"
+    orchestrator_path = f"{claude_plugin_root}/scripts/jot_plugin_orchestrator.py"
 
     default_file = f"{claude_plugin_root}/skills/jot/scripts/assets/permissions.default.json"
     default_sha_file = f"{default_file}.sha256"

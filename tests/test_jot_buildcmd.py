@@ -95,7 +95,7 @@ def test_jot_buildClaudeCmd_permissions_file_under_plugin_data(plugin_layout):
 
 
 def test_jot_buildClaudeCmd_orchestrator_script_not_copied_into_tmpdir(plugin_layout):
-    # Scenario: hook commands reference the source orchestrator via ${CLAUDE_PLUGIN_ROOT}; no per-invocation copy.
+    # Scenario: hook commands reference the source orchestrator via the literal plugin-root path baked at write time; no per-invocation copy.
     # Test action: invoke.
     _invoke_jot_build(plugin_layout)
     # Test verification: tmpdir contains no orchestrator copy.
@@ -104,15 +104,18 @@ def test_jot_buildClaudeCmd_orchestrator_script_not_copied_into_tmpdir(plugin_la
 
 
 def test_jot_buildClaudeCmd_hook_commands_reference_plugin_root_orchestrator(plugin_layout):
-    # Scenario: hook command strings must reference ${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py so the worker pane resolves the live source path.
+    # Scenario: hook command strings must embed the literal absolute plugin-root path to scripts/jot_plugin_orchestrator.py.
+    # The worker claude does NOT inherit CLAUDE_PLUGIN_ROOT from the parent host, so a ${CLAUDE_PLUGIN_ROOT} shell token in
+    # the worker's hooks.json expands to empty and the SessionStart hook silently fails. Bake the absolute path at write time.
     # Test action: invoke and parse hooks.json.
     out = _invoke_jot_build(plugin_layout)
     parsed = json.loads(Path(out["HOOKS_JSON_FILE"]).read_text())
-    # Test verification: every hook command embeds the env-var token, never the tmpdir path for the orchestrator.
-    expected_token = "${CLAUDE_PLUGIN_ROOT}/scripts/jot_plugin_orchestrator.py"
+    # Test verification: every hook command embeds the literal plugin-root orchestrator path, with no env-var token and no tmpdir copy.
+    expected_path = f"{plugin_layout['plugin_root']}/scripts/jot_plugin_orchestrator.py"
     for key in ("SessionStart", "Stop", "SessionEnd"):
         cmd = parsed[key][0]["hooks"][0]["command"]
-        assert expected_token in cmd, f"{key} hook missing plugin-root token: {cmd}"
+        assert expected_path in cmd, f"{key} hook missing literal plugin-root path: {cmd}"
+        assert "${CLAUDE_PLUGIN_ROOT}" not in cmd, f"{key} hook still contains shell var token: {cmd}"
         assert f"{plugin_layout['tmp_inv']}/jot_plugin_orchestrator.py" not in cmd
 
 
