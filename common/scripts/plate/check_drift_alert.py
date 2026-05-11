@@ -11,12 +11,15 @@ Env vars:
 import json
 import os
 import sys
+from pathlib import Path
 
 if __name__ == '__main__':
     sys.path.insert(0, os.environ.get('PYTHON_DIR', ''))
+    # util_lib lives one directory above PYTHON_DIR (e.g. common/scripts/).
+    sys.path.insert(0, str(Path(os.environ.get('PYTHON_DIR', '.')).parent))
     try:
         from instance_rw import mutate
-        from pathlib import Path
+        from util_lib import clearDriftAlertPending
     except Exception:
         sys.exit(0)
     path = Path(os.environ['DRIFT_INSTANCE_FILE'])
@@ -26,7 +29,5 @@ if __name__ == '__main__':
         sys.exit(0)
     da = d.get('drift_alert', {}) or {}
     if da.get('pending'):
-        def _clear(x):
-            x.setdefault('drift_alert', {})['pending'] = False
-        mutate(path, _clear)
+        mutate(path, clearDriftAlertPending)
         print(da.get('message', 'drift detected'))

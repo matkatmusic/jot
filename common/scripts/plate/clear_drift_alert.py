@@ -7,13 +7,13 @@ Env vars:
 """
 import os
 import sys
+from pathlib import Path
 
 if __name__ == '__main__':
     sys.path.insert(0, os.environ['PYTHON_DIR'])
+    # util_lib lives one directory above PYTHON_DIR (e.g. common/scripts/).
+    sys.path.insert(0, str(Path(os.environ['PYTHON_DIR']).parent))
     from instance_rw import mutate
-    from pathlib import Path
+    from util_lib import clearDriftAlertPending
 
-    def _clear(d):
-        d.setdefault('drift_alert', {})['pending'] = False
-
-    mutate(Path(os.environ['INSTANCE_FILE']), _clear)
+    mutate(Path(os.environ['INSTANCE_FILE']), clearDriftAlertPending)

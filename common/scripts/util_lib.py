@@ -376,6 +376,19 @@ def _util_sha256File(path: str) -> str:
     return h.hexdigest()
 
 
+def clearDriftAlertPending(d: dict) -> None:
+    """Set d['drift_alert']['pending'] = False, creating the dict if absent.
+
+    Intended as the callback passed to instance_rw.mutate(path, fn). Lives
+    in util_lib so the two CLI shims (check_drift_alert.py,
+    clear_drift_alert.py) share one implementation instead of each
+    redefining an identical lambda.
+    """
+    if "drift_alert" not in d:
+        d["drift_alert"] = {}
+    d["drift_alert"]["pending"] = False
+
+
 class LockTimeout(TimeoutError):
     """Raised when FileLock cannot acquire within the timeout window."""
 
