@@ -633,6 +633,8 @@ def emit_markdown(
     out.append(f"Total leaves: **{len(leaves)}**.")
     out.append("")
     out.append("Legend:")
+    out.append("- Each `### L#N` section is one self-contained logic path, rooted at")
+    out.append(f"  `{ENTRY_FN}()` and ending at its terminating statement.")
     out.append("- `-> L#N [completion] expr` - leaf marker (one test obligation each)")
     out.append("- completions: `return` / `raise` / `sys_exit` / `normal_fallthrough` / `seen_recursion` / `depth_limit`")
     out.append("- `[blocking subproc]` - `subprocess.run` / `check_output` / etc.")
@@ -642,12 +644,11 @@ def emit_markdown(
     out.append("---")
     out.append("")
 
-    out.append("## Tree")
+    # Per-leaf trees: one complete dispatch_main() -> terminus rendering per leaf.
+    out.append("## Per-leaf trees")
     out.append("")
-    out.append("```")
-    out.extend(tree_lines)
-    out.append("```")
-    out.append("")
+    from logic_path_tree import render_per_leaf_trees
+    out.extend(render_per_leaf_trees(leaves))
 
     out.append("## Leaf index")
     out.append("")

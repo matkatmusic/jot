@@ -15,6 +15,7 @@ Spec: ~/.claude/plans/open-point-1-calls-delegated-starlight.md
 from __future__ import annotations
 
 import ast
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -613,3 +614,156 @@ def build_tree(
     _indirect.clear()
     walk_function(entry_file, entry_fn, [], [], frozenset(), 0)
     return list(_tree_lines), list(_leaves), list(_unresolvable), list(_indirect)
+
+
+# ---------------------------------------------------------------------------
+# Per-leaf tree renderer
+# ---------------------------------------------------------------------------
+#
+# Post-processes Leaf records into one self-contained tree per terminus,
+# rooted at the entry function and ending at the leaf's terminating
+# statement. Replaces the older shared `## Tree` section in the markdown
+# output. Pure function of Leaf records — no walker state required.
+
+_RE_DISPATCH_TBL = re.compile(r"^(_[A-Z_]+)\[(.+)\]=(.+)$")
+_RE_FOR_LOOP = re.compile(
+    r"^(for .+? in .+?):( matched key=.+| body:| \(pass-through\))$"
+)
+_RE_WHILE_LOOP = re.compile(r"^(while .+?):( body:| \(pass-through\))$")
+_RE_PY_ARGV = re.compile(r"^(\S+\.py) argv=(.+)$")
+_RE_PY_MAIN = re.compile(r"^(\S+\.py)::main\(\)$")
+_RE_CALL = re.compile(r"^call (.+)$")
+_RE_SUBPROC = re.compile(r"^subproc (.+)$")
+_RE_ORCH_ARGV = re.compile(r"^orchestrator argv=(.+)$")
+
+
+def _fn_header(frame: CallFrame) -> str:
+    return f"{frame.fn_name}()  [{frame.file}:{frame.line}]"
+
+
+def _render_one_leaf(leaf: Leaf) -> list[str]:
+    """Render one leaf as a vertical sequence of indented tree lines.
+
+    The first line is the entry-function header at depth 0; the last line
+    is the leaf-marker at the path's final depth. Frame entries from
+    `leaf.call_stack` are interleaved with decision labels from
+    `leaf.branch_path` in source order.
+    """
+    out: list[str] = []
+    frames = leaf.call_stack
+    fidx = 1  # frames[0] is the entry; subsequent frames consumed by pop entries
+
+    def emit(d: int, text: str) -> None:
+        out.append(INDENT * d + text)
+
+    emit(0, _fn_header(frames[0]))
+    cur = 1  # depth at which the next branch_path entry sits
+
+    for entry in leaf.branch_path:
+        m = _RE_CALL.match(entry)
+        if m:
+            emit(cur, f"call: {m.group(1)}")
+            emit(cur + 1, _fn_header(frames[fidx]))
+            fidx += 1
+            cur += 2
+            continue
+
+        m = _RE_DISPATCH_TBL.match(entry)
+        if m:
+            table, key, target = m.group(1), m.group(2), m.group(3)
+            emit(cur, f"via {table}:")
+            emit(cur + 1, f"{table}[{key}] -> {target}()")
+            emit(cur + 2, _fn_header(frames[fidx]))
+            fidx += 1
+            cur += 3
+            continue
+
+        m = _RE_ORCH_ARGV.match(entry)
+        if m:
+            key = m.group(1)
+            tgt = frames[fidx].fn_name
+            emit(cur, f"orchestrator argv {key!r} -> {tgt}()")
+            emit(cur + 1, _fn_header(frames[fidx]))
+            fidx += 1
+            cur += 2
+            continue
+
+        m = _RE_PY_ARGV.match(entry)
+        if m:
+            pyfile, key = m.group(1), m.group(2)
+            tgt = frames[fidx].fn_name
+            emit(cur, f"{pyfile} argv {key!r} -> {tgt}()")
+            emit(cur + 1, _fn_header(frames[fidx]))
+            fidx += 1
+            cur += 2
+            continue
+
+        m = _RE_PY_MAIN.match(entry)
+        if m:
+            emit(cur, "main()")
+            emit(cur + 1, _fn_header(frames[fidx]))
+            fidx += 1
+            cur += 2
+            continue
+
+        m = _RE_SUBPROC.match(entry)
+        if m:
+            emit(cur, f"subproc: {m.group(1)}")
+            cur += 1
+            continue
+
+        m = _RE_FOR_LOOP.match(entry)
+        if m:
+            head, suffix = m.group(1) + ":", m.group(2)
+            if suffix == " body:":
+                emit(cur, head)
+                cur += 1
+            elif suffix == " (pass-through)":
+                emit(cur, head)
+                emit(cur + 1, "(pass-through loop)")
+                cur += 2
+            else:  # " matched key=... -> ...()"
+                emit(cur, head)
+                emit(cur + 1, head + suffix)
+                cur += 2
+            continue
+
+        m = _RE_WHILE_LOOP.match(entry)
+        if m:
+            head, suffix = m.group(1) + ":", m.group(2)
+            if suffix == " body:":
+                emit(cur, head)
+                cur += 1
+            else:  # " (pass-through)"
+                emit(cur, head)
+                emit(cur + 1, "(pass-through loop)")
+                cur += 2
+            continue
+
+        # Default: if/elif/else/try/except/try-else/finally and similar —
+        # already complete syntax, emit verbatim.
+        emit(cur, entry)
+        cur += 1
+
+    expr_part = f" {leaf.return_expr}" if leaf.return_expr is not None else ""
+    emit(
+        cur,
+        f"-> L#{leaf.leaf_id} [{leaf.completion}]{expr_part}  "
+        f"({leaf.file}:{leaf.line})",
+    )
+    return out
+
+
+def render_per_leaf_trees(leaves: list[Leaf]) -> list[str]:
+    """Return markdown lines: one ## L#N section per leaf, each wrapping
+    a fenced code block containing that leaf's complete tree."""
+    out: list[str] = []
+    for leaf in leaves:
+        expr_part = f" {leaf.return_expr}" if leaf.return_expr is not None else ""
+        out.append(f"### L#{leaf.leaf_id}  [{leaf.completion}]{expr_part}")
+        out.append("")
+        out.append("```")
+        out.extend(_render_one_leaf(leaf))
+        out.append("```")
+        out.append("")
+    return out
