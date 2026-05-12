@@ -80,26 +80,18 @@ _PROMPT_DISPATCH: tuple = (
     ("/todo-list", lambda: todo_listMain()),
 )
 
+def handleArgvDispatch(argv: list[str]) -> tuple:
+    head = argv[0]
+    fn = _ARGV_DISPATCH.get(head)
+    if fn is not None:
+        rc = fn(argv[1:])
+        if rc is not None:
+            return True, int(rc) 
+        else: 
+            return True, 0
+    return False, 0
 
-def dispatch_main(argv: list[str] | None = None) -> int:
-    """Route argv subcommands and stdin hook payloads to lib entrypoints.
-
-    1. If argv[0] matches a known subcommand, route to it and return its rc.
-    2. Otherwise read stdin (a hook JSON blob), extract `.prompt`, lstrip,
-       normalise `/jot:<skill>` -> `/<skill>` (rewriting the JSON too), and
-       dispatch to the matching prompt entrypoint via stdin piping.
-    3. Unmatched prompts return 0 with no stdout (silent passthrough).
-    """
-    if argv is None:
-        argv = sys.argv[1:]
-
-    if argv:
-        head = argv[0]
-        fn = _ARGV_DISPATCH.get(head)
-        if fn is not None:
-            rc = fn(argv[1:])
-            return int(rc) if rc is not None else 0
-
+def handleStdinDispatch() -> tuple:
     raw = sys.stdin.read()
     try:
         data = json.loads(raw) if raw else {}
@@ -122,10 +114,40 @@ def dispatch_main(argv: list[str] | None = None) -> int:
                 rc = fn()
             finally:
                 sys.stdin = saved_stdin
-            return int(rc) if rc is not None else 0
+            
+            # if the library returned a status code, return it. Otherwise return 0.  the prompt was consumed.
+            if rc is not None: 
+                return True, int(rc)
+            else:
+                return True, 0
 
+    # no match in _PROMPT_DISPATCH for prompt, prompt not consumed, pass through
+    return False, 0
+
+
+def dispatch_main(argv: list[str] | None = None) -> int:
+    """Route argv subcommands and stdin hook payloads to lib entrypoints.
+
+    1. If argv[0] matches a known subcommand, route to it and return its rc.
+    2. Otherwise read stdin (a hook JSON blob), extract `.prompt`, lstrip,
+       normalise `/jot:<skill>` -> `/<skill>` (rewriting the JSON too), and
+       dispatch to the matching prompt entrypoint via stdin piping.
+    3. Unmatched prompts return 0 with no stdout (silent passthrough).
+    """
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if argv:
+        matched, rc = handleArgvDispatch(argv)
+        if matched:
+            return rc
+        
+    matched, rc = handleStdinDispatch()
+    if matched:
+        return rc
+    
+    # prompt not consumed. pass prompt through, back to agent.
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(dispatch_main())

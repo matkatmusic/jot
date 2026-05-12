@@ -251,11 +251,6 @@ def _collect_subprocess_aliases(tree: ast.Module, file: Path) -> None:
 def pass1_index() -> None:
     """Build all global indices."""
     _build_filename_fullpath_map()
-    # print out filename_fullpath_map
-    print("Basename index:")
-    for k, v in filename_fullpath_map.items():
-        print(f"{k}: {v}")
-
     for f in _iter_py_files():
         try:
             src = f.read_text(encoding="utf-8")
@@ -615,485 +610,34 @@ def _resolve_call(file: Path, call: ast.Call) -> Resolved | None:
 
 
 # ---------------------------------------------------------------------------
-# Pass 2 — renderer
+# Pass 2 — logic-path tree (delegated to logic_path_tree)
 # ---------------------------------------------------------------------------
 
-# Output buffers.
-tree_lines: list[str] = []
-paths: list[tuple[str, list[str]]] = []  # (label, walk-stack)
-unresolvable: list[tuple[Path, int, str]] = []
-indirect_notes: list[str] = []
+def emit_markdown(
+    tree_lines: list[str],
+    leaves: list,
+    unresolvable: list[tuple[str, int, str]],
+    indirect: list[str],
+) -> str:
+    """Render the indented tree + leaf index + unresolvable + indirect sections."""
+    from datetime import date
 
-
-def _emit_tree(indent: int, text: str) -> None:
-    tree_lines.append(INDENT * indent + text)
-
-
-def _snapshot_path(label: str, stack: list[str]) -> None:
-    paths.append((label, list(stack)))
-
-
-def _branch_test_repr(test: ast.AST) -> str:
-    try:
-        return ast.unparse(test)
-    except Exception:
-        return "<?>"
-
-
-def render_function(
-    file: Path,
-    fn: ast.FunctionDef,
-    indent: int,
-    seen: frozenset[str],
-    walk_stack: list[str],
-    path_label: str,
-    snapshot_here: bool = False,
-) -> None:
-    """Render an in-repo function: emit its body's calls + paths.
-
-    `walk_stack` is the list of call labels accumulated from root to (just before)
-    this function. The fn's own label is added by the caller before entering.
-
-    `snapshot_here` is True only when `fn` is the entry point or a directly-
-    dispatched child (via _ARGV_DISPATCH / _PROMPT_DISPATCH / _DISPATCH). In
-    that case, returns inside `fn` are recorded as logic-path termini. For
-    normal helper recursion (snapshot_here=False) the body is still walked
-    for tree-rendering but no paths are emitted from its returns.
-    """
-    if fn.name in seen:
-        _emit_tree(indent, f"(↑ seen: {fn.name})")
-        return
-    seen = seen | {fn.name}
-
-    body_paths = _walk_statements(
-        file, fn.body, indent, seen, walk_stack, path_label,
-        in_branch=False, snapshot_returns=snapshot_here,
-    )
-    # If this function is a path-root and its body ended without producing
-    # a path (no explicit return), snapshot the walk_stack as one path.
-    if snapshot_here and not body_paths:
-        _snapshot_path(path_label, walk_stack + ["(fallthrough)"])
-
-
-def _walk_statements(
-    file: Path,
-    stmts: list[ast.stmt],
-    indent: int,
-    seen: frozenset[str],
-    walk_stack: list[str],
-    path_label: str,
-    in_branch: bool,
-    snapshot_returns: bool,
-    branch_marker_idx: int = -1,
-) -> bool:
-    """Walk a list of statements. Emit tree lines; snapshot paths on returns
-    only when `snapshot_returns` is True.
-
-    `branch_marker_idx` is the index in `tree_lines` of the branch header line
-    that opened this branch (e.g. the `if foo:` line). Early-exit annotations
-    target either the most recent statement that actually emitted a tree line
-    inside this branch, or the branch marker itself when no preceding stmt
-    emitted a line — never lines outside this branch.
-
-    Returns True if any path was snapshotted in this branch.
-    """
-    snapshotted = False
-    # Index in tree_lines of the most-recent statement that emitted a line in
-    # this branch. Used by early-exit annotation; never points outside this
-    # branch's own emissions.
-    last_emitted_idx = branch_marker_idx
-
-    for i, stmt in enumerate(stmts):
-        if isinstance(stmt, ast.If):
-            _emit_tree(indent, f"if {_branch_test_repr(stmt.test)}:")
-            marker_idx = len(tree_lines) - 1
-            last_emitted_idx = marker_idx
-            branch_stack = list(walk_stack) + [f"if {_branch_test_repr(stmt.test)}:"]
-            sub_snap = _walk_statements(
-                file, stmt.body, indent + 1, seen, branch_stack, path_label,
-                in_branch=True, snapshot_returns=snapshot_returns,
-                branch_marker_idx=marker_idx,
-            )
-            if sub_snap:
-                snapshotted = True
-            if stmt.orelse:
-                if len(stmt.orelse) == 1 and isinstance(stmt.orelse[0], ast.If):
-                    _walk_statements(
-                        file, stmt.orelse, indent, seen, list(walk_stack), path_label,
-                        in_branch=True, snapshot_returns=snapshot_returns,
-                        branch_marker_idx=-1,
-                    )
-                else:
-                    _emit_tree(indent, "else:")
-                    else_marker = len(tree_lines) - 1
-                    last_emitted_idx = else_marker
-                    else_stack = list(walk_stack) + ["else:"]
-                    sub_snap2 = _walk_statements(
-                        file, stmt.orelse, indent + 1, seen, else_stack, path_label,
-                        in_branch=True, snapshot_returns=snapshot_returns,
-                        branch_marker_idx=else_marker,
-                    )
-                    if sub_snap2:
-                        snapshotted = True
-            continue
-
-        if isinstance(stmt, ast.Try):
-            _emit_tree(indent, "try:")
-            try_marker = len(tree_lines) - 1
-            last_emitted_idx = try_marker
-            try_stack = list(walk_stack) + ["try:"]
-            sub_snap = _walk_statements(
-                file, stmt.body, indent + 1, seen, try_stack, path_label,
-                in_branch=True, snapshot_returns=snapshot_returns,
-                branch_marker_idx=try_marker,
-            )
-            if sub_snap:
-                snapshotted = True
-            for handler in stmt.handlers:
-                exc_name = ast.unparse(handler.type) if handler.type else "Exception"
-                _emit_tree(indent, f"except {exc_name}:")
-                exc_marker = len(tree_lines) - 1
-                last_emitted_idx = exc_marker
-                exc_stack = list(walk_stack) + [f"except {exc_name}:"]
-                sub_snap_h = _walk_statements(
-                    file, handler.body, indent + 1, seen, exc_stack, path_label,
-                    in_branch=True, snapshot_returns=snapshot_returns,
-                    branch_marker_idx=exc_marker,
-                )
-                if sub_snap_h:
-                    snapshotted = True
-            if stmt.orelse:
-                _emit_tree(indent, "else:  # try-else")
-                tryelse_marker = len(tree_lines) - 1
-                last_emitted_idx = tryelse_marker
-                _walk_statements(
-                    file, stmt.orelse, indent + 1, seen, list(walk_stack), path_label,
-                    in_branch=True, snapshot_returns=snapshot_returns,
-                    branch_marker_idx=tryelse_marker,
-                )
-            if stmt.finalbody:
-                _emit_tree(indent, "finally:")
-                finally_marker = len(tree_lines) - 1
-                last_emitted_idx = finally_marker
-                _walk_statements(
-                    file, stmt.finalbody, indent + 1, seen, list(walk_stack), path_label,
-                    in_branch=True, snapshot_returns=snapshot_returns,
-                    branch_marker_idx=finally_marker,
-                )
-            continue
-
-        if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
-            header = "for ..." if isinstance(stmt, (ast.For, ast.AsyncFor)) else "while ..."
-            try:
-                if isinstance(stmt, (ast.For, ast.AsyncFor)):
-                    header = f"for {ast.unparse(stmt.target)} in {ast.unparse(stmt.iter)}:"
-                else:
-                    header = f"while {ast.unparse(stmt.test)}:"
-            except Exception:
-                pass
-            _emit_tree(indent, header)
-            loop_marker = len(tree_lines) - 1
-            last_emitted_idx = loop_marker
-            loop_stack = list(walk_stack) + [header]
-            expanded = _maybe_expand_dispatch_loop(
-                file, stmt, indent + 1, seen, loop_stack, path_label,
-            )
-            if not expanded:
-                _walk_statements(
-                    file, stmt.body, indent + 1, seen, loop_stack, path_label,
-                    in_branch=True, snapshot_returns=snapshot_returns,
-                    branch_marker_idx=loop_marker,
-                )
-            continue
-
-        if isinstance(stmt, ast.Return):
-            ret_repr = "return"
-            if stmt.value is not None:
-                try:
-                    ret_repr = f"return {ast.unparse(stmt.value)}"
-                except Exception:
-                    ret_repr = "return ?"
-            _annotate_early_exit_targeted(stmt, last_emitted_idx)
-            if snapshot_returns:
-                _snapshot_path(path_label, list(walk_stack) + [ret_repr])
-                snapshotted = True
-            return snapshotted
-
-        # Default: statement may contain calls. Track whether any line is
-        # emitted so subsequent returns annotate the correct prior call.
-        pre = len(tree_lines)
-        for call_node in _calls_in_statement(stmt):
-            res = _resolve_call(file, call_node)
-            if res is None:
-                continue
-            _handle_resolved_call(
-                file=file,
-                call_node=call_node,
-                res=res,
-                indent=indent,
-                seen=seen,
-                walk_stack=walk_stack,
-                path_label=path_label,
-            )
-        if len(tree_lines) > pre:
-            # The first new line emitted is "the line for this statement".
-            last_emitted_idx = pre
-    return snapshotted
-
-
-def _annotate_early_exit_targeted(ret_stmt: ast.Return, target_idx: int) -> None:
-    """Annotate `tree_lines[target_idx]` with ` -> return N` when `ret_stmt`
-    returns a literal Constant. Target priority (set by caller):
-      1. The immediately-preceding sibling stmt that emitted a tree line
-      2. The enclosing branch marker (`if/else/except/try/for/while` header)
-      3. -1 sentinel → no annotation
-
-    Does NOT search backwards through tree_lines; targets the explicit index.
-    """
-    if not isinstance(ret_stmt.value, ast.Constant):
-        return
-    if target_idx < 0 or target_idx >= len(tree_lines):
-        return
-    if "->" in tree_lines[target_idx]:
-        return
-    v = ret_stmt.value.value
-    annotation = f" -> return {v!r}" if isinstance(v, str) else f" -> return {v}"
-    tree_lines[target_idx] = tree_lines[target_idx] + annotation
-
-
-def _calls_in_statement(stmt: ast.stmt) -> list[ast.Call]:
-    """Yield top-level Call nodes inside a single statement, in source order."""
-    calls: list[ast.Call] = []
-    # We restrict to statement shapes where a Call appears as a logical 'event'.
-    if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
-        calls.append(stmt.value)
-        # Also descend into nested calls (e.g. foo(bar()))
-        for sub in ast.walk(stmt.value):
-            if isinstance(sub, ast.Call) and sub is not stmt.value:
-                calls.append(sub)
-        return calls
-    if isinstance(stmt, ast.Assign):
-        for sub in ast.walk(stmt.value):
-            if isinstance(sub, ast.Call):
-                calls.append(sub)
-        return calls
-    if isinstance(stmt, ast.AnnAssign) and stmt.value is not None:
-        for sub in ast.walk(stmt.value):
-            if isinstance(sub, ast.Call):
-                calls.append(sub)
-        return calls
-    if isinstance(stmt, ast.AugAssign):
-        for sub in ast.walk(stmt.value):
-            if isinstance(sub, ast.Call):
-                calls.append(sub)
-        return calls
-    if isinstance(stmt, ast.With):
-        for item in stmt.items:
-            for sub in ast.walk(item.context_expr):
-                if isinstance(sub, ast.Call):
-                    calls.append(sub)
-        # body statements handled by outer walker (we don't descend here)
-        return calls
-    return calls
-
-
-def _handle_resolved_call(
-    file: Path,
-    call_node: ast.Call,
-    res: Resolved,
-    indent: int,
-    seen: frozenset[str],
-    walk_stack: list[str],
-    path_label: str,
-) -> None:
-    """Emit tree line for a resolved call and recurse if it's in-repo or a subproc-launched .py."""
-    if res.kind == "in_repo":
-        assert res.target_file and res.target_node
-        _emit_tree(indent, res.label)
-        new_stack = list(walk_stack) + [res.label]
-        # Normal helper recursion: do NOT snapshot returns inside the callee.
-        render_function(
-            res.target_file, res.target_node, indent + 1, seen, new_stack, path_label,
-            snapshot_here=False,
-        )
-        return
-
-    if res.kind == "subproc":
-        if res.py_target is not None:
-            label = f"{res.py_target.relative_to(REPO)}::main() {res.tag}"
-            _emit_tree(indent, label)
-            new_stack = list(walk_stack) + [label]
-            _expand_py_subproc(res.py_target, res.py_argv, indent + 1, seen, new_stack, path_label)
-        else:
-            label = f"{res.label} {res.tag}"
-            _emit_tree(indent, label)
-        return
-
-    if res.kind == "unresolved":
-        lineno = getattr(call_node, "lineno", 0)
-        unresolvable.append((file, lineno, res.src_line))
-        label = f"{res.tag} <unresolved argv>"
-        _emit_tree(indent, label)
-        return
-
-    if res.kind == "dispatch_table":
-        table_name = res.label
-        entries = dispatch_tables.get((file, table_name), [])
-        if not entries:
-            for (fpath, tn), ents in dispatch_tables.items():
-                if tn == table_name:
-                    entries = ents
-                    break
-        _emit_tree(indent, f"via {table_name}:")
-        for key, target_name, _call in entries:
-            resolved = _resolve_local_name(file, target_name)
-            if resolved is None:
-                indirect_notes.append(
-                    f"{file.relative_to(REPO)}: dispatch entry {table_name}[{key}] -> {target_name}() (target not found in defined_names)"
-                )
-                continue
-            tgt_file, tgt_node = resolved
-            label = f"{target_name}()  # {table_name}[{key}]"
-            _emit_tree(indent + 1, label)
-            branch_label = f"{path_label} via {table_name}[{key}]"
-            new_stack = list(walk_stack) + [label]
-            # Dispatched child: snapshot its returns as path termini.
-            render_function(
-                tgt_file, tgt_node, indent + 2, seen, new_stack, branch_label,
-                snapshot_here=True,
-            )
-        return
-
-
-def _expand_py_subproc(
-    py_target: Path,
-    argv: list[str],
-    indent: int,
-    seen: frozenset[str],
-    walk_stack: list[str],
-    path_label: str,
-) -> None:
-    """Expand a subprocess-launched .py script.
-
-    Special case: if py_target is the orchestrator and argv[0] matches an
-    _ARGV_DISPATCH key, expand that dispatched function instead of orchestrator.main.
-    """
-    if py_target == ENTRY_FILE and argv:
-        key_raw = argv[0].strip()
-        key = key_raw.strip("'\"")
-        entries = dispatch_tables.get((ENTRY_FILE, "_ARGV_DISPATCH"), [])
-        for k_repr, target_name, _call in entries:
-            if k_repr.strip("'\"") == key:
-                resolved = _resolve_local_name(ENTRY_FILE, target_name)
-                if resolved is not None:
-                    tgt_file, tgt_node = resolved
-                    label = f"{target_name}() [via orchestrator argv {key!r}]"
-                    _emit_tree(indent, label)
-                    new_stack = list(walk_stack) + [label]
-                    # Subprocess-dispatched child counts as a path-root.
-                    render_function(
-                        tgt_file, tgt_node, indent + 1, seen, new_stack, path_label,
-                        snapshot_here=True,
-                    )
-                    return
-
-    # Check if target file has its own _DISPATCH table and argv[0] is a literal key.
-    for (fpath, var_name), entries in dispatch_tables.items():
-        if fpath != py_target or var_name != "_DISPATCH":
-            continue
-        if not argv:
-            break
-        key = argv[0].strip().strip("'\"")
-        for k_repr, target_name, _call in entries:
-            if k_repr.strip("'\"") == key:
-                resolved = _resolve_local_name(py_target, target_name)
-                if resolved is not None:
-                    tgt_file, tgt_node = resolved
-                    label = f"{target_name}() [via {py_target.name} argv {key!r}]"
-                    _emit_tree(indent, label)
-                    new_stack = list(walk_stack) + [label]
-                    render_function(
-                        tgt_file, tgt_node, indent + 1, seen, new_stack, path_label,
-                        snapshot_here=True,
-                    )
-                    return
-        break
-
-    for fpath, node in defined_names.get("main", []):
-        if fpath == py_target:
-            _emit_tree(indent, "main()")
-            new_stack = list(walk_stack) + ["main()"]
-            render_function(
-                fpath, node, indent + 1, seen, new_stack, path_label,
-                snapshot_here=True,
-            )
-            return
-    _emit_tree(indent, "(no resolvable entry function in target)")
-
-
-def _maybe_expand_dispatch_loop(
-    file: Path,
-    stmt: ast.For | ast.AsyncFor | ast.While,
-    indent: int,
-    seen: frozenset[str],
-    walk_stack: list[str],
-    path_label: str,
-) -> bool:
-    """If `stmt` is a for-loop iterating a known dispatch table, expand its
-    lambda targets in source order, each as a child branch with a per-entry
-    path. Returns True if expansion happened (skip default body walk).
-    """
-    if not isinstance(stmt, (ast.For, ast.AsyncFor)):
-        return False
-    # Detect: for X in TABLE or for X in sorted(TABLE, ...).
-    iter_node = stmt.iter
-    table_name: str | None = None
-    if isinstance(iter_node, ast.Name) and iter_node.id in DISPATCH_TABLE_NAMES:
-        table_name = iter_node.id
-    elif isinstance(iter_node, ast.Call) and _call_target_name(iter_node) == "sorted" and iter_node.args:
-        inner = iter_node.args[0]
-        if isinstance(inner, ast.Name) and inner.id in DISPATCH_TABLE_NAMES:
-            table_name = inner.id
-    if table_name is None:
-        return False
-    entries = dispatch_tables.get((file, table_name), [])
-    for key, target_name, _call in entries:
-        resolved = _resolve_local_name(file, target_name)
-        if resolved is None:
-            indirect_notes.append(
-                f"{file.relative_to(REPO)}: dispatch entry {key} -> {target_name}() (target not found in defined_names)"
-            )
-            continue
-        tgt_file, tgt_node = resolved
-        label = f"{target_name}()  # {table_name}[{key}]"
-        _emit_tree(indent, label)
-        branch_label = f"{path_label} via {table_name}[{key}]"
-        new_stack = list(walk_stack) + [label]
-        render_function(
-            tgt_file, tgt_node, indent + 1, seen, new_stack, branch_label,
-            snapshot_here=True,
-        )
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Output assembly
-# ---------------------------------------------------------------------------
-
-def emit_markdown() -> str:
     today = date.today().isoformat()
     out: list[str] = []
-    out.append("# Call graph")
+    out.append("# Logic-path tree")
     out.append("")
     out.append(f"Generated by `audit/build_call_graph.py` on {today}.")
     out.append("")
-    out.append(f"Entry point: `{ENTRY_FN}()` in `{ENTRY_FILE.relative_to(REPO)}`.")
+    out.append(f"Entry: `{ENTRY_FN}()` in `{ENTRY_FILE.relative_to(REPO)}`.")
+    out.append("")
+    out.append(f"Total leaves: **{len(leaves)}**.")
     out.append("")
     out.append("Legend:")
-    out.append("- `[blocking subproc]` = `subprocess.run` / `check_output` / etc. (parent waits)")
-    out.append("- `[FaF subproc]`      = `subprocess.Popen` (parent does not wait — orphan risk)")
-    out.append("- `(↑ seen: <fn>)`     = recursion guard (function already on the call stack)")
-    out.append("- `-> return N`        = early-exit annotation (call is followed by `return N`)")
+    out.append("- `-> L#N [completion] expr` - leaf marker (one test obligation each)")
+    out.append("- completions: `return` / `raise` / `sys_exit` / `normal_fallthrough` / `seen_recursion` / `depth_limit`")
+    out.append("- `[blocking subproc]` - `subprocess.run` / `check_output` / etc.")
+    out.append("- `[FaF subproc]` - `subprocess.Popen` (parent does not wait)")
+    out.append("- `(seen: fn)` - recursion guard")
     out.append("")
     out.append("---")
     out.append("")
@@ -1105,17 +649,26 @@ def emit_markdown() -> str:
     out.append("```")
     out.append("")
 
-    out.append("## Logic paths")
+    out.append("## Leaf index")
     out.append("")
-    out.append(f"Total distinct paths: {len(paths)}.")
-    out.append("")
-    for i, (label, walk) in enumerate(paths, 1):
-        out.append(f"### PATH P{i}  [{label}]")
+    for leaf in leaves:
+        out.append(f"### L#{leaf.leaf_id}  [{leaf.completion}]")
         out.append("")
-        out.append("```")
-        for step in walk:
-            out.append(f"  {step}")
-        out.append("```")
+        stack_repr = " -> ".join(
+            f"`{f.fn_name}` ({f.file}:{f.line})" for f in leaf.call_stack
+        )
+        out.append(f"- call_stack: {stack_repr}")
+        if leaf.branch_path:
+            out.append("- branch_path:")
+            for cond in leaf.branch_path:
+                out.append(f"  - {cond}")
+        else:
+            out.append("- branch_path: _(none)_")
+        if leaf.return_expr is not None:
+            out.append(f"- return: `{leaf.return_expr}`")
+        else:
+            out.append("- return: _(no expression)_")
+        out.append(f"- source: `{leaf.file}:{leaf.line}`")
         out.append("")
 
     out.append("## Unresolvable subprocess invocations")
@@ -1124,18 +677,37 @@ def emit_markdown() -> str:
         out.append("_(none)_")
     else:
         for f, lineno, src in unresolvable:
-            out.append(f"- `{f.relative_to(REPO)}:{lineno}`  `{src}`")
+            out.append(f"- `{f}:{lineno}`  `{src}`")
     out.append("")
 
     out.append("## Indirect dispatch (manual review)")
     out.append("")
-    if not indirect_notes:
+    if not indirect:
         out.append("_(none)_")
     else:
-        for note in indirect_notes:
+        for note in indirect:
             out.append(f"- {note}")
     out.append("")
     return "\n".join(out)
+
+
+def emit_json(
+    leaves: list,
+    unresolvable: list[tuple[str, int, str]],
+    indirect: list[str],
+) -> str:
+    """Machine-readable sidecar (consumed by future test-coverage tools)."""
+    import json
+    from dataclasses import asdict
+
+    data = {
+        "leaves": [asdict(leaf) for leaf in leaves],
+        "unresolvable": [
+            {"file": f, "line": lineno, "source": src} for (f, lineno, src) in unresolvable
+        ],
+        "indirect": list(indirect),
+    }
+    return json.dumps(data, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -1144,11 +716,12 @@ def emit_markdown() -> str:
 
 def main() -> int:
     pass1_index()
-    # Locate dispatch_main.
+
     entry_tree = file_ast.get(ENTRY_FILE)
     if entry_tree is None:
         sys.stderr.write(f"ERROR: entry file not parsed: {ENTRY_FILE}\n")
         return 1
+
     entry_node: ast.FunctionDef | None = None
     for node in entry_tree.body:
         if isinstance(node, ast.FunctionDef) and node.name == ENTRY_FN:
@@ -1157,20 +730,34 @@ def main() -> int:
     if entry_node is None:
         sys.stderr.write(f"ERROR: {ENTRY_FN} not found in {ENTRY_FILE}\n")
         return 1
-    root_label = f"{ENTRY_FN}()"
-    _emit_tree(0, root_label)
-    render_function(
-        ENTRY_FILE,
-        entry_node,
-        indent=1,
-        seen=frozenset(),
-        walk_stack=[root_label],
-        path_label=ENTRY_FN,
-        snapshot_here=True,
+
+    # When run as __main__, this module is registered under that name only.
+    # logic_path_tree lazy-imports `build_call_graph` and would otherwise see
+    # a freshly-loaded copy with empty indices. Alias so the lazy import
+    # binds to this populated instance.
+    sys.path.insert(0, str(Path(__file__).parent))
+    sys.modules.setdefault("build_call_graph", sys.modules[__name__])
+    import logic_path_tree as lpt
+
+    tree_lines, leaves, unresolvable, indirect = lpt.build_tree(ENTRY_FILE, entry_node)
+
+    md = emit_markdown(tree_lines, leaves, unresolvable, indirect)
+    js = emit_json(leaves, unresolvable, indirect)
+
+    md_path = REPO / "docs" / "design" / "call_graph.md"
+    json_path = REPO / "docs" / "design" / "call_graph.json"
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    md_path.write_text(md, encoding="utf-8")
+    json_path.write_text(js, encoding="utf-8")
+
+    sys.stderr.write(
+        f"wrote {md_path.relative_to(REPO)} ({len(tree_lines)} tree lines, {len(leaves)} leaves)\n"
     )
-    print(emit_markdown())
+    sys.stderr.write(f"wrote {json_path.relative_to(REPO)}\n")
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
