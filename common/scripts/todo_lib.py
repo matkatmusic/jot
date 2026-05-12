@@ -8,7 +8,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, Callable, Optional, Sequence, Type, TypedDict
 
-from common.scripts.claude_lib import claude_buildCmd, claude_seedPermissions
+from common.scripts.bg_permissions_lib import bgPermissions_loadClaude
+from common.scripts.claude_lib import claude_buildCmd
 from common.scripts.hookjson_lib import hookjson_checkRequirements, hookjson_emitBlock
 from common.scripts.git_lib import (
     git_getBranchNameOrFail,
@@ -377,26 +378,13 @@ def todo_launcher(session_id: str, idea: str, pending_file_path: str) -> int:
     tmpdir_inv = Path(tempfile.mkdtemp(prefix="todo."))
     settings_file = tmpdir_inv / "settings.json"
 
-    permissions_file = Path(claude_plugin_data) / "todo-permissions.local.json"
-    default_file = scripts_dir / "assets" / "permissions.default.json"
-    default_sha_file = scripts_dir / "assets" / "permissions.default.json.sha256"
-    prior_sha_file = Path(claude_plugin_data) / "todo-permissions.default.sha256"
-    
-    claude_seedPermissions(
-        str(permissions_file), str(default_file), str(default_sha_file), str(prior_sha_file), log_file, "todo"
+    allow_json = bgPermissions_loadClaude(
+        "todo",
+        env={"CWD": cwd, "HOME": str(Path.home()), "REPO_ROOT": repo_root},
+        log_file=log_file,
     )
-    
-    try:
-        env = os.environ.copy()
-        env.update({"CWD": cwd, "HOME": str(Path.home()), "REPO_ROOT": repo_root})
-        result = subprocess.run(
-            ["python3", str(plugin_root / "common" / "scripts" / "jot" / "expand_permissions.py"), str(permissions_file)],
-            capture_output=True, text=True, check=True, env=env
-        )
-        allow_json = result.stdout.strip()
-    except Exception:
-        allow_json = "{}"
-        
+
+
     hooks_json_file = tmpdir_inv / "hooks.json"
     orchestrator_path = f"{plugin_root}/scripts/jot_plugin_orchestrator.py"
     hooks_data = {

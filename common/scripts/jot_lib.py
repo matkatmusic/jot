@@ -12,10 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
-from common.scripts.claude_lib import (
-    claude_buildCmd,
-    claude_seedPermissions,
-)
+from common.scripts.bg_permissions_lib import bgPermissions_loadClaude
+from common.scripts.claude_lib import claude_buildCmd
 from common.scripts.git_lib import (
     git_getBranchNameOrFail,
     git_getRecentCommitHashes,
@@ -113,7 +111,7 @@ def jot_rotateAudit(audit_log: str | Path, max_lines: int = 1000) -> None:
     return None
 
 
-# Builds the Claude launch command for a /jot invocation by staging lifecycle hooks, seeding permissions, expanding allow rules, and returning explicit launch paths.
+# Builds the Claude launch command for a /jot invocation by staging lifecycle hooks, loading worker permissions, and returning explicit launch paths.
 def jot_buildClaudeCmd(
     *,
     claude_plugin_root: str,
@@ -124,34 +122,18 @@ def jot_buildClaudeCmd(
     input_file: str,
     state_dir: str,
     log_file: str,
-    permissions_seed: Callable[..., object] | None = None,
-    expand_permissions: Callable[[str, dict[str, str]], str] | None = None,
     tmpdir_factory: Callable[[], str] | None = None,
 ) -> dict[str, str]:
     tmpdir_inv = (tmpdir_factory or (lambda: tempfile.mkdtemp(prefix="jot.", dir="/tmp")))()
     settings_file = f"{tmpdir_inv}/settings.json"
-    permissions_file = f"{claude_plugin_data}/permissions.local.json"
-
     orchestrator_path = f"{claude_plugin_root}/scripts/jot_plugin_orchestrator.py"
-
-    default_file = f"{claude_plugin_root}/skills/jot/scripts/assets/permissions.default.json"
-    default_sha_file = f"{default_file}.sha256"
-    prior_sha_file = f"{claude_plugin_data}/permissions.default.sha256"
     Path(claude_plugin_data).mkdir(parents=True, exist_ok=True)
 
-    seed_fn = permissions_seed or _jot_defaultPermissionsSeed
-    seed_fn(
-        permissions_file,
-        default_file,
-        default_sha_file,
-        prior_sha_file,
-        log_file,
+    allow_json = bgPermissions_loadClaude(
         "jot",
+        env={"CWD": cwd, "HOME": home, "REPO_ROOT": repo_root},
+        log_file=log_file,
     )
-
-    expand_fn = expand_permissions or _jot_defaultExpandPermissions
-    env = {"CWD": cwd, "HOME": home, "REPO_ROOT": repo_root}
-    allow_json = expand_fn(permissions_file, env)
 
     hooks_json_file = f"{tmpdir_inv}/hooks.json"
     hooks_body = (
@@ -180,43 +162,9 @@ def jot_buildClaudeCmd(
     return {
         "TMPDIR_INV": tmpdir_inv,
         "SETTINGS_FILE": settings_file,
-        "PERMISSIONS_FILE": permissions_file,
         "HOOKS_JSON_FILE": hooks_json_file,
         "CLAUDE_CMD": claude_cmd,
     }
-
-
-def _jot_defaultPermissionsSeed(
-    permissions_file: str,
-    default_file: str,
-    default_sha_file: str,
-    prior_sha_file: str,
-    log_file: str,
-    label: str,
-) -> int:
-    claude_seedPermissions(
-        permissions_file,
-        default_file,
-        default_sha_file,
-        prior_sha_file,
-        log_file,
-        label,
-    )
-    return 0
-
-
-def _jot_defaultExpandPermissions(permissions_file: str, env: dict[str, str]) -> str:
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    script_path = f"{plugin_root}/common/scripts/jot/expand_permissions.py"
-    merged = {**os.environ, **env}
-    result = subprocess.run(
-        ["python3", script_path, permissions_file],
-        capture_output=True,
-        text=True,
-        env=merged,
-        check=False,
-    )
-    return result.stdout
 
 
 def _jot_appendLog(log_file: str, message: str) -> None:

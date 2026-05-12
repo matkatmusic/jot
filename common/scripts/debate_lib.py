@@ -21,6 +21,11 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Callable, IO, Iterable, List, Mapping, Optional, Sequence, TypedDict
 
+from common.scripts.bg_permissions_lib import (
+    bgPermissions_loadClaude,
+    bgPermissions_loadCodex,
+    bgPermissions_loadGemini,
+)
 from common.scripts.claude_lib import (
     claude_buildCmd
 )
@@ -125,13 +130,24 @@ def debate_agentLaunchCmd(
     m = current_model.get(agent, "")
 
     if agent == "gemini":
-        base = "gemini --allowed-tools 'read_file,write_file,run_shell_command(ls)'"
+        # --allowed-tools sourced from assets/bg_agent_permissions.json
+        # (debate_permissions.gemini.allowed_tools). Per-invocation --model
+        # stays in Python because it's resolved from the runtime model stash.
+        allowed = bgPermissions_loadGemini()
+        base = f"gemini --allowed-tools '{allowed}'"
         if m:
             return f"{base} --model '{m}'"
         return base
 
     if agent == "codex":
-        base = f"codex -a never --add-dir '{debate_dir}'"
+        # approval/sandbox sourced from debate_permissions.codex; --add-dir
+        # and --model are per-invocation and stay in Python.
+        codex_cfg = bgPermissions_loadCodex()
+        approval = codex_cfg["approval"]
+        sandbox_mode = codex_cfg["sandbox_mode"]
+        base = f"codex -a {approval} -s {sandbox_mode} --add-dir '{debate_dir}'"
+        for flag in codex_cfg.get("extra_flags", []):
+            base += f" {flag}"
         if m:
             return f"{base} --model '{m}'"
         return base
@@ -213,47 +229,25 @@ def debate_buildClaudeCmd(
     cwd: str,
     repo_root: str,
     log_file: str,
-    permissions_seed_fn,
-    expand_permissions_fn,
 ) -> dict:
     plugin_data = os.environ["CLAUDE_PLUGIN_DATA"]
-    plugin_root = os.environ["CLAUDE_PLUGIN_ROOT"]
 
-    # YELLOW intent: mirror bash mktemp -d /tmp/debate.XXXXXX, then build
-    # settings_file path inside it.
     tmpdir_inv = tempfile.mkdtemp(prefix="debate.", dir="/tmp")
     settings_file = str(Path(tmpdir_inv) / "settings.json")
 
-    permissions_file = str(Path(plugin_data) / "debate-permissions.local.json")
-    default_file = str(
-        Path(plugin_root) / "skills/debate/scripts/assets/permissions.default.json"
-    )
-    default_sha_file = str(
-        Path(plugin_root) / "skills/debate/scripts/assets/permissions.default.json.sha256"
-    )
-    prior_sha_file = str(Path(plugin_data) / "debate-permissions.default.sha256")
-
-    # mkdir -p "$CLAUDE_PLUGIN_DATA"
     Path(plugin_data).mkdir(parents=True, exist_ok=True)
 
-    permissions_seed_fn(
-        permissions_file,
-        default_file,
-        default_sha_file,
-        prior_sha_file,
-        log_file,
+    allow_json = bgPermissions_loadClaude(
         "debate",
-    )
-
-    allow_json = expand_permissions_fn(
-        permissions_file, cwd, repo_root, os.environ.get("HOME", "")
+        env={"CWD": cwd, "HOME": os.environ.get("HOME", ""), "REPO_ROOT": repo_root},
+        log_file=log_file,
     )
 
     # Empty hooks JSON file — claude_buildCmd needs a path.
     hooks_json_file = str(Path(tmpdir_inv) / "hooks.json")
     Path(hooks_json_file).write_text("{}\n")
 
-    cmd = claude_buildCmd(  # noqa: F405  (star import from monolith)
+    cmd = claude_buildCmd(
         settings_file, allow_json, hooks_json_file, cwd, repo_root
     )
 
@@ -1896,8 +1890,9 @@ def debate_startOrResume(
 
     # Build the Claude command.
     debate_buildClaudeCmd(
-        debate_dir=str(debate_dir),
-        plugin_root=plugin_root,
+        cwd=cwd,
+        repo_root=repo_root,
+        log_file=log_file,
     )
 
     # Claim a tmux session.

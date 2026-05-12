@@ -129,12 +129,12 @@ def _collect_dispatch_tables(tree: ast.Module, file: Path) -> None:
         else:
             continue
 
-        for tgt in targets:
-            if not (isinstance(tgt, ast.Name) and tgt.id in DISPATCH_TABLE_NAMES):
+        for target in targets:
+            if not (isinstance(target, ast.Name) and target.id in DISPATCH_TABLE_NAMES):
                 continue
             entries = _extract_dispatch_entries(value)
             if entries:
-                dispatch_tables[(file, tgt.id)] = entries
+                dispatch_tables[(file, target.id)] = entries
 
 
 def _extract_dispatch_entries(value: ast.AST | None) -> list[DispatchEntry]:

@@ -1,6 +1,7 @@
 """Tests for jot_lib jot_buildClaudeCmd (Claude command + settings + hooks construction)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -15,40 +16,50 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # --- jot_buildClaudeCmd ---
 
+
+_TEST_BUNDLE = {
+    "jot_permissions": {
+        "claude": {
+            "allow": [
+                "Read(**)",
+                "Write(//${REPO_ROOT}/Todos/**)",
+                "Edit(//${REPO_ROOT}/Todos/**)",
+                "Read(${HOME}/.claude/projects/**)",
+                "Bash(grep:*)",
+                "Bash(rtk grep:*)",
+            ]
+        }
+    }
+}
+
+
 @pytest.fixture
-def plugin_layout(tmp_path: Path):
-    # Setup: synthesize a plugin root with the orchestrator script and bundled permissions defaults.
+def plugin_layout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    # Setup: synthesize a plugin root with the orchestrator script and a bundled
+    # bg_agent_permissions.json (plus its sha256 sidecar) under assets/. Point
+    # CLAUDE_PLUGIN_ROOT/CLAUDE_PLUGIN_DATA at this layout so bg_permissions_lib
+    # resolves the bundle from there.
     plugin_root = tmp_path / "plugin_root"
     plugin_data = tmp_path / "plugin_data"
     (plugin_root / "scripts").mkdir(parents=True)
-    (plugin_root / "skills/jot/scripts/assets").mkdir(parents=True)
+    (plugin_root / "assets").mkdir(parents=True)
     (plugin_root / "scripts/jot_plugin_orchestrator.py").write_text("# fake orchestrator\n")
-    (plugin_root / "skills/jot/scripts/assets/permissions.default.json").write_text("{}")
-    (plugin_root / "skills/jot/scripts/assets/permissions.default.json.sha256").write_text("deadbeef")
+    bundle_text = json.dumps(_TEST_BUNDLE)
+    (plugin_root / "assets/bg_agent_permissions.json").write_text(bundle_text)
+    (plugin_root / "assets/bg_agent_permissions.json.sha256").write_text(
+        hashlib.sha256(bundle_text.encode()).hexdigest() + "\n"
+    )
 
     fixed_tmp = tmp_path / "jot.ABCDEF"
     fixed_tmp.mkdir()
 
-    seed_calls: list[tuple] = []
-    expand_calls: list[tuple] = []
-
-    def fake_seed(perm_file, default_file, default_sha, prior_sha, log_file, label):
-        seed_calls.append((perm_file, default_file, default_sha, prior_sha, log_file, label))
-        Path(perm_file).write_text('{"permissions":{"allow":[]}}')
-        return 0
-
-    def fake_expand(perm_file, env):
-        expand_calls.append((perm_file, dict(env)))
-        return '["Bash(echo:*)", "Read(*)"]'
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(plugin_data))
 
     return {
         "plugin_root": plugin_root,
         "plugin_data": plugin_data,
         "tmp_inv": fixed_tmp,
-        "seed_calls": seed_calls,
-        "expand_calls": expand_calls,
-        "fake_seed": fake_seed,
-        "fake_expand": fake_expand,
     }
 
 
@@ -62,8 +73,6 @@ def _invoke_jot_build(layout, **overrides):
         input_file="/work/proj/Todos/2026_input.txt",
         state_dir="/work/proj/Todos/.jot-state",
         log_file=str(layout["plugin_data"] / "jot-log.txt"),
-        permissions_seed=layout["fake_seed"],
-        expand_permissions=layout["fake_expand"],
         tmpdir_factory=lambda: str(layout["tmp_inv"]),
     )
     kwargs.update(overrides)
@@ -84,14 +93,6 @@ def test_jot_buildClaudeCmd_settings_file_lives_under_tmpdir(plugin_layout):
     out = _invoke_jot_build(plugin_layout)
     # Test verification: SETTINGS_FILE path equals tmpdir_inv/settings.json.
     assert out["SETTINGS_FILE"] == f"{plugin_layout['tmp_inv']}/settings.json"
-
-
-def test_jot_buildClaudeCmd_permissions_file_under_plugin_data(plugin_layout):
-    # Scenario: bash sets PERMISSIONS_FILE="$CLAUDE_PLUGIN_DATA/permissions.local.json".
-    # Test action: invoke.
-    out = _invoke_jot_build(plugin_layout)
-    # Test verification: PERMISSIONS_FILE path resolves under plugin_data.
-    assert out["PERMISSIONS_FILE"] == f"{plugin_layout['plugin_data']}/permissions.local.json"
 
 
 def test_jot_buildClaudeCmd_orchestrator_script_not_copied_into_tmpdir(plugin_layout):
@@ -129,31 +130,36 @@ def test_jot_buildClaudeCmd_plugin_data_dir_is_created(plugin_layout):
     assert plugin_layout["plugin_data"].is_dir()
 
 
-def test_jot_buildClaudeCmd_permissions_seed_invoked_with_expected_args(plugin_layout):
-    # Scenario: function delegates seeding to permissions_seed dependency.
+def test_jot_buildClaudeCmd_worker_allow_loaded_from_bg_permissions_bundle(plugin_layout):
+    # Scenario: jot_buildClaudeCmd sources its worker allow list from
+    # bg_permissions_lib (which reads assets/bg_agent_permissions.json), not
+    # from per-skill files. The settings.json written for the worker must
+    # contain the jot section's rules with ${REPO_ROOT}/${HOME} substituted.
     # Test action: invoke.
+    out = _invoke_jot_build(plugin_layout, cwd="/work/proj", home="/Users/x", repo_root="/work/proj")
+    # Test verification: settings.json holds the substituted allow array.
+    settings = json.loads(Path(out["SETTINGS_FILE"]).read_text())
+    allow = settings["permissions"]["allow"]
+    assert "Read(**)" in allow
+    assert "Write(//work/proj/Todos/**)" in allow
+    assert "Edit(//work/proj/Todos/**)" in allow
+    assert "Read(/Users/x/.claude/projects/**)" in allow
+    # Test verification: the read-only Bash floor that was missing pre-refactor is now present.
+    assert "Bash(rtk grep:*)" in allow
+    assert "Bash(grep:*)" in allow
+
+
+def test_jot_buildClaudeCmd_runtime_bundle_seeded_under_plugin_data(plugin_layout):
+    # Scenario: first /jot invocation must materialize the merged runtime bundle.
+    # Setup: no runtime file before invoke.
+    installed = plugin_layout["plugin_data"] / "bg_agent_permissions.local.json"
+    assert not installed.exists()
+    # Test action:
     _invoke_jot_build(plugin_layout)
-    # Test verification: seed called once with the six bash args in order.
-    calls = plugin_layout["seed_calls"]
-    assert len(calls) == 1
-    perm_file, default_file, default_sha, prior_sha, log_file, label = calls[0]
-    assert perm_file == f"{plugin_layout['plugin_data']}/permissions.local.json"
-    assert default_file == f"{plugin_layout['plugin_root']}/skills/jot/scripts/assets/permissions.default.json"
-    assert default_sha == default_file + ".sha256"
-    assert prior_sha == f"{plugin_layout['plugin_data']}/permissions.default.sha256"
-    assert label == "jot"
-
-
-def test_jot_buildClaudeCmd_expand_permissions_receives_cwd_home_repo_root(plugin_layout):
-    # Scenario: bash exports CWD/HOME/REPO_ROOT before running the python helper.
-    # Test action: invoke with distinct values.
-    _invoke_jot_build(plugin_layout, cwd="/A", home="/B", repo_root="/C")
-    # Test verification: env contains all three keys with the input values.
-    perm_file, env = plugin_layout["expand_calls"][0]
-    assert env["CWD"] == "/A"
-    assert env["HOME"] == "/B"
-    assert env["REPO_ROOT"] == "/C"
-    assert perm_file == f"{plugin_layout['plugin_data']}/permissions.local.json"
+    # Test verification: bundle now sits at the canonical merged-runtime path.
+    assert installed.is_file()
+    parsed = json.loads(installed.read_text())
+    assert "jot_permissions" in parsed
 
 
 def test_jot_buildClaudeCmd_hooks_json_file_is_written_and_valid_json(plugin_layout):
@@ -202,13 +208,13 @@ def test_jot_buildClaudeCmd_claude_cmd_contains_settings_and_cwd(plugin_layout):
 
 
 def test_jot_buildClaudeCmd_settings_file_written_with_expanded_allow_json(plugin_layout):
-    # Scenario: claude_buildCmd writes settings JSON containing expanded allow JSON.
+    # Scenario: claude_buildCmd writes settings JSON containing the loader output.
     # Test action: invoke.
     out = _invoke_jot_build(plugin_layout)
-    # Test verification: settings.json on disk contains the sentinel allow entries.
+    # Test verification: settings.json on disk contains entries from the bundled JSON.
     body = Path(out["SETTINGS_FILE"]).read_text()
-    assert '"Bash(echo:*)"' in body
-    assert '"Read(*)"' in body
+    assert '"Bash(rtk grep:*)"' in body
+    assert '"Read(**)"' in body
 
 
 def test_jot_pluginOrchestrator_isImportable_fromArbitraryCwd(tmp_path: Path):

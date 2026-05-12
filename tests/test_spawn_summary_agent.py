@@ -34,6 +34,19 @@ def _make_baseline_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin_data"))
 
 
+def _stub_bg_loader(monkeypatch: pytest.MonkeyPatch, mod) -> None:
+    # Stub bgPermissions_loadClaude on the spawn_summary_agent module so
+    # spawn() does not need a real CLAUDE_PLUGIN_ROOT/bundle to run; the
+    # returned static-allow array stands in for the JSON-bundled plate floor.
+    def fake_loader(tool, *, env, extra_allow=None, bundle_path=None, log_file=None):
+        # Echo a minimal static floor so callers can still see Bash git/text rules
+        # plus the extra_allow merge.
+        static = ["Bash(git log:*)", "Bash(rtk git log:*)", "Bash(grep:*)", "Bash(rtk grep:*)"]
+        return json.dumps(static + list(extra_allow or []))
+
+    monkeypatch.setattr(mod, "bgPermissions_loadClaude", fake_loader)
+
+
 def test_spawnSummaryAgent_emitsPythonStopHookCommand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -44,6 +57,7 @@ def test_spawnSummaryAgent_emitsPythonStopHookCommand(
     # so spawn() runs to completion without launching real processes.
     mod = _import_spawn_module()
     _make_baseline_env(monkeypatch, tmp_path)
+    _stub_bg_loader(monkeypatch, mod)
 
     invocation_dir = tmp_path / "plate-summary-spawn"
     invocation_dir.mkdir()
@@ -81,13 +95,14 @@ def test_spawnSummaryAgent_launchesPythonWatcherSubprocess(
     # Setup: capture every subprocess.Popen call; stub everything else.
     mod = _import_spawn_module()
     _make_baseline_env(monkeypatch, tmp_path)
+    _stub_bg_loader(monkeypatch, mod)
 
     invocation_dir = tmp_path / "plate-summary-spawn"
     invocation_dir.mkdir()
-    popen_calls: list[list[str]] = []
+    popen_calls: list[tuple[list[str], dict]] = []
 
     def fake_popen(cmd, *args, **kwargs):  # noqa: ARG001
-        popen_calls.append(list(cmd))
+        popen_calls.append((list(cmd), dict(kwargs)))
         return SimpleNamespace(pid=1)
 
     monkeypatch.setattr(mod.tempfile, "mkdtemp", lambda prefix=None: str(invocation_dir))
@@ -109,11 +124,18 @@ def test_spawnSummaryAgent_launchesPythonWatcherSubprocess(
     # new-session). It must start with python3 + the orchestrator path
     # and target the plate-summary-watch route.
     assert len(popen_calls) >= 2, f"watcher Popen missing; saw {popen_calls}"
-    watcher_argv = popen_calls[1]
+    watcher_argv, watcher_kwargs = popen_calls[1]
     assert watcher_argv[0] == "python3", f"watcher must run via python3: {watcher_argv}"
     assert "plate-summary-watch" in watcher_argv, f"missing route: {watcher_argv}"
     assert not any(arg.endswith(".sh") for arg in watcher_argv), (
         f"shell-script residue in watcher argv: {watcher_argv}"
+    )
+    # Test verification: watcher must detach from the hook's process group
+    # via start_new_session=True. Without this, /plate's UserPromptSubmit
+    # hook reaping delivers SIGHUP to the watcher before its first poll
+    # and the tmux pane stays alive forever (the bug fix-plate-bugs fixes).
+    assert watcher_kwargs.get("start_new_session") is True, (
+        f"watcher Popen must set start_new_session=True; saw kwargs={watcher_kwargs}"
     )
     # Test verification: there are EXACTLY two Popen calls (tmux + watcher).
     # terminal_spawnIfNeeded is stubbed; its osascript Popen does not count.
@@ -136,6 +158,7 @@ def test_spawnSummaryAgent_callsTerminalSpawnInline(
     # Setup: capture terminal_spawnIfNeeded invocations directly.
     mod = _import_spawn_module()
     _make_baseline_env(monkeypatch, tmp_path)
+    _stub_bg_loader(monkeypatch, mod)
 
     invocation_dir = tmp_path / "plate-summary-spawn"
     invocation_dir.mkdir()

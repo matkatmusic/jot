@@ -51,7 +51,7 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", mock_run)
     monkeypatch.setattr(mod.subprocess, "run", mock_run)
 
-    monkeypatch.setattr("common.scripts.todo_lib.claude_seedPermissions", lambda *args: calls.append(["claude_seedPermissions"]))
+    monkeypatch.setattr("common.scripts.todo_lib.bgPermissions_loadClaude", lambda *args, **kwargs: (calls.append(["bgPermissions_loadClaude"]) or '["Read(**)"]'))
     monkeypatch.setattr("common.scripts.todo_lib.claude_buildCmd", lambda *args: "mock claude cmd")
 
     class MockFileLock:
@@ -76,7 +76,7 @@ def test_todo_launcher_success(monkeypatch, tmp_path):
 
     # Test verification:
     assert result == 0
-    assert ["claude_seedPermissions"] in calls
+    assert ["bgPermissions_loadClaude"] in calls
     assert ["lock_acquire"] in calls
     assert ["tmux_ensureSession"] in calls
     assert ["tmux_setPaneTitle"] in calls

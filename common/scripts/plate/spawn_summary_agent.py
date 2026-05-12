@@ -27,6 +27,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from common.scripts.bg_permissions_lib import bgPermissions_loadClaude
 from common.scripts.util_lib import terminal_spawnIfNeeded
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -34,23 +35,10 @@ _PLATE_SKILL = _REPO_ROOT / "skills" / "plate"
 _PROMPT_FILE = _PLATE_SKILL / "scripts" / "prompts" / "summary-agent.md"
 _TEMPLATE_FILE = _PLATE_SKILL / "summary-template.md"
 _ORCHESTRATOR = _REPO_ROOT / "scripts" / "jot_plugin_orchestrator.py"
-
-# Read-only git verbs the agent legitimately needs. NO destructive verbs
-# (add, commit, branch, checkout, clean, reset, rebase, rm, update-ref,
-# worktree, read-tree, write-tree, commit-tree, apply, cherry-pick, init,
-# config, stash) — agent literally cannot mutate the repo.
-_READ_ONLY_GIT_VERBS = (
-    "log", "diff", "show", "rev-parse", "rev-list", "for-each-ref",
-    "ls-tree", "ls-files", "merge-base", "status", "cat-file",
-)
-
-# Read-only text-processing Bash commands the agent reaches for when
-# inspecting large JSONL transcripts. Listed both bare and rtk-prefixed
-# (the user's `rtk` shim rewrites unprefixed invocations).
-_READ_ONLY_TEXT_TOOLS = (
-    "grep", "head", "tail", "wc", "cut", "awk", "sed", "sort", "uniq",
-    "tr", "cat",
-)
+# Read-only git verbs and text-tool allowlists live in
+# assets/bg_agent_permissions.json under plate_permissions.claude.allow.
+# Per-invocation dynamic paths (plate_skill_dir, output_dir, transcript
+# project_dir) are appended via extra_allow at spawn() time.
 
 
 def _next_session_index() -> int:
@@ -117,51 +105,39 @@ def spawn(
         f"{shlex.quote(str(output_file))}"
     )
 
-    # Narrow read-only allow-list: agent cwd is the repo, so plain `git
-    # log` (no `-C`) inherits the repo path — keeps verb wildcards from
-    # accidentally allowing destructive `git -C <repo> <anything>`.
-    git_allows: list[str] = []
-    for verb in _READ_ONLY_GIT_VERBS:
-        git_allows.append(f"Bash(rtk git {verb}:*)")
-        git_allows.append(f"Bash(git {verb}:*)")
-
-    # Read-only text-processing tools (grep/tail/head/etc.) the agent
-    # uses to inspect transcripts. Allow both bare and rtk-prefixed
-    # forms because the user's rtk shim rewrites unprefixed calls.
-    text_allows: list[str] = []
-    for tool in _READ_ONLY_TEXT_TOOLS:
-        text_allows.append(f"Bash({tool}:*)")
-        if not tool.startswith("rtk "):
-            text_allows.append(f"Bash(rtk {tool}:*)")
-
     # Permission rule shape: Claude Code's path matcher uses a leading
-    # `//` to mark an absolute path. `expand_permissions.py:28` lstrips
-    # the leading `/` from REPO_ROOT before pairing it with the literal
-    # `//`, producing `Read(//Users/...)` at runtime — confirmed in a
-    # live capture as the working form. Single-slash `Read(/Users/...)`
-    # does NOT match (the agent surfaces a permission prompt anyway).
+    # `//` to mark an absolute path. Both Write and Edit are needed:
+    # Claude Code's diff-confirmation path on first-time creation goes
+    # through Edit, not Write — confirmed in an earlier live capture.
     def _abs(p: str) -> str:
         return "//" + p.lstrip("/")
     plate_skill_dir = str(_PLATE_SKILL)                  # template + prompt
     output_dir = str(output_file.parent)                 # <repo>/.plate/summaries
-    # Both Write and Edit are needed: Claude Code's diff-confirmation
-    # path on first-time-creation goes through Edit, not Write — the
-    # earlier live capture's "Do you want to make this edit?" prompt
-    # confirms this. Mirror jot's pattern of listing both verbs.
-    permissions_allow = [
+    extra_allow = [
         f"Read({_abs(plate_skill_dir)}/**)",
         f"Read({_abs(output_dir)}/**)",
         f"Write({_abs(output_dir)}/**)",
         f"Edit({_abs(output_dir)}/**)",
-        *git_allows,
-        *text_allows,
     ]
     # Restrict transcript Read to THIS conversation's project dir only —
     # not the whole ~/.claude/projects/ tree (would leak access to every
     # other session's transcripts on this machine).
     if transcript_path:
         project_dir = str(Path(transcript_path).parent)
-        permissions_allow.insert(1, f"Read({_abs(project_dir)}/**)")
+        extra_allow.append(f"Read({_abs(project_dir)}/**)")
+
+    # The static read-only-git + read-only-text floor is sourced from
+    # assets/bg_agent_permissions.json (plate_permissions.claude.allow);
+    # extra_allow is the per-invocation dynamic portion.
+    permissions_allow = json.loads(bgPermissions_loadClaude(
+        "plate",
+        env={
+            "CWD": str(repo),
+            "HOME": os.environ.get("HOME", ""),
+            "REPO_ROOT": str(repo),
+        },
+        extra_allow=extra_allow,
+    ))
 
     settings_path = tmpdir / "settings.json"
     settings_path.write_text(json.dumps({
@@ -238,6 +214,13 @@ def spawn(
     # pattern, but uses `/exit` instead of kill-pane so SessionEnd has
     # a chance to fire normally.
     pane_target = f"{session_name}:{window_name}"
+    # start_new_session=True detaches the watcher from this process's
+    # group so it survives parent exit. /plate runs as a UserPromptSubmit
+    # hook and this orchestrator process returns within milliseconds; once
+    # Claude Code reaps the hook PID, the kernel delivers SIGHUP to the
+    # hook's process group. Without detachment the watcher dies before
+    # its first poll and the tmux pane stays alive forever. Same pattern
+    # as terminal_spawnIfNeeded (util_lib.py:200-206).
     subprocess.Popen(
         ["python3", str(_ORCHESTRATOR), "plate-summary-watch",
          pane_target, str(output_file)],
@@ -245,6 +228,7 @@ def spawn(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
 
     # Open a Terminal.app window attached to this session (parity with

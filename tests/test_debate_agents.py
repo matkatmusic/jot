@@ -43,6 +43,25 @@ def test_debate_agents_falls_back_to_env() -> None:
 # debate_agentLaunchCmd tests
 # =====================================================================
 
+
+@pytest.fixture(autouse=True)
+def _stub_bg_permissions(monkeypatch):
+    """debate_agentLaunchCmd's gemini/codex branches consult bg_permissions_lib;
+    stub the loaders so tests don't need a real CLAUDE_PLUGIN_ROOT/bundle."""
+    monkeypatch.setattr(
+        "common.scripts.debate_lib.bgPermissions_loadGemini",
+        lambda *a, **k: "read_file,write_file,run_shell_command(ls)",
+    )
+    monkeypatch.setattr(
+        "common.scripts.debate_lib.bgPermissions_loadCodex",
+        lambda *a, **k: {
+            "approval": "never",
+            "sandbox_mode": "workspace-write",
+            "extra_flags": [],
+        },
+    )
+
+
 def test_gemini_with_model() -> None:
     # Scenario: caller selected an explicit gemini model.
     # Setup: stash CURRENT_MODEL[gemini] = "gemini-2.5-pro".
@@ -101,7 +120,7 @@ def test_codex_with_model() -> None:
         settings_file="/s.json",
     )
     # Test verification: --add-dir uses debate_dir; --model uses provided.
-    assert cmd == "codex -a never --add-dir '/repo/Debates/T_slug' --model 'gpt-5'"
+    assert cmd == "codex -a never -s workspace-write --add-dir '/repo/Debates/T_slug' --model 'gpt-5'"
 
 
 def test_codex_without_model() -> None:
@@ -119,7 +138,7 @@ def test_codex_without_model() -> None:
         settings_file="/s.json",
     )
     # Test verification: no --model.
-    assert cmd == "codex -a never --add-dir '/repo/Debates/X'"
+    assert cmd == "codex -a never -s workspace-write --add-dir '/repo/Debates/X'"
 
 
 # =====================================================================

@@ -658,29 +658,33 @@ def test_debateMain_fresh_capture_failure_writes_failure_marker(tmp_path, monkey
 # =====================================================================
 
 
+def _stub_bg_loader(monkeypatch, return_value: str = "[]"):
+    """Monkeypatch bgPermissions_loadClaude on the debate_lib module so the
+    callsite returns a known JSON-array string without needing a real bundle."""
+    calls: list[dict] = []
+
+    def fake_loader(tool, *, env, extra_allow=None, bundle_path=None, log_file=None):
+        calls.append({"tool": tool, "env": dict(env), "log_file": log_file})
+        return return_value
+
+    monkeypatch.setattr("common.scripts.debate_lib.bgPermissions_loadClaude", fake_loader)
+    return calls
+
+
 def test_creates_tmpdir_and_settings_file_path(tmp_path, monkeypatch):
     # Scenario: Function provisions a fresh tmpdir under /tmp and returns a
     # settings.json path inside it.
-    # Setup: stub permissions_seed (no-op) and expand_permissions ('[]').
-    seeded = []
+    # Setup: stub bgPermissions_loadClaude to return an empty allow array.
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "root"))
     (tmp_path / "data").mkdir()
-    (tmp_path / "root" / "skills" / "debate" / "scripts" / "assets").mkdir(parents=True)
-
-    def fake_seed(*args, **kwargs):
-        seeded.append(args)
-
-    def fake_expand(perm_file, cwd, repo_root, home):
-        return "[]"
+    _stub_bg_loader(monkeypatch)
 
     # Test action:
     result = debate_buildClaudeCmd(
         cwd=str(tmp_path),
         repo_root=str(tmp_path),
         log_file=str(tmp_path / "log.txt"),
-        permissions_seed_fn=fake_seed,
-        expand_permissions_fn=fake_expand,
     )
 
     # Test verification: tmpdir exists, settings_file lives inside it.
@@ -690,22 +694,19 @@ def test_creates_tmpdir_and_settings_file_path(tmp_path, monkeypatch):
 
 
 def test_writes_settings_json_with_allow_and_empty_hooks(tmp_path, monkeypatch):
-    # Scenario: Settings file is written with permissions.allow from
-    # expand_permissions output and an empty hooks object.
+    # Scenario: Settings file is written with permissions.allow from the
+    # bg_permissions loader output and an empty hooks object.
     # Setup:
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "root"))
     (tmp_path / "data").mkdir()
-
-    allow_value = '["Bash(echo:*)","Read"]'
+    _stub_bg_loader(monkeypatch, return_value='["Bash(echo:*)","Read"]')
 
     # Test action:
     result = debate_buildClaudeCmd(
         cwd=str(tmp_path),
         repo_root=str(tmp_path),
         log_file=str(tmp_path / "log.txt"),
-        permissions_seed_fn=lambda *a, **k: None,
-        expand_permissions_fn=lambda *a, **k: allow_value,
     )
 
     # Test verification: parse settings.json round-trip.
@@ -723,14 +724,13 @@ def test_returns_claude_cmd_with_settings_and_add_dir(tmp_path, monkeypatch):
     (tmp_path / "data").mkdir()
     cwd = str(tmp_path / "work")
     (tmp_path / "work").mkdir()
+    _stub_bg_loader(monkeypatch)
 
     # Test action:
     result = debate_buildClaudeCmd(
         cwd=cwd,
         repo_root=cwd,
         log_file=str(tmp_path / "log.txt"),
-        permissions_seed_fn=lambda *a, **k: None,
-        expand_permissions_fn=lambda *a, **k: "[]",
     )
 
     # Test verification:
@@ -741,8 +741,10 @@ def test_returns_claude_cmd_with_settings_and_add_dir(tmp_path, monkeypatch):
     assert cmd.startswith("claude ")
 
 
-def test_invokes_permissions_seed_with_expected_paths(tmp_path, monkeypatch):
-    # Scenario: permissions_seed is called once with the documented six args.
+def test_invokes_bg_permissions_loader_with_expected_args(tmp_path, monkeypatch):
+    # Scenario: debate_buildClaudeCmd delegates worker allow construction to
+    # bg_permissions_lib, called with tool="debate" and the env triple the
+    # loader needs for ${CWD}/${HOME}/${REPO_ROOT} substitution.
     # Setup:
     data = tmp_path / "data"
     root = tmp_path / "root"
@@ -750,37 +752,23 @@ def test_invokes_permissions_seed_with_expected_paths(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(data))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(root))
+    monkeypatch.setenv("HOME", "/Users/dbg")
     log = str(tmp_path / "log.txt")
-    captured = {}
-
-    def fake_seed(perm_file, default_file, default_sha, prior_sha, log_file, label):
-        captured["perm_file"] = perm_file
-        captured["default_file"] = default_file
-        captured["default_sha"] = default_sha
-        captured["prior_sha"] = prior_sha
-        captured["log_file"] = log_file
-        captured["label"] = label
+    calls = _stub_bg_loader(monkeypatch)
 
     # Test action:
     debate_buildClaudeCmd(
-        cwd=str(tmp_path),
-        repo_root=str(tmp_path),
+        cwd="/work/dir",
+        repo_root="/work/repo",
         log_file=log,
-        permissions_seed_fn=fake_seed,
-        expand_permissions_fn=lambda *a, **k: "[]",
     )
 
     # Test verification:
-    assert captured["perm_file"] == str(data / "debate-permissions.local.json")
-    assert captured["default_file"] == str(
-        root / "skills/debate/scripts/assets/permissions.default.json"
-    )
-    assert captured["default_sha"] == str(
-        root / "skills/debate/scripts/assets/permissions.default.json.sha256"
-    )
-    assert captured["prior_sha"] == str(data / "debate-permissions.default.sha256")
-    assert captured["log_file"] == log
-    assert captured["label"] == "debate"
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["tool"] == "debate"
+    assert call["env"] == {"CWD": "/work/dir", "HOME": "/Users/dbg", "REPO_ROOT": "/work/repo"}
+    assert call["log_file"] == log
 
 
 def test_creates_claude_plugin_data_dir_if_missing(tmp_path, monkeypatch):
@@ -791,14 +779,13 @@ def test_creates_claude_plugin_data_dir_if_missing(tmp_path, monkeypatch):
     root.mkdir()
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(data))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(root))
+    _stub_bg_loader(monkeypatch)
 
     # Test action:
     debate_buildClaudeCmd(
         cwd=str(tmp_path),
         repo_root=str(tmp_path),
         log_file=str(tmp_path / "log.txt"),
-        permissions_seed_fn=lambda *a, **k: None,
-        expand_permissions_fn=lambda *a, **k: "[]",
     )
 
     # Test verification:
