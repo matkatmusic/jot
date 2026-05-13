@@ -7,6 +7,8 @@ Entry: `dispatch_main()` in `scripts/jot_plugin_orchestrator.py`.
 Total leaves: **311**.
 
 Legend:
+- Each `### L#N` section is one self-contained logic path, rooted at
+  `dispatch_main()` and ending at its terminating statement.
 - `-> L#N [completion] expr` - leaf marker (one test obligation each)
 - completions: `return` / `raise` / `sys_exit` / `normal_fallthrough` / `seen_recursion` / `depth_limit`
 - `[blocking subproc]` - `subprocess.run` / `check_output` / etc.
@@ -15,11 +17,12 @@ Legend:
 
 ---
 
-## Tree
+## Per-leaf trees
+
+### L#1  [return] 0
 
 ```
 dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
-  if argv is None:
   if argv:
     call: handleArgvDispatch(argv)
       handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
@@ -28,59 +31,250 @@ dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
             jot_sessionStart()  [common/scripts/jot_lib.py:599]
               if not input_file or not tmpdir_inv:
                 -> L#1 [return] 0  (common/scripts/jot_lib.py:603)
-              for _ in range(5):
-                (pass-through loop)
-                try:
-                  if target_file.is_file() and target_file.stat().st_size > 0:
-                    if first_line:
-                except OSError:
+```
+
+### L#2  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
               if not tmux_target:
                 -> L#2 [return] 0  (common/scripts/jot_lib.py:621)
+```
+
+### L#3  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
               call: tmux_waitForClaudeReadiness(tmux_target)
                 tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
                   for _ in range(max_attempts):
                     try:
                       call: tmux_capturePane(pane_id, 5)
                         tmux_capturePane()  [common/scripts/tmux_lib.py:148]
-                          if scrollback_lines is not None:
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:152)
                           if result.returncode != 0:
                             -> L#3 [return] ''  (common/scripts/tmux_lib.py:158)
+```
+
+### L#4  [return] result.stdout or ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
+                  for _ in range(max_attempts):
+                    try:
+                      call: tmux_capturePane(pane_id, 5)
+                        tmux_capturePane()  [common/scripts/tmux_lib.py:148]
                           -> L#4 [return] result.stdout or ''  (common/scripts/tmux_lib.py:159)
-                    except Exception:
+```
+
+### L#5  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
+                  for _ in range(max_attempts):
                     if ready_glyph in (content or ''):
                       -> L#5 [return] 0  (common/scripts/tmux_lib.py:381)
-                    for _ in range(max_attempts): (loop exhausted)
+```
+
+### L#6  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
                   -> L#6 [return] 1  (common/scripts/tmux_lib.py:387)
+```
+
+### L#7  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
               if tmux_waitForClaudeReadiness(tmux_target) != 0:
                 -> L#7 [return] 1  (common/scripts/jot_lib.py:626)
+```
+
+### L#8  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
               call: tmux_sendAndSubmit(tmux_target, f'Read {input_file} and follow the instructions at the top of that file')
                 tmux_sendAndSubmit()  [common/scripts/tmux_lib.py:328]
                   call: tmux_sendKeys(pane_target, text)
                     tmux_sendKeys()  [common/scripts/tmux_lib.py:292]
-                      [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:294)
-                      if result.returncode != 0:
                       -> L#8 [return] result.returncode  (common/scripts/tmux_lib.py:300)
+```
+
+### L#9  [return] rc1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_sendAndSubmit(tmux_target, f'Read {input_file} and follow the instructions at the top of that file')
+                tmux_sendAndSubmit()  [common/scripts/tmux_lib.py:328]
                   if rc1 != 0:
                     -> L#9 [return] rc1  (common/scripts/tmux_lib.py:331)
+```
+
+### L#10  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_sendAndSubmit(tmux_target, f'Read {input_file} and follow the instructions at the top of that file')
+                tmux_sendAndSubmit()  [common/scripts/tmux_lib.py:328]
                   call: tmux_sendEnter(pane_target)
                     tmux_sendEnter()  [common/scripts/tmux_lib.py:304]
-                      [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:306)
-                      if result.returncode != 0:
                       -> L#10 [return] result.returncode  (common/scripts/tmux_lib.py:312)
+```
+
+### L#11  [return] tmux_sendEnter(pane_target)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
+              call: tmux_sendAndSubmit(tmux_target, f'Read {input_file} and follow the instructions at the top of that file')
+                tmux_sendAndSubmit()  [common/scripts/tmux_lib.py:328]
                   -> L#11 [return] tmux_sendEnter(pane_target)  (common/scripts/tmux_lib.py:333)
+```
+
+### L#12  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-start'] -> jot_sessionStart()
+            jot_sessionStart()  [common/scripts/jot_lib.py:599]
               -> L#12 [return] 0  (common/scripts/jot_lib.py:632)
+```
+
+### L#13  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['jot-session-end'] -> jot_sessionEnd()
             jot_sessionEnd()  [common/scripts/jot_lib.py:549]
               if not tmpdir_inv:
                 -> L#13 [return] 0  (common/scripts/jot_lib.py:577)
+```
+
+### L#14  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-end'] -> jot_sessionEnd()
+            jot_sessionEnd()  [common/scripts/jot_lib.py:549]
               if not re.match('^(/tmp/jot\\.|/private/tmp/jot\\.)', tmpdir_inv):
                 -> L#14 [return] 0  (common/scripts/jot_lib.py:586)
+```
+
+### L#15  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-session-end'] -> jot_sessionEnd()
+            jot_sessionEnd()  [common/scripts/jot_lib.py:549]
               -> L#15 [return] 0  (common/scripts/jot_lib.py:590)
+```
+
+### L#16  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['jot-stop'] -> jot_stop()
             jot_stop()  [common/scripts/jot_lib.py:634]
               if not input_file or not tmpdir_inv or (not state_dir):
                 -> L#16 [return] 0  (common/scripts/jot_lib.py:654)
+```
+
+### L#17  [return] first_line
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               call: _jot_readSidecar(target_file)
                 _jot_readSidecar()  [common/scripts/jot_lib.py:249]
                   for _ in range(5):
@@ -88,122 +282,483 @@ dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
                       if target_file.is_file() and target_file.stat().st_size > 0:
                         if first_line:
                           -> L#17 [return] first_line  (common/scripts/jot_lib.py:255)
-                    except OSError:
-                    for _ in range(5): (loop exhausted)
+```
+
+### L#18  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
+              call: _jot_readSidecar(target_file)
+                _jot_readSidecar()  [common/scripts/jot_lib.py:249]
                   -> L#18 [return] ''  (common/scripts/jot_lib.py:259)
+```
+
+### L#19  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               if not tmux_target:
                 -> L#19 [return] 0  (common/scripts/jot_lib.py:664)
+```
+
+### L#20  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               call: jot_initState(state_dir)
                 jot_initState()  [common/scripts/jot_lib.py:55]
-                  for name in ('queue.txt', 'active_job.txt', 'audit.log'):
-                    (pass-through loop)
                   -> L#20 [normal_fallthrough]  (common/scripts/jot_lib.py:58)
+```
+
+### L#21  [return] datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               call: _util_isoTimestampLocal()
                 _util_isoTimestampLocal()  [common/scripts/util_lib.py:139]
                   -> L#21 [return] datetime.now(timezone.utc).astimezone().isoformat(timespec='seconds')  (common/scripts/util_lib.py:141)
+```
+
+### L#22  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               if input_path.is_file():
-                try:
-                except OSError:
                 if first_line.startswith('PROCESSED:'):
                   call: _util_appendAudit(audit_path, f'{ts} SUCCESS {input_file}')
                     _util_appendAudit()  [common/scripts/util_lib.py:119]
                       -> L#22 [normal_fallthrough]  (common/scripts/util_lib.py:120)
+```
+
+### L#23  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
+              if input_path.is_file():
                 else: (of first_line.startswith('PROCESSED:'))
                   call: _util_appendAudit(audit_path, f'{ts} FAIL {input_file} (no PROCESSED marker)')
                     _util_appendAudit()  [common/scripts/util_lib.py:119]
                       -> L#23 [normal_fallthrough]  (common/scripts/util_lib.py:120)
+```
+
+### L#24  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               else: (of input_path.is_file())
                 call: _util_appendAudit(audit_path, f'{ts} FAIL {input_file} (input.txt missing)')
                   _util_appendAudit()  [common/scripts/util_lib.py:119]
                     -> L#24 [normal_fallthrough]  (common/scripts/util_lib.py:120)
+```
+
+### L#25  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               call: jot_rotateAudit(audit_path, 1000)
                 jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   if not path.is_file():
                     -> L#25 [return] None  (common/scripts/jot_lib.py:88)
-                  for _ in fh:
-                    (pass-through loop)
+```
+
+### L#26  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
+              call: jot_rotateAudit(audit_path, 1000)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   if line_count <= max_lines:
                     -> L#26 [return] None  (common/scripts/jot_lib.py:94)
-                  for raw in fh:
-                    (pass-through loop)
-                  try:
-                    for raw in tail:
-                      (pass-through loop)
+```
+
+### L#27  [raise] (re-raise)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
+              call: jot_rotateAudit(audit_path, 1000)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   except BaseException:
-                    try:
-                    except FileNotFoundError:
                     -> L#27 [raise] (re-raise)  (common/scripts/jot_lib.py:110)
+```
+
+### L#28  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
+              call: jot_rotateAudit(audit_path, 1000)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   -> L#28 [return] None  (common/scripts/jot_lib.py:111)
+```
+
+### L#29  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-stop'] -> jot_stop()
+            jot_stop()  [common/scripts/jot_lib.py:634]
               -> L#29 [return] 0  (common/scripts/jot_lib.py:691)
+```
+
+### L#30  [return] []
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['scan-open-todos'] -> todo_scanOpen()
             todo_scanOpen()  [common/scripts/todo_lib.py:591]
               if not todos_dir.is_dir():
                 -> L#30 [return] []  (common/scripts/todo_lib.py:594)
+```
+
+### L#31  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['scan-open-todos'] -> todo_scanOpen()
+            todo_scanOpen()  [common/scripts/todo_lib.py:591]
               for md_path in sorted(todos_dir.glob('*.md')):
                 (pass-through loop)
-                if not md_path.is_file():
-                call: _todo_has_open_status(md_path)
-                  _todo_has_open_status()  [common/scripts/todo_lib.py:573]
-                    try:
-                      for (i, line) in enumerate(fh):
-                        if i >= 10:
-                        if line.startswith('status: open'):
-                          -> L#31 [return] True  (common/scripts/todo_lib.py:580)
-                        for (i, line) in enumerate(fh): (loop exhausted)
-                    except OSError:
-                      -> L#32 [return] False  (common/scripts/todo_lib.py:582)
-                    -> L#33 [return] False  (common/scripts/todo_lib.py:583)
-                if _todo_has_open_status(md_path):
+                  call: _todo_has_open_status(md_path)
+                    _todo_has_open_status()  [common/scripts/todo_lib.py:573]
+                      try:
+                        for (i, line) in enumerate(fh):
+                          if line.startswith('status: open'):
+                            -> L#31 [return] True  (common/scripts/todo_lib.py:580)
+```
+
+### L#32  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['scan-open-todos'] -> todo_scanOpen()
+            todo_scanOpen()  [common/scripts/todo_lib.py:591]
+              for md_path in sorted(todos_dir.glob('*.md')):
+                (pass-through loop)
+                  call: _todo_has_open_status(md_path)
+                    _todo_has_open_status()  [common/scripts/todo_lib.py:573]
+                      except OSError:
+                        -> L#32 [return] False  (common/scripts/todo_lib.py:582)
+```
+
+### L#33  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['scan-open-todos'] -> todo_scanOpen()
+            todo_scanOpen()  [common/scripts/todo_lib.py:591]
+              for md_path in sorted(todos_dir.glob('*.md')):
+                (pass-through loop)
+                  call: _todo_has_open_status(md_path)
+                    _todo_has_open_status()  [common/scripts/todo_lib.py:573]
+                      -> L#33 [return] False  (common/scripts/todo_lib.py:583)
+```
+
+### L#34  [return] open_paths
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['scan-open-todos'] -> todo_scanOpen()
+            todo_scanOpen()  [common/scripts/todo_lib.py:591]
               -> L#34 [return] open_paths  (common/scripts/todo_lib.py:604)
+```
+
+### L#35  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
             todo_launcher()  [common/scripts/todo_lib.py:258]
               if not session_id:
                 -> L#35 [return] 1  (common/scripts/todo_lib.py:261)
+```
+
+### L#36  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               if not idea:
                 -> L#36 [return] 1  (common/scripts/todo_lib.py:264)
+```
+
+### L#37  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               if not pending_file_path:
                 -> L#37 [return] 1  (common/scripts/todo_lib.py:267)
+```
+
+### L#38  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               if not pending_file.is_file():
                 -> L#38 [return] 1  (common/scripts/todo_lib.py:272)
-              try:
-              except Exception:
-              try:
+```
+
+### L#39  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               except Exception:
                 -> L#39 [return] 1  (common/scripts/todo_lib.py:294)
+```
+
+### L#40  [return] func(*args, **kwargs)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: _util_hide_errors(git_getBranchNameOrFail, Path(cwd))
                 _util_hide_errors()  [common/scripts/util_lib.py:112]
                   try:
                     -> L#40 [return] func(*args, **kwargs)  (common/scripts/util_lib.py:114)
+```
+
+### L#41  [return] '(unavailable)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: _util_hide_errors(git_getBranchNameOrFail, Path(cwd))
+                _util_hide_errors()  [common/scripts/util_lib.py:112]
                   except Exception:
                     -> L#41 [return] '(unavailable)'  (common/scripts/util_lib.py:116)
+```
+
+### L#42  [return] func(*args, **kwargs)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: _util_hide_errors(git_getRecentCommitHashes, Path(cwd))
                 _util_hide_errors()  [common/scripts/util_lib.py:112]
                   try:
                     -> L#42 [return] func(*args, **kwargs)  (common/scripts/util_lib.py:114)
+```
+
+### L#43  [return] '(unavailable)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: _util_hide_errors(git_getRecentCommitHashes, Path(cwd))
+                _util_hide_errors()  [common/scripts/util_lib.py:112]
                   except Exception:
                     -> L#43 [return] '(unavailable)'  (common/scripts/util_lib.py:116)
+```
+
+### L#44  [return] func(*args, **kwargs)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: _util_hide_errors(git_getUncommittedFilenames, Path(cwd))
                 _util_hide_errors()  [common/scripts/util_lib.py:112]
                   try:
                     -> L#44 [return] func(*args, **kwargs)  (common/scripts/util_lib.py:114)
+```
+
+### L#45  [return] '(unavailable)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: _util_hide_errors(git_getUncommittedFilenames, Path(cwd))
+                _util_hide_errors()  [common/scripts/util_lib.py:112]
                   except Exception:
                     -> L#45 [return] '(unavailable)'  (common/scripts/util_lib.py:116)
+```
+
+### L#46  [return] func(*args, **kwargs)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: _util_hide_errors(todo_scanOpen, repo_root)
                 _util_hide_errors()  [common/scripts/util_lib.py:112]
                   try:
                     -> L#46 [return] func(*args, **kwargs)  (common/scripts/util_lib.py:114)
+```
+
+### L#47  [return] '(unavailable)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: _util_hide_errors(todo_scanOpen, repo_root)
+                _util_hide_errors()  [common/scripts/util_lib.py:112]
                   except Exception:
                     -> L#47 [return] '(unavailable)'  (common/scripts/util_lib.py:116)
-              if transcript_path and Path(transcript_path).is_file():
-                try:
-                  subproc: skills/jot/scripts/capture-conversation.py::main() [blocking subproc]
-                    (no resolvable entry function in target)
-                except subprocess.CalledProcessError:
-              else: (of transcript_path and Path(transcript_path).is_file())
-              try:
-                subproc: common/scripts/jot/render_template.py::main() [blocking subproc]
-                  (no resolvable entry function in target)
-              except Exception:
+```
+
+### L#48  [raise] RuntimeError('CLAUDE_PLUGIN_DATA not set - bg_permissions_lib needs that to locate the installed runtime copy')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: bgPermissions_loadClaude('todo')
                 bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
                   call: _loadSection(tool, 'claude', bundle_path, log_file)
@@ -214,14 +769,110 @@ dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
                             _resolveInstalled()  [common/scripts/bg_permissions_lib.py:81]
                               if not plugin_data:
                                 -> L#48 [raise] RuntimeError('CLAUDE_PLUGIN_DATA not set - bg_permissions_lib needs that to locate the installed runtime copy')  (common/scripts/bg_permissions_lib.py:85)
+```
+
+### L#49  [return] (Path(plugin_data) / _INSTALLED_NAME, Path(plugin_data) / _INSTALLED_PRIOR_SHA_NAME)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: _resolveInstalled()
+                            _resolveInstalled()  [common/scripts/bg_permissions_lib.py:81]
                               -> L#49 [return] (Path(plugin_data) / _INSTALLED_NAME, Path(plugin_data) / _INSTALLED_PRIOR_SHA_NAME)  (common/scripts/bg_permissions_lib.py:89)
+```
+
+### L#50  [return] (bundle_path, bundle_path.with_suffix(bundle_path.suffix + '.sha256'))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
                           call: _resolveBundle(bundle_path)
                             _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                               if bundle_path is not None:
                                 -> L#50 [return] (bundle_path, bundle_path.with_suffix(bundle_path.suffix + '.sha256'))  (common/scripts/bg_permissions_lib.py:68)
+```
+
+### L#51  [raise] RuntimeError('CLAUDE_PLUGIN_ROOT not set - bg_permissions_lib needs an explicit bundle_path when running outside Claude Code')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: _resolveBundle(bundle_path)
+                            _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                               if not plugin_root:
                                 -> L#51 [raise] RuntimeError('CLAUDE_PLUGIN_ROOT not set - bg_permissions_lib needs an explicit bundle_path when running outside Claude Code')  (common/scripts/bg_permissions_lib.py:71)
+```
+
+### L#52  [return] (Path(plugin_root) / _BUNDLE_RELPATH, Path(plugin_root) / _BUNDLE_SHA_RELPATH)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: _resolveBundle(bundle_path)
+                            _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                               -> L#52 [return] (Path(plugin_root) / _BUNDLE_RELPATH, Path(plugin_root) / _BUNDLE_SHA_RELPATH)  (common/scripts/bg_permissions_lib.py:75)
+```
+
+### L#53  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
                           call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
                             claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               if not Path(default).is_file() or not Path(default_sha_file).is_file():
@@ -229,888 +880,4450 @@ dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
                                   claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     if not log_file:
                                       -> L#53 [return]  (common/scripts/claude_lib.py:36)
-                                    try:
+```
+
+### L#54  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(default).is_file() or not Path(default_sha_file).is_file():
+                                call: claude_permseedLog(f'bundled permissions default missing at {default} - cannot seed', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     except OSError:
                                       -> L#54 [return]  (common/scripts/claude_lib.py:43)
+```
+
+### L#55  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(default).is_file() or not Path(default_sha_file).is_file():
+                                call: claude_permseedLog(f'bundled permissions default missing at {default} - cannot seed', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     -> L#55 [normal_fallthrough]  (common/scripts/claude_lib.py:39)
+```
+
+### L#56  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(default).is_file() or not Path(default_sha_file).is_file():
                                 -> L#56 [return]  (common/scripts/claude_lib.py:60)
+```
+
+### L#57  [return] parts[0] if parts else ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               call: _util_readFirstToken(default_sha_file)
                                 _util_readFirstToken()  [common/scripts/util_lib.py:364]
                                   -> L#57 [return] parts[0] if parts else ''  (common/scripts/util_lib.py:368)
+```
+
+### L#58  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               if not Path(installed).is_file():
                                 call: claude_permseedLog(f'seeded {installed} from bundled default (sha={current_default_sha})', log_file, log_prefix)
                                   claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     if not log_file:
                                       -> L#58 [return]  (common/scripts/claude_lib.py:36)
-                                    try:
+```
+
+### L#59  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(installed).is_file():
+                                call: claude_permseedLog(f'seeded {installed} from bundled default (sha={current_default_sha})', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     except OSError:
                                       -> L#59 [return]  (common/scripts/claude_lib.py:43)
+```
+
+### L#60  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(installed).is_file():
+                                call: claude_permseedLog(f'seeded {installed} from bundled default (sha={current_default_sha})', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     -> L#60 [normal_fallthrough]  (common/scripts/claude_lib.py:39)
+```
+
+### L#61  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if not Path(installed).is_file():
                                 -> L#61 [return]  (common/scripts/claude_lib.py:73)
+```
+
+### L#62  [return] h.hexdigest()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               try:
                                 call: _util_sha256File(installed)
                                   _util_sha256File()  [common/scripts/util_lib.py:371]
-                                    for chunk in iter(lambda: fh.read(65536), b''):
-                                      (pass-through loop)
                                     -> L#62 [return] h.hexdigest()  (common/scripts/util_lib.py:376)
-                              except OSError:
+```
+
+### L#63  [return] parts[0] if parts else ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               call: _util_readFirstToken(prior_sha_file)
                                 _util_readFirstToken()  [common/scripts/util_lib.py:364]
                                   -> L#63 [return] parts[0] if parts else ''  (common/scripts/util_lib.py:368)
+```
+
+### L#64  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               if installed_sha == current_default_sha:
                                 -> L#64 [return]  (common/scripts/claude_lib.py:83)
+```
+
+### L#65  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               if prior_sha and installed_sha == prior_sha:
                                 call: claude_permseedLog(f'upgraded {installed} to new bundled default (was {prior_sha}, now {current_default_sha})', log_file, log_prefix)
                                   claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     if not log_file:
                                       -> L#65 [return]  (common/scripts/claude_lib.py:36)
-                                    try:
+```
+
+### L#66  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if prior_sha and installed_sha == prior_sha:
+                                call: claude_permseedLog(f'upgraded {installed} to new bundled default (was {prior_sha}, now {current_default_sha})', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     except OSError:
                                       -> L#66 [return]  (common/scripts/claude_lib.py:43)
+```
+
+### L#67  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if prior_sha and installed_sha == prior_sha:
+                                call: claude_permseedLog(f'upgraded {installed} to new bundled default (was {prior_sha}, now {current_default_sha})', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     -> L#67 [normal_fallthrough]  (common/scripts/claude_lib.py:39)
+```
+
+### L#68  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if prior_sha and installed_sha == prior_sha:
                                 -> L#68 [return]  (common/scripts/claude_lib.py:95)
+```
+
+### L#69  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               if prior_sha != current_default_sha:
                                 call: claude_permseedLog(f'{installed} is user-edited; bundled default updated - diff manually. installed_sha={installed_sha} prior_sha={prior_sha} current_default_sha={current_default_sha}', log_file, log_prefix)
                                   claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     if not log_file:
                                       -> L#69 [return]  (common/scripts/claude_lib.py:36)
-                                    try:
+```
+
+### L#70  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if prior_sha != current_default_sha:
+                                call: claude_permseedLog(f'{installed} is user-edited; bundled default updated - diff manually. installed_sha={installed_sha} prior_sha={prior_sha} current_default_sha={current_default_sha}', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     except OSError:
                                       -> L#70 [return]  (common/scripts/claude_lib.py:43)
+```
+
+### L#71  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
+                              if prior_sha != current_default_sha:
+                                call: claude_permseedLog(f'{installed} is user-edited; bundled default updated - diff manually. installed_sha={installed_sha} prior_sha={prior_sha} current_default_sha={current_default_sha}', log_file, log_prefix)
+                                  claude_permseedLog()  [common/scripts/claude_lib.py:34]
                                     -> L#71 [normal_fallthrough]  (common/scripts/claude_lib.py:39)
+```
+
+### L#72  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
+                          call: claude_seedPermissions(str(installed_path), str(bundle_json), str(bundle_sha), str(prior_sha_path), log_file, 'bg_agent_permissions')
+                            claude_seedPermissions()  [common/scripts/claude_lib.py:46]
                               -> L#72 [normal_fallthrough]  (common/scripts/claude_lib.py:97)
+```
+
+### L#73  [return] installed_path
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      call: _seedIfNeeded(bundle_path)
+                        _seedIfNeeded()  [common/scripts/bg_permissions_lib.py:95]
                           -> L#73 [return] installed_path  (common/scripts/bg_permissions_lib.py:108)
-                      try:
+```
+
+### L#74  [return] (bundle_path, bundle_path.with_suffix(bundle_path.suffix + '.sha256'))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
                       except (OSError, json.JSONDecodeError):
                         call: _resolveBundle(bundle_path)
                           _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                             if bundle_path is not None:
                               -> L#74 [return] (bundle_path, bundle_path.with_suffix(bundle_path.suffix + '.sha256'))  (common/scripts/bg_permissions_lib.py:68)
+```
+
+### L#75  [raise] RuntimeError('CLAUDE_PLUGIN_ROOT not set - bg_permissions_lib needs an explicit bundle_path when running outside Claude Code')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      except (OSError, json.JSONDecodeError):
+                        call: _resolveBundle(bundle_path)
+                          _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                             if not plugin_root:
                               -> L#75 [raise] RuntimeError('CLAUDE_PLUGIN_ROOT not set - bg_permissions_lib needs an explicit bundle_path when running outside Claude Code')  (common/scripts/bg_permissions_lib.py:71)
+```
+
+### L#76  [return] (Path(plugin_root) / _BUNDLE_RELPATH, Path(plugin_root) / _BUNDLE_SHA_RELPATH)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
+                      except (OSError, json.JSONDecodeError):
+                        call: _resolveBundle(bundle_path)
+                          _resolveBundle()  [common/scripts/bg_permissions_lib.py:64]
                             -> L#76 [return] (Path(plugin_root) / _BUNDLE_RELPATH, Path(plugin_root) / _BUNDLE_SHA_RELPATH)  (common/scripts/bg_permissions_lib.py:75)
+```
+
+### L#77  [raise] KeyError(f"bg_agent_permissions: no '{key}' section in {installed_path}")
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
                       if key not in data:
                         -> L#77 [raise] KeyError(f"bg_agent_permissions: no '{key}' section in {installed_path}")  (common/scripts/bg_permissions_lib.py:130)
+```
+
+### L#78  [raise] KeyError(f"bg_agent_permissions: no '{worker}' sub-key under '{key}' in {installed_path}")
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
                       if worker not in section:
                         -> L#78 [raise] KeyError(f"bg_agent_permissions: no '{worker}' sub-key under '{key}' in {installed_path}")  (common/scripts/bg_permissions_lib.py:133)
+```
+
+### L#79  [return] section[worker]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
+                  call: _loadSection(tool, 'claude', bundle_path, log_file)
+                    _loadSection()  [common/scripts/bg_permissions_lib.py:111]
                       -> L#79 [return] section[worker]  (common/scripts/bg_permissions_lib.py:136)
+```
+
+### L#80  [return] out
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
                   call: _substituteTemplates(section.get('allow', []), env)
                     _substituteTemplates()  [common/scripts/bg_permissions_lib.py:139]
-                      for item in items:
-                        (pass-through loop)
                       -> L#80 [return] out  (common/scripts/bg_permissions_lib.py:153)
-                  if extra_allow:
+```
+
+### L#81  [return] json.dumps(expanded)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: bgPermissions_loadClaude('todo')
+                bgPermissions_loadClaude()  [common/scripts/bg_permissions_lib.py:156]
                   -> L#81 [return] json.dumps(expanded)  (common/scripts/bg_permissions_lib.py:168)
+```
+
+### L#82  [return] cmd + '\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: claude_buildCmd(str(settings_file), allow_json, str(hooks_json_file), cwd, repo_root)
                 claude_buildCmd()  [common/scripts/claude_lib.py:11]
-                  for extra in extra_dirs:
-                    (pass-through loop)
                   -> L#82 [return] cmd + '\n'  (common/scripts/claude_lib.py:31)
+```
+
+### L#83  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               try:
-                try:
-                except Exception:
                 call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
                   tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     call: tmux_hasSession(session)
                       tmux_hasSession()  [common/scripts/tmux_lib.py:73]
-                        [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:75)
-                        if result.returncode not in (0, 1):
                         -> L#83 [return] result.returncode  (common/scripts/tmux_lib.py:81)
+```
+
+### L#84  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     if tmux_hasSession(session) != 0:
                       call: tmux_newSession(session, '-n', window, '-c', cwd, keepalive_cmd)
                         tmux_newSession()  [common/scripts/tmux_lib.py:85]
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:87)
-                          if result.returncode != 0:
                           -> L#84 [return] result.returncode  (common/scripts/tmux_lib.py:93)
+```
+
+### L#85  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       call: tmux_setOptionForTarget(session, 'remain-on-exit', 'off')
                         tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           call: tmux_setOption('-t', target, name, value)
                             tmux_setOption()  [common/scripts/tmux_lib.py:44]
-                              [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:46)
-                              if result.returncode != 0:
-                              if result.stdout:
                               -> L#85 [return] result.returncode  (common/scripts/tmux_lib.py:54)
+```
+
+### L#86  [return] tmux_setOption('-t', target, name, value)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
+                      call: tmux_setOptionForTarget(session, 'remain-on-exit', 'off')
+                        tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           -> L#86 [return] tmux_setOption('-t', target, name, value)  (common/scripts/tmux_lib.py:59)
+```
+
+### L#87  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       call: tmux_setOptionForTarget(session, 'mouse', 'on')
                         tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           call: tmux_setOption('-t', target, name, value)
                             tmux_setOption()  [common/scripts/tmux_lib.py:44]
-                              [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:46)
-                              if result.returncode != 0:
-                              if result.stdout:
                               -> L#87 [return] result.returncode  (common/scripts/tmux_lib.py:54)
+```
+
+### L#88  [return] tmux_setOption('-t', target, name, value)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
+                      call: tmux_setOptionForTarget(session, 'mouse', 'on')
+                        tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           -> L#88 [return] tmux_setOption('-t', target, name, value)  (common/scripts/tmux_lib.py:59)
+```
+
+### L#89  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       call: tmux_setOptionForTarget(session, 'pane-border-status', 'top')
                         tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           call: tmux_setOption('-t', target, name, value)
                             tmux_setOption()  [common/scripts/tmux_lib.py:44]
-                              [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:46)
-                              if result.returncode != 0:
-                              if result.stdout:
                               -> L#89 [return] result.returncode  (common/scripts/tmux_lib.py:54)
+```
+
+### L#90  [return] tmux_setOption('-t', target, name, value)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
+                      call: tmux_setOptionForTarget(session, 'pane-border-status', 'top')
+                        tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           -> L#90 [return] tmux_setOption('-t', target, name, value)  (common/scripts/tmux_lib.py:59)
+```
+
+### L#91  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       call: tmux_setOptionForTarget(session, 'pane-border-format', ' #{pane_title} ')
                         tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           call: tmux_setOption('-t', target, name, value)
                             tmux_setOption()  [common/scripts/tmux_lib.py:44]
-                              [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:46)
-                              if result.returncode != 0:
-                              if result.stdout:
                               -> L#91 [return] result.returncode  (common/scripts/tmux_lib.py:54)
+```
+
+### L#92  [return] tmux_setOption('-t', target, name, value)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
+                      call: tmux_setOptionForTarget(session, 'pane-border-format', ' #{pane_title} ')
+                        tmux_setOptionForTarget()  [common/scripts/tmux_lib.py:58]
                           -> L#92 [return] tmux_setOption('-t', target, name, value)  (common/scripts/tmux_lib.py:59)
+```
+
+### L#93  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       call: tmux_setPaneTitle(f'{session}:{window}.0', keepalive_title)
                         tmux_setPaneTitle()  [common/scripts/tmux_lib.py:193]
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:195)
-                          if result.returncode != 0:
                           -> L#93 [return] result.returncode  (common/scripts/tmux_lib.py:201)
+```
+
+### L#94  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_hasSession(session) != 0:
                       -> L#94 [return] 0  (common/scripts/tmux_lib.py:416)
+```
+
+### L#95  [return] []
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     call: tmux_windowExists(session, window)
                       tmux_windowExists()  [common/scripts/tmux_lib.py:247]
                         call: tmux_listWindows(session_name, '-F', '#{window_name}')
                           tmux_listWindows()  [common/scripts/tmux_lib.py:231]
-                            if not extra_args:
-                            else: (of not extra_args)
-                            [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:236)
                             if result.returncode != 0:
                               -> L#95 [return] []  (common/scripts/tmux_lib.py:242)
+```
+
+### L#96  [return] [line for line in (result.stdout or '').split('\n') if line]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_windowExists(session, window)
+                      tmux_windowExists()  [common/scripts/tmux_lib.py:247]
+                        call: tmux_listWindows(session_name, '-F', '#{window_name}')
+                          tmux_listWindows()  [common/scripts/tmux_lib.py:231]
                             -> L#96 [return] [line for line in (result.stdout or '').split('\n') if line]  (common/scripts/tmux_lib.py:243)
+```
+
+### L#97  [return] 0 if window_name in windows else 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_windowExists(session, window)
+                      tmux_windowExists()  [common/scripts/tmux_lib.py:247]
                         -> L#97 [return] 0 if window_name in windows else 1  (common/scripts/tmux_lib.py:249)
+```
+
+### L#98  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     if tmux_windowExists(session, window) != 0:
                       call: tmux_newWindow(session, window, '-c', cwd, keepalive_cmd)
                         tmux_newWindow()  [common/scripts/tmux_lib.py:205]
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:207)
-                          if result.returncode != 0:
-                          if result.stdout:
                           -> L#98 [return] result.returncode  (common/scripts/tmux_lib.py:215)
+```
+
+### L#99  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_windowExists(session, window) != 0:
                       call: tmux_setPaneTitle(f'{session}:{window}.0', keepalive_title)
                         tmux_setPaneTitle()  [common/scripts/tmux_lib.py:193]
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:195)
-                          if result.returncode != 0:
                           -> L#99 [return] result.returncode  (common/scripts/tmux_lib.py:201)
+```
+
+### L#100  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    if tmux_windowExists(session, window) != 0:
                       -> L#100 [return] 0  (common/scripts/tmux_lib.py:421)
+```
+
+### L#101  [return] []
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
                       tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         call: tmux_paneHasTitle(target, title)
                           tmux_paneHasTitle()  [common/scripts/tmux_lib.py:253]
                             call: tmux_listPanes(target, '-F', '#{pane_title}')
                               tmux_listPanes()  [common/scripts/tmux_lib.py:163]
-                                if not extra_args:
-                                else: (of not extra_args)
-                                [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:168)
                                 if result.returncode != 0:
                                   -> L#101 [return] []  (common/scripts/tmux_lib.py:174)
+```
+
+### L#102  [return] [line for line in (result.stdout or '').split('\n') if line]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
+                        call: tmux_paneHasTitle(target, title)
+                          tmux_paneHasTitle()  [common/scripts/tmux_lib.py:253]
+                            call: tmux_listPanes(target, '-F', '#{pane_title}')
+                              tmux_listPanes()  [common/scripts/tmux_lib.py:163]
                                 -> L#102 [return] [line for line in (result.stdout or '').split('\n') if line]  (common/scripts/tmux_lib.py:175)
+```
+
+### L#103  [return] 0 if title in titles else 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
+                        call: tmux_paneHasTitle(target, title)
+                          tmux_paneHasTitle()  [common/scripts/tmux_lib.py:253]
                             -> L#103 [return] 0 if title in titles else 1  (common/scripts/tmux_lib.py:255)
+```
+
+### L#104  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         if tmux_paneHasTitle(target, title) == 0:
                           -> L#104 [return] None  (common/scripts/tmux_lib.py:393)
+```
+
+### L#105  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         call: tmux_splitWorkerPane(target, cwd, keepalive_cmd)
                           tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
-                            [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:358)
                             if result.returncode != 0:
                               -> L#105 [return] None  (common/scripts/tmux_lib.py:364)
+```
+
+### L#106  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
+                        call: tmux_splitWorkerPane(target, cwd, keepalive_cmd)
+                          tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
                             if not pane_id:
                               -> L#106 [return] None  (common/scripts/tmux_lib.py:367)
+```
+
+### L#107  [return] pane_id
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
+                        call: tmux_splitWorkerPane(target, cwd, keepalive_cmd)
+                          tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
                             -> L#107 [return] pane_id  (common/scripts/tmux_lib.py:368)
+```
+
+### L#108  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         if ka_id:
                           call: tmux_setPaneTitle(ka_id, title)
                             tmux_setPaneTitle()  [common/scripts/tmux_lib.py:193]
-                              [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:195)
-                              if result.returncode != 0:
                               -> L#108 [return] result.returncode  (common/scripts/tmux_lib.py:201)
+```
+
+### L#109  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         call: tmux_retile(target)
                           tmux_retile()  [common/scripts/tmux_lib.py:287]
                             call: tmux_selectLayout(target, 'tiled')
                               tmux_selectLayout()  [common/scripts/tmux_lib.py:273]
-                                [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:275)
-                                if result.returncode != 0:
-                                if result.stdout:
                                 -> L#109 [return] result.returncode  (common/scripts/tmux_lib.py:283)
+```
+
+### L#110  [return] tmux_selectLayout(target, 'tiled')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
+                        call: tmux_retile(target)
+                          tmux_retile()  [common/scripts/tmux_lib.py:287]
                             -> L#110 [return] tmux_selectLayout(target, 'tiled')  (common/scripts/tmux_lib.py:288)
+```
+
+### L#111  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
+                    call: tmux_ensureKeepalivePane(f'{session}:{window}', cwd, keepalive_cmd, keepalive_title)
+                      tmux_ensureKeepalivePane()  [common/scripts/tmux_lib.py:391]
                         -> L#111 [return] None  (common/scripts/tmux_lib.py:398)
+```
+
+### L#112  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_ensureSession('todo', 'todos', cwd, keepalive_cmd, 'todo: keepalive')
+                  tmux_ensureSession()  [common/scripts/tmux_lib.py:402]
                     -> L#112 [return] 0  (common/scripts/tmux_lib.py:424)
+```
+
+### L#113  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
                 call: tmux_splitWorkerPane('todo:todos', cwd, claude_cmd)
                   tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
-                    [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:358)
                     if result.returncode != 0:
                       -> L#113 [return] None  (common/scripts/tmux_lib.py:364)
+```
+
+### L#114  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_splitWorkerPane('todo:todos', cwd, claude_cmd)
+                  tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
                     if not pane_id:
                       -> L#114 [return] None  (common/scripts/tmux_lib.py:367)
+```
+
+### L#115  [return] pane_id
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_splitWorkerPane('todo:todos', cwd, claude_cmd)
+                  tmux_splitWorkerPane()  [common/scripts/tmux_lib.py:350]
                     -> L#115 [return] pane_id  (common/scripts/tmux_lib.py:368)
+```
+
+### L#116  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
                 if not pane_id:
                   -> L#116 [return] 1  (common/scripts/todo_lib.py:418)
+```
+
+### L#117  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
                 call: tmux_setPaneTitle(pane_id, pane_label)
                   tmux_setPaneTitle()  [common/scripts/tmux_lib.py:193]
-                    [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:195)
-                    if result.returncode != 0:
                     -> L#117 [return] result.returncode  (common/scripts/tmux_lib.py:201)
+```
+
+### L#118  [return] result.returncode
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
                 call: tmux_retile('todo:todos')
                   tmux_retile()  [common/scripts/tmux_lib.py:287]
                     call: tmux_selectLayout(target, 'tiled')
                       tmux_selectLayout()  [common/scripts/tmux_lib.py:273]
-                        [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:275)
-                        if result.returncode != 0:
-                        if result.stdout:
                         -> L#118 [return] result.returncode  (common/scripts/tmux_lib.py:283)
+```
+
+### L#119  [return] tmux_selectLayout(target, 'tiled')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              try:
+                call: tmux_retile('todo:todos')
+                  tmux_retile()  [common/scripts/tmux_lib.py:287]
                     -> L#119 [return] tmux_selectLayout(target, 'tiled')  (common/scripts/tmux_lib.py:288)
+```
+
+### L#120  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               except Exception:
                 -> L#120 [return] 1  (common/scripts/todo_lib.py:429)
+```
+
+### L#121  [raise] ValueError('terminal_spawnIfNeeded: session name required')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               call: terminal_spawnIfNeeded('todo', log_file, 'todo')
                 terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   if not session:
                     -> L#121 [raise] ValueError('terminal_spawnIfNeeded: session name required')  (common/scripts/util_lib.py:182)
+```
+
+### L#122  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   call: _terminal_listTmuxClients(session)
                     _terminal_listTmuxClients()  [common/scripts/util_lib.py:256]
                       try:
-                        subproc: tmux list-clients [blocking subproc]
                         if result.returncode != 0:
                           -> L#122 [return] ''  (common/scripts/util_lib.py:265)
+```
+
+### L#123  [return] result.stdout
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  call: _terminal_listTmuxClients(session)
+                    _terminal_listTmuxClients()  [common/scripts/util_lib.py:256]
+                      try:
                         -> L#123 [return] result.stdout  (common/scripts/util_lib.py:266)
+```
+
+### L#124  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  call: _terminal_listTmuxClients(session)
+                    _terminal_listTmuxClients()  [common/scripts/util_lib.py:256]
                       except (OSError, FileNotFoundError):
                         -> L#124 [return] ''  (common/scripts/util_lib.py:268)
+```
+
+### L#125  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   if clients.strip():
                     -> L#125 [return] 0  (common/scripts/util_lib.py:186)
+```
+
+### L#126  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   if sys.platform == 'darwin':
                     if shutil.which('osascript') is None:
                       call: _terminal_appendAdvisory(log_file, log_prefix, session)
                         _terminal_appendAdvisory()  [common/scripts/util_lib.py:287]
                           if not log_file or log_file == '/dev/null':
                             -> L#126 [return]  (common/scripts/util_lib.py:289)
+```
+
+### L#127  [return] datetime.now().astimezone().replace(microsecond=0).isoformat()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    if shutil.which('osascript') is None:
+                      call: _terminal_appendAdvisory(log_file, log_prefix, session)
+                        _terminal_appendAdvisory()  [common/scripts/util_lib.py:287]
                           try:
                             call: _terminal_isoNow()
                               _terminal_isoNow()  [common/scripts/util_lib.py:283]
                                 -> L#127 [return] datetime.now().astimezone().replace(microsecond=0).isoformat()  (common/scripts/util_lib.py:284)
+```
+
+### L#128  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    if shutil.which('osascript') is None:
+                      call: _terminal_appendAdvisory(log_file, log_prefix, session)
+                        _terminal_appendAdvisory()  [common/scripts/util_lib.py:287]
                           except OSError:
                             -> L#128 [return]  (common/scripts/util_lib.py:297)
+```
+
+### L#129  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    if shutil.which('osascript') is None:
+                      call: _terminal_appendAdvisory(log_file, log_prefix, session)
+                        _terminal_appendAdvisory()  [common/scripts/util_lib.py:287]
                           -> L#129 [normal_fallthrough]  (common/scripts/util_lib.py:290)
+```
+
+### L#130  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    if shutil.which('osascript') is None:
                       -> L#130 [return] 0  (common/scripts/util_lib.py:191)
+```
+
+### L#131  [return] '\ntell application "Finder"\n  set screenBounds to bounds of window of desktop\nend tell\ntell application "Terminal"\n  set bounds of front window to screenBounds\nend tell'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
                     call: _terminal_buildOsascript(session, maximize)
                       _terminal_buildOsascript()  [common/scripts/util_lib.py:271]
                         call: _terminal_maximizeBlock(maximize)
                           _terminal_maximizeBlock()  [common/scripts/util_lib.py:313]
                             if maximize == 'yes':
                               -> L#131 [return] '\ntell application "Finder"\n  set screenBounds to bounds of window of desktop\nend tell\ntell application "Terminal"\n  set bounds of front window to screenBounds\nend tell'  (common/scripts/util_lib.py:315)
+```
+
+### L#132  [return] '\ntell application "Finder"\n  set screenBounds to bounds of window of desktop\nend tell\nset sx to item 1 of screenBounds\nset sy to item 2 of screenBounds\nset ex to item 3 of screenBounds\nset ey to item 4 of screenBounds\nset winW to 1000\nset winH to 700\nset winX to sx + ((ex - sx - winW) div 2)\nset winY to sy + ((ey - sy - winH) div 2)\ntell application "Terminal"\n  set bounds of front window to {winX, winY, winX + winW, winY + winH}\nend tell'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    call: _terminal_buildOsascript(session, maximize)
+                      _terminal_buildOsascript()  [common/scripts/util_lib.py:271]
+                        call: _terminal_maximizeBlock(maximize)
+                          _terminal_maximizeBlock()  [common/scripts/util_lib.py:313]
                             if maximize == 'compact':
                               -> L#132 [return] '\ntell application "Finder"\n  set screenBounds to bounds of window of desktop\nend tell\nset sx to item 1 of screenBounds\nset sy to item 2 of screenBounds\nset ex to item 3 of screenBounds\nset ey to item 4 of screenBounds\nset winW to 1000\nset winH to 700\nset winX to sx + ((ex - sx - winW) div 2)\nset winY to sy + ((ey - sy - winH) div 2)\ntell application "Terminal"\n  set bounds of front window to {winX, winY, winX + winW, winY + winH}\nend tell'  (common/scripts/util_lib.py:324)
+```
+
+### L#133  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    call: _terminal_buildOsascript(session, maximize)
+                      _terminal_buildOsascript()  [common/scripts/util_lib.py:271]
+                        call: _terminal_maximizeBlock(maximize)
+                          _terminal_maximizeBlock()  [common/scripts/util_lib.py:313]
                             -> L#133 [return] ''  (common/scripts/util_lib.py:340)
+```
+
+### L#134  [return] f'if application "Terminal" is running then\n  tell application "Terminal" to do script "tmux attach -t {session}"\nelse\n  tell application "Terminal"\n    do script "tmux attach -t {session}" in window 1\n  end tell\nend if{_terminal_maximizeBlock(maximize)}'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
+                    call: _terminal_buildOsascript(session, maximize)
+                      _terminal_buildOsascript()  [common/scripts/util_lib.py:271]
                         -> L#134 [return] f'if application "Terminal" is running then\n  tell application "Terminal" to do script "tmux attach -t {session}"\nelse\n  tell application "Terminal"\n    do script "tmux attach -t {session}" in window 1\n  end tell\nend if{_terminal_maximizeBlock(maximize)}'  (common/scripts/util_lib.py:272)
-                    try:
-                      subproc: osascript [FaF subproc]
-                      try:
-                      finally:
-                    except (OSError, subprocess.SubprocessError):
+```
+
+### L#135  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  if sys.platform == 'darwin':
                     -> L#135 [return] 0  (common/scripts/util_lib.py:213)
+```
+
+### L#136  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   call: _terminal_appendNonDarwinAdvisory(log_file, log_prefix, session)
                     _terminal_appendNonDarwinAdvisory()  [common/scripts/util_lib.py:300]
                       if not log_file or log_file == '/dev/null':
                         -> L#136 [return]  (common/scripts/util_lib.py:302)
+```
+
+### L#137  [return] datetime.now().astimezone().replace(microsecond=0).isoformat()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  call: _terminal_appendNonDarwinAdvisory(log_file, log_prefix, session)
+                    _terminal_appendNonDarwinAdvisory()  [common/scripts/util_lib.py:300]
                       try:
                         call: _terminal_isoNow()
                           _terminal_isoNow()  [common/scripts/util_lib.py:283]
                             -> L#137 [return] datetime.now().astimezone().replace(microsecond=0).isoformat()  (common/scripts/util_lib.py:284)
+```
+
+### L#138  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  call: _terminal_appendNonDarwinAdvisory(log_file, log_prefix, session)
+                    _terminal_appendNonDarwinAdvisory()  [common/scripts/util_lib.py:300]
                       except OSError:
                         -> L#138 [return]  (common/scripts/util_lib.py:310)
+```
+
+### L#139  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
+                  call: _terminal_appendNonDarwinAdvisory(log_file, log_prefix, session)
+                    _terminal_appendNonDarwinAdvisory()  [common/scripts/util_lib.py:300]
                       -> L#139 [normal_fallthrough]  (common/scripts/util_lib.py:303)
+```
+
+### L#140  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
+              call: terminal_spawnIfNeeded('todo', log_file, 'todo')
+                terminal_spawnIfNeeded()  [common/scripts/util_lib.py:175]
                   -> L#140 [return] 0  (common/scripts/util_lib.py:216)
+```
+
+### L#141  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-launcher'] -> todo_launcher()
+            todo_launcher()  [common/scripts/todo_lib.py:258]
               -> L#141 [return] 0  (common/scripts/todo_lib.py:432)
+```
+
+### L#142  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['todo-stop'] -> todo_stop()
             todo_stop()  [common/scripts/todo_lib.py:435]
               if not input_file or not tmpdir_inv or (not state_dir):
                 -> L#142 [return] 0  (common/scripts/todo_lib.py:462)
-              for _ in range(_SIDECAR_RETRIES):
-                (pass-through loop)
-                if target_file.is_file() and target_file.stat().st_size > 0:
-                  if first and first[0].strip():
+```
+
+### L#143  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
               if not tmux_target:
                 -> L#143 [return] 0  (common/scripts/todo_lib.py:477)
-              if inp.is_file():
-                if first_line.startswith('PROCESSED:'):
-                  try:
-                  except FileNotFoundError:
-                else: (of first_line.startswith('PROCESSED:'))
-              else: (of inp.is_file())
+```
+
+### L#144  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
               call: jot_rotateAudit(audit_path, _AUDIT_MAX_LINES)
                 jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   if not path.is_file():
                     -> L#144 [return] None  (common/scripts/jot_lib.py:88)
-                  for _ in fh:
-                    (pass-through loop)
+```
+
+### L#145  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
+              call: jot_rotateAudit(audit_path, _AUDIT_MAX_LINES)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   if line_count <= max_lines:
                     -> L#145 [return] None  (common/scripts/jot_lib.py:94)
-                  for raw in fh:
-                    (pass-through loop)
-                  try:
-                    for raw in tail:
-                      (pass-through loop)
+```
+
+### L#146  [raise] (re-raise)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
+              call: jot_rotateAudit(audit_path, _AUDIT_MAX_LINES)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   except BaseException:
-                    try:
-                    except FileNotFoundError:
                     -> L#146 [raise] (re-raise)  (common/scripts/jot_lib.py:110)
+```
+
+### L#147  [return] None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
+              call: jot_rotateAudit(audit_path, _AUDIT_MAX_LINES)
+                jot_rotateAudit()  [common/scripts/jot_lib.py:85]
                   -> L#147 [return] None  (common/scripts/jot_lib.py:111)
+```
+
+### L#148  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-stop'] -> todo_stop()
+            todo_stop()  [common/scripts/todo_lib.py:435]
               -> L#148 [return] 0  (common/scripts/todo_lib.py:528)
+```
+
+### L#149  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
             todo_sessionStart()  [common/scripts/todo_lib.py:531]
               if not input_file or not tmpdir_inv:
                 -> L#149 [return] 0  (common/scripts/todo_lib.py:544)
-              for _ in range(_POLL_ATTEMPTS):
-                (pass-through loop)
-                if target_file.is_file() and target_file.stat().st_size > 0:
-                  if first_line:
+```
+
+### L#150  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
               if not tmux_target:
                 -> L#150 [return] 0  (common/scripts/todo_lib.py:559)
+```
+
+### L#151  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
               call: tmux_waitForClaudeReadiness(tmux_target)
                 tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
                   for _ in range(max_attempts):
                     try:
                       call: tmux_capturePane(pane_id, 5)
                         tmux_capturePane()  [common/scripts/tmux_lib.py:148]
-                          if scrollback_lines is not None:
-                          [blocking subproc] <unresolved argv>  (common/scripts/tmux_lib.py:152)
                           if result.returncode != 0:
                             -> L#151 [return] ''  (common/scripts/tmux_lib.py:158)
+```
+
+### L#152  [return] result.stdout or ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
+                  for _ in range(max_attempts):
+                    try:
+                      call: tmux_capturePane(pane_id, 5)
+                        tmux_capturePane()  [common/scripts/tmux_lib.py:148]
                           -> L#152 [return] result.stdout or ''  (common/scripts/tmux_lib.py:159)
-                    except Exception:
+```
+
+### L#153  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
+                  for _ in range(max_attempts):
                     if ready_glyph in (content or ''):
                       -> L#153 [return] 0  (common/scripts/tmux_lib.py:381)
-                    for _ in range(max_attempts): (loop exhausted)
+```
+
+### L#154  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
+              call: tmux_waitForClaudeReadiness(tmux_target)
+                tmux_waitForClaudeReadiness()  [common/scripts/tmux_lib.py:372]
                   -> L#154 [return] 1  (common/scripts/tmux_lib.py:387)
+```
+
+### L#155  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
               if tmux_waitForClaudeReadiness(tmux_target) != 0:
                 -> L#155 [return] 1  (common/scripts/todo_lib.py:564)
+```
+
+### L#156  [return] tmux_lib.tmux_sendAndSubmit(pane_target, prompt)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
               call: jot_sendPrompt(tmux_target, input_file)
                 jot_sendPrompt()  [common/scripts/todo_lib.py:44]
                   call: _impl(tmux_target, input_file)
                     jot_sendPrompt()  [common/scripts/jot_lib.py:79]
                       -> L#156 [return] tmux_lib.tmux_sendAndSubmit(pane_target, prompt)  (common/scripts/jot_lib.py:81)
+```
+
+### L#157  [return] _impl(tmux_target, input_file)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
+              call: jot_sendPrompt(tmux_target, input_file)
+                jot_sendPrompt()  [common/scripts/todo_lib.py:44]
                   -> L#157 [return] _impl(tmux_target, input_file)  (common/scripts/todo_lib.py:46)
+```
+
+### L#158  [return] jot_sendPrompt(tmux_target, input_file)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-start'] -> todo_sessionStart()
+            todo_sessionStart()  [common/scripts/todo_lib.py:531]
               -> L#158 [return] jot_sendPrompt(tmux_target, input_file)  (common/scripts/todo_lib.py:567)
+```
+
+### L#159  [return]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['todo-session-end'] -> todo_sessionEnd()
             todo_sessionEnd()  [common/scripts/todo_lib.py:235]
               if not any((tmpdir_inv.startswith(prefix) for prefix in _VALID_PREFIXES)):
                 -> L#159 [return]  (common/scripts/todo_lib.py:253)
+```
+
+### L#160  [normal_fallthrough]
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['todo-session-end'] -> todo_sessionEnd()
+            todo_sessionEnd()  [common/scripts/todo_lib.py:235]
               -> L#160 [normal_fallthrough]  (common/scripts/todo_lib.py:255)
+```
+
+### L#161  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
             plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
               if not repo or not branch or (not output_file):
                 -> L#161 [return] 0  (common/scripts/plate_dispatcher.py:44)
+```
+
+### L#162  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
               if not Path(output_file).is_file():
                 -> L#162 [return] 0  (common/scripts/plate_dispatcher.py:48)
-              if plate_log_env:
-              if Path(repo).is_dir():
-              else: (of Path(repo).is_dir())
-              try:
-              except OSError:
+```
+
+### L#163  [return] 'plate: usage: set-plate-summary <repo> <branch> <summary-file>'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
               try:
                 subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
                   plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
                     _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
                       if len(argv) != 3:
                         -> L#163 [return] 'plate: usage: set-plate-summary <repo> <branch> <summary-file>'  (common/scripts/plate/plate_cli.py:167)
+```
+
+### L#164  [return] ('', '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
                       call: plate_regenerateTipSummary(repo, branch)
                         plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: _parseAgentPayload(new_payload)
                             _parse_payload()  [common/scripts/plate/_rebase_reword_summary.py:120]
                               if not text.strip():
                                 -> L#164 [return] ('', '')  (common/scripts/plate/_rebase_reword_summary.py:129)
+```
+
+### L#165  [return] (subject, '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: _parseAgentPayload(new_payload)
+                            _parse_payload()  [common/scripts/plate/_rebase_reword_summary.py:120]
                               if blank_idx is None:
                                 -> L#165 [return] (subject, '')  (common/scripts/plate/_rebase_reword_summary.py:137)
+```
+
+### L#166  [return] (subject, body)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: _parseAgentPayload(new_payload)
+                            _parse_payload()  [common/scripts/plate/_rebase_reword_summary.py:120]
                               -> L#166 [return] (subject, body)  (common/scripts/plate/_rebase_reword_summary.py:139)
-                          if not body:
+```
+
+### L#167  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'rev-parse', plate_branch])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#167 [return] ''  (common/scripts/util_lib.py:41)
+```
+
+### L#168  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'rev-parse', plate_branch])
+                            run()  [common/scripts/util_lib.py:20]
                               -> L#168 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#169  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'log', '-1', '--format=%B', tip_sha])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#169 [return] ''  (common/scripts/util_lib.py:41)
+```
+
+### L#170  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'log', '-1', '--format=%B', tip_sha])
+                            run()  [common/scripts/util_lib.py:20]
                               -> L#170 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#171  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'rev-parse', f'{tip_sha}^{{tree}}'])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#171 [return] ''  (common/scripts/util_lib.py:41)
+```
+
+### L#172  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'rev-parse', f'{tip_sha}^{{tree}}'])
+                            run()  [common/scripts/util_lib.py:20]
                               -> L#172 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#173  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'rev-parse', f'{tip_sha}~1'])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#173 [return] ''  (common/scripts/util_lib.py:41)
+```
+
+### L#174  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'rev-parse', f'{tip_sha}~1'])
+                            run()  [common/scripts/util_lib.py:20]
                               -> L#174 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#175  [return] '\n'.join((line for line in message.splitlines() if not line.lstrip().lower().startswith('convo-summary:')))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: _stripSummaryTrailerFromMessage(tip_msg)
                             _strip_summary_trailer()  [common/scripts/plate/_rebase_reword_summary.py:78]
                               -> L#175 [return] '\n'.join((line for line in message.splitlines() if not line.lstrip().lower().startswith('convo-summary:')))  (common/scripts/plate/_rebase_reword_summary.py:80)
+```
+
+### L#176  [return] message
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           if subject:
                             call: _replaceCommitSubject(cleaned, subject)
                               _replace_subject()  [common/scripts/plate/_rebase_reword_summary.py:142]
-                                if len(new_subject) > 50:
                                 if not new_subject:
                                   -> L#176 [return] message  (common/scripts/plate/_rebase_reword_summary.py:155)
-                                for (i, line) in enumerate(lines):
-                                  (pass-through loop)
-                                  if stripped and (not stripped.startswith('#')):
-                                if message.endswith('\n') and (not rebuilt.endswith('\n')):
+```
+
+### L#177  [return] rebuilt
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          if subject:
+                            call: _replaceCommitSubject(cleaned, subject)
+                              _replace_subject()  [common/scripts/plate/_rebase_reword_summary.py:142]
                                 -> L#177 [return] rebuilt  (common/scripts/plate/_rebase_reword_summary.py:165)
+```
+
+### L#178  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: _appendSummaryTrailerToMessage(cleaned, trailer_body)
                             _append_summary_trailer()  [common/scripts/plate/_rebase_reword_summary.py:86]
-                              while content and content[-1].strip() == '':
-                                (pass-through loop)
                               call: _format_trailer_body(summary)
                                 _format_trailer_body()  [common/scripts/plate/_rebase_reword_summary.py:45]
                                   if not raw:
                                     -> L#178 [return] ''  (common/scripts/plate/_rebase_reword_summary.py:72)
+```
+
+### L#179  [return] '\n'.join([first] + rest)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: _appendSummaryTrailerToMessage(cleaned, trailer_body)
+                            _append_summary_trailer()  [common/scripts/plate/_rebase_reword_summary.py:86]
+                              call: _format_trailer_body(summary)
+                                _format_trailer_body()  [common/scripts/plate/_rebase_reword_summary.py:45]
                                   -> L#179 [return] '\n'.join([first] + rest)  (common/scripts/plate/_rebase_reword_summary.py:75)
-                              if comments:
-                              if not rebuilt.endswith('\n'):
+```
+
+### L#180  [return] rebuilt
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: _appendSummaryTrailerToMessage(cleaned, trailer_body)
+                            _append_summary_trailer()  [common/scripts/plate/_rebase_reword_summary.py:86]
                               -> L#180 [return] rebuilt  (common/scripts/plate/_rebase_reword_summary.py:117)
+```
+
+### L#181  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'commit-tree', tip_tree, '-p', tip_parent, COMMIT_MESSAGE_FLAG, new_msg])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#181 [return] ''  (common/scripts/util_lib.py:41)
+```
+
+### L#182  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'commit-tree', tip_tree, '-p', tip_parent, COMMIT_MESSAGE_FLAG, new_msg])
+                            run()  [common/scripts/util_lib.py:20]
                               -> L#182 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#183  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
                           call: run(['git', 'update-ref', f'refs/heads/{plate_branch}', new_tip_sha])
                             run()  [common/scripts/util_lib.py:20]
-                              if env is not None:
-                              [blocking subproc] <unresolved argv>  (common/scripts/util_lib.py:32)
                               if not capture:
                                 -> L#183 [return] ''  (common/scripts/util_lib.py:41)
-                              -> L#184 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
-                          -> L#185 [return] new_tip_sha  (common/scripts/plate/plate_lib.py:1305)
-                      -> L#186 [return] f'plate: summary written ({new_tip[:8]} on {branch}-plate)'  (common/scripts/plate/plate_cli.py:176)
-              except Exception:
+```
+
+### L#184  [return] (completed.stdout or '').strip()
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
               try:
-              except OSError:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          call: run(['git', 'update-ref', f'refs/heads/{plate_branch}', new_tip_sha])
+                            run()  [common/scripts/util_lib.py:20]
+                              -> L#184 [return] (completed.stdout or '').strip()  (common/scripts/util_lib.py:42)
+```
+
+### L#185  [return] new_tip_sha
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      call: plate_regenerateTipSummary(repo, branch)
+                        plate_regenerateTipSummary()  [common/scripts/plate/plate_lib.py:1250]
+                          -> L#185 [return] new_tip_sha  (common/scripts/plate/plate_lib.py:1305)
+```
+
+### L#186  [return] f'plate: summary written ({new_tip[:8]} on {branch}-plate)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
+              try:
+                subproc: common/scripts/plate/plate_cli.py::main() [blocking subproc]
+                  plate_cli.py argv 'set-plate-summary' -> _cmd_set_plate_summary()
+                    _cmd_set_plate_summary()  [common/scripts/plate/plate_cli.py:151]
+                      -> L#186 [return] f'plate: summary written ({new_tip[:8]} on {branch}-plate)'  (common/scripts/plate/plate_cli.py:176)
+```
+
+### L#187  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-stop'] -> plate_summaryStop()
+            plate_summaryStop()  [common/scripts/plate_dispatcher.py:29]
               -> L#187 [return] 0  (common/scripts/plate_dispatcher.py:105)
+```
+
+### L#188  [return] out_path.stat().st_size > 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['plate-summary-watch'] -> plate_summaryWatch()
             plate_summaryWatch()  [common/scripts/plate_dispatcher.py:111]
-              if timeout is None:
-              if interval is None:
               while elapsed < timeout:
                 call: _ready()
                   _ready()  [common/scripts/plate_dispatcher.py:131]
                     try:
                       -> L#188 [return] out_path.stat().st_size > 0  (common/scripts/plate_dispatcher.py:133)
+```
+
+### L#189  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-watch'] -> plate_summaryWatch()
+            plate_summaryWatch()  [common/scripts/plate_dispatcher.py:111]
+              while elapsed < timeout:
+                call: _ready()
+                  _ready()  [common/scripts/plate_dispatcher.py:131]
                     except FileNotFoundError:
                       -> L#189 [return] False  (common/scripts/plate_dispatcher.py:135)
+```
+
+### L#190  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-watch'] -> plate_summaryWatch()
+            plate_summaryWatch()  [common/scripts/plate_dispatcher.py:111]
+              while elapsed < timeout:
                 if _ready():
-                  try:
-                  except Exception:
-                  try:
-                  except Exception:
                   -> L#190 [return] 0  (common/scripts/plate_dispatcher.py:150)
-                while elapsed < timeout: (loop exhausted)
+```
+
+### L#191  [return] 1
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['plate-summary-watch'] -> plate_summaryWatch()
+            plate_summaryWatch()  [common/scripts/plate_dispatcher.py:111]
               -> L#191 [return] 1  (common/scripts/plate_dispatcher.py:155)
+```
+
+### L#192  [raise] ValueError('SESSION required')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['debate-tmux-orchestrator'] -> debate_tmuxOrchestrator()
             debate_tmuxOrchestrator()  [common/scripts/debate_lib.py:1228]
               if not session:
                 -> L#192 [raise] ValueError('SESSION required')  (common/scripts/debate_lib.py:1270)
+```
+
+### L#193  [raise] ValueError('DEBATE_AGENTS env var required')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['debate-tmux-orchestrator'] -> debate_tmuxOrchestrator()
+            debate_tmuxOrchestrator()  [common/scripts/debate_lib.py:1228]
               if not resolved_agents:
                 -> L#193 [raise] ValueError('DEBATE_AGENTS env var required')  (common/scripts/debate_lib.py:1275)
-              try:
-              finally:
+```
+
+### L#194  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['debate-tmux-orchestrator'] -> debate_tmuxOrchestrator()
+            debate_tmuxOrchestrator()  [common/scripts/debate_lib.py:1228]
               -> L#194 [return] 0  (common/scripts/debate_lib.py:1295)
+```
+
+### L#195  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
           _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
             jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
-              if out_path is None:
-              try:
-                subproc: git -C [blocking subproc]
-              except FileNotFoundError:
               call: jot_diagSection('1. Latest Todos/*_input.txt')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#195 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#196  [return] candidates[0] if candidates else None
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: _util_ls_latest_input_txt(todos_dir)
                 _util_ls_latest_input_txt()  [common/scripts/util_lib.py:219]
                   -> L#196 [return] candidates[0] if candidates else None  (common/scripts/util_lib.py:222)
-              if latest is None:
+```
+
+### L#197  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               else: (of latest is None)
                 call: jot_diagKv('path', str(latest))
                   jot_diagKv()  [common/scripts/jot_lib.py:278]
                     -> L#197 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
-                try:
-                except OSError:
+```
+
+### L#198  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 call: jot_diagKv('size (bytes)', str(size))
                   jot_diagKv()  [common/scripts/jot_lib.py:278]
                     -> L#198 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
-                try:
-                except OSError:
+```
+
+### L#199  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 call: jot_diagKv('mtime', mtime)
                   jot_diagKv()  [common/scripts/jot_lib.py:278]
                     -> L#199 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
-                try:
-                except OSError:
+```
+
+### L#200  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 call: jot_diagKv('first line', first_line)
                   jot_diagKv()  [common/scripts/jot_lib.py:278]
                     -> L#200 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#201  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 if first_line.startswith('PROCESSED:'):
                   call: jot_diagKv('status', 'PROCESSED (success)')
                     jot_diagKv()  [common/scripts/jot_lib.py:278]
                       -> L#201 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#202  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 if first_line == '# Jot Task':
                   call: jot_diagKv('status', "PENDING (claude hasn't finished OR failed)")
                     jot_diagKv()  [common/scripts/jot_lib.py:278]
                       -> L#202 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#203  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of latest is None)
                 else: (of first_line == '# Jot Task')
                   call: jot_diagKv('status', '? unknown first-line format')
                     jot_diagKv()  [common/scripts/jot_lib.py:278]
                       -> L#203 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#204  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection(f'2. State dir ({state_dir})')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#204 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
-              if not state_dir.is_dir():
+```
+
+### L#205  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               else: (of not state_dir.is_dir())
-                try:
-                  subproc: ls -la [blocking subproc]
-                except FileNotFoundError:
                 call: jot_diagIndent(ls_out)
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#205 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#206  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                call: jot_diagIndent(ls_out)
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#206 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#207  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
                 if queue_file.exists():
                   if queue_file.stat().st_size > 0:
                     call: jot_diagIndent(queue_file.read_text(errors='replace'))
                       jot_diagIndent()  [common/scripts/jot_lib.py:268]
                         if not text:
                           -> L#207 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#208  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                if queue_file.exists():
+                  if queue_file.stat().st_size > 0:
+                    call: jot_diagIndent(queue_file.read_text(errors='replace'))
+                      jot_diagIndent()  [common/scripts/jot_lib.py:268]
                         -> L#208 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
-                  else: (of queue_file.stat().st_size > 0)
-                else: (of queue_file.exists())
+```
+
+### L#209  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
                 if active_file.exists():
                   if active_file.stat().st_size > 0:
                     call: jot_diagIndent(active_file.read_text(errors='replace'))
                       jot_diagIndent()  [common/scripts/jot_lib.py:268]
                         if not text:
                           -> L#209 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#210  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                if active_file.exists():
+                  if active_file.stat().st_size > 0:
+                    call: jot_diagIndent(active_file.read_text(errors='replace'))
+                      jot_diagIndent()  [common/scripts/jot_lib.py:268]
                         -> L#210 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
-                  else: (of active_file.stat().st_size > 0)
-                else: (of active_file.exists())
+```
+
+### L#211  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
                 if audit_file.exists():
                   call: jot_diagIndent(_util_tail_lines(audit_file, 30))
                     jot_diagIndent()  [common/scripts/jot_lib.py:268]
                       if not text:
                         -> L#211 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#212  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                if audit_file.exists():
+                  call: jot_diagIndent(_util_tail_lines(audit_file, 30))
+                    jot_diagIndent()  [common/scripts/jot_lib.py:268]
                       -> L#212 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#213  [return] ''.join(lines[-n:])
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                if audit_file.exists():
                   call: _util_tail_lines(audit_file, 30)
                     _util_tail_lines()  [common/scripts/util_lib.py:226]
                       try:
                         -> L#213 [return] ''.join(lines[-n:])  (common/scripts/util_lib.py:231)
+```
+
+### L#214  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not state_dir.is_dir())
+                if audit_file.exists():
+                  call: _util_tail_lines(audit_file, 30)
+                    _util_tail_lines()  [common/scripts/util_lib.py:226]
                       except OSError:
                         -> L#214 [return] ''  (common/scripts/util_lib.py:233)
-                else: (of audit_file.exists())
-                if lock_path.exists() or lock_path.is_symlink():
-                else: (of lock_path.exists() or lock_path.is_symlink())
+```
+
+### L#215  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection("3. tmux session 'jot'")
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#215 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#216  [return] result.returncode == 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: _tmux_session_exists('jot')
                 _tmux_session_exists()  [common/scripts/tmux_lib.py:456]
                   try:
-                    subproc: tmux has-session [blocking subproc]
                     -> L#216 [return] result.returncode == 0  (common/scripts/tmux_lib.py:462)
+```
+
+### L#217  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              call: _tmux_session_exists('jot')
+                _tmux_session_exists()  [common/scripts/tmux_lib.py:456]
                   except FileNotFoundError:
                     -> L#217 [return] False  (common/scripts/tmux_lib.py:464)
-              if not _tmux_session_exists('jot'):
+```
+
+### L#218  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('list-sessions')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#218 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#219  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('list-sessions')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#219 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
+```
+
+### L#220  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: jot_diagIndent(jot_sessions + '\n')
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#220 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#221  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: jot_diagIndent(jot_sessions + '\n')
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#221 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#222  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: jot_diagIndent(_tmux_run('list-windows', '-t', 'jot') + '\n')
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#222 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#223  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: jot_diagIndent(_tmux_run('list-windows', '-t', 'jot') + '\n')
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#223 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#224  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('list-windows', '-t', 'jot')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#224 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#225  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('list-windows', '-t', 'jot')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#225 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
+```
+
+### L#226  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: jot_diagIndent(_tmux_run('list-panes', '-t', tmux_target, '-F', '#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}') + '\n')
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#226 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#227  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: jot_diagIndent(_tmux_run('list-panes', '-t', tmux_target, '-F', '#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}') + '\n')
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#227 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#228  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('list-panes', '-t', tmux_target, '-F', '#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#228 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#229  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('list-panes', '-t', tmux_target, '-F', '#{pane_id} pid=#{pane_pid} dead=#{pane_dead} deadstatus=#{pane_dead_status} cmd=#{pane_current_command}')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#229 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
+```
+
+### L#230  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: jot_diagIndent(_tmux_run('display-message', '-t', tmux_target, '-p', 'start: #{pane_start_command}') + '\n')
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#230 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#231  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: jot_diagIndent(_tmux_run('display-message', '-t', tmux_target, '-p', 'start: #{pane_start_command}') + '\n')
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#231 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#232  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('display-message', '-t', tmux_target, '-p', 'start: #{pane_start_command}')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#232 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#233  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('display-message', '-t', tmux_target, '-p', 'start: #{pane_start_command}')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#233 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
+```
+
+### L#234  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('list-clients', '-t', 'jot')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#234 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#235  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('list-clients', '-t', 'jot')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#235 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
-                if not clients.strip():
+```
+
+### L#236  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 else: (of not clients.strip())
                   call: jot_diagIndent(clients + '\n')
                     jot_diagIndent()  [common/scripts/jot_lib.py:268]
                       if not text:
                         -> L#236 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#237  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                else: (of not clients.strip())
+                  call: jot_diagIndent(clients + '\n')
+                    jot_diagIndent()  [common/scripts/jot_lib.py:268]
                       -> L#237 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#238  [return] (result.stdout + result.stderr).rstrip('\n')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: _tmux_run('capture-pane', '-p', '-t', tmux_target, '-S', '-80')
                   _tmux_run()  [common/scripts/tmux_lib.py:443]
                     try:
-                      subproc: tmux [blocking subproc]
                       -> L#238 [return] (result.stdout + result.stderr).rstrip('\n')  (common/scripts/tmux_lib.py:451)
+```
+
+### L#239  [return] '(tmux not found)'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: _tmux_run('capture-pane', '-p', '-t', tmux_target, '-S', '-80')
+                  _tmux_run()  [common/scripts/tmux_lib.py:443]
                     except FileNotFoundError:
                       -> L#239 [return] '(tmux not found)'  (common/scripts/tmux_lib.py:453)
+```
+
+### L#240  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
                 call: jot_diagIndent(pane_content + '\n')
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#240 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#241  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              else: (of not _tmux_session_exists('jot'))
+                call: jot_diagIndent(pane_content + '\n')
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#241 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#242  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection('4. /tmp/jot.* per-invocation dirs')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#242 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#243  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               for d in sorted(Path('/tmp').glob('jot.*')):
                 (pass-through loop)
-                if not d.is_dir():
-                try:
-                  subproc: ls -la [blocking subproc]
-                except FileNotFoundError:
-                call: jot_diagIndent(ls_out)
-                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
-                    if not text:
-                      -> L#243 [return] text  (common/scripts/jot_lib.py:270)
-                    -> L#244 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
-                if settings.exists():
-                  call: jot_diagIndent(settings.read_text(errors='replace'))
+                  call: jot_diagIndent(ls_out)
                     jot_diagIndent()  [common/scripts/jot_lib.py:268]
                       if not text:
-                        -> L#245 [return] text  (common/scripts/jot_lib.py:270)
-                      -> L#246 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
-              if not found_tmp:
+                        -> L#243 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#244  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              for d in sorted(Path('/tmp').glob('jot.*')):
+                (pass-through loop)
+                  call: jot_diagIndent(ls_out)
+                    jot_diagIndent()  [common/scripts/jot_lib.py:268]
+                      -> L#244 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#245  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              for d in sorted(Path('/tmp').glob('jot.*')):
+                (pass-through loop)
+                  if settings.exists():
+                    call: jot_diagIndent(settings.read_text(errors='replace'))
+                      jot_diagIndent()  [common/scripts/jot_lib.py:268]
+                        if not text:
+                          -> L#245 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#246  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              for d in sorted(Path('/tmp').glob('jot.*')):
+                (pass-through loop)
+                  if settings.exists():
+                    call: jot_diagIndent(settings.read_text(errors='replace'))
+                      jot_diagIndent()  [common/scripts/jot_lib.py:268]
+                        -> L#246 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#247  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection(f'5. {log_file_path} (last 20 entries)')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#247 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#248  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               if log_path.exists():
                 call: jot_diagIndent(_util_tail_lines(log_path, 20))
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#248 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#249  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              if log_path.exists():
+                call: jot_diagIndent(_util_tail_lines(log_path, 20))
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#249 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
+```
+
+### L#250  [return] ''.join(lines[-n:])
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              if log_path.exists():
                 call: _util_tail_lines(log_path, 20)
                   _util_tail_lines()  [common/scripts/util_lib.py:226]
                     try:
                       -> L#250 [return] ''.join(lines[-n:])  (common/scripts/util_lib.py:231)
+```
+
+### L#251  [return] ''
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              if log_path.exists():
+                call: _util_tail_lines(log_path, 20)
+                  _util_tail_lines()  [common/scripts/util_lib.py:226]
                     except OSError:
                       -> L#251 [return] ''  (common/scripts/util_lib.py:233)
-              else: (of log_path.exists())
+```
+
+### L#252  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection('6. Todos/ directory listing (newest first)')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#252 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#253  [return] text
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               if todos_dir.is_dir():
-                try:
-                  subproc: ls -lat [blocking subproc]
-                except FileNotFoundError:
                 call: jot_diagIndent(head_20)
                   jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     if not text:
                       -> L#253 [return] text  (common/scripts/jot_lib.py:270)
+```
+
+### L#254  [return] indented + ('\n' if had_trailing_nl else '')
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              if todos_dir.is_dir():
+                call: jot_diagIndent(head_20)
+                  jot_diagIndent()  [common/scripts/jot_lib.py:268]
                     -> L#254 [return] indented + ('\n' if had_trailing_nl else '')  (common/scripts/jot_lib.py:274)
-              else: (of todos_dir.is_dir())
+```
+
+### L#255  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection('7. Installed plugin orchestrator path')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#255 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#256  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               for p_str in [os.path.join(plugin_root, 'scripts/jot_plugin_orchestrator.py'), os.path.join(plugin_root, 'scripts'), os.path.join(plugin_root, 'hooks/hooks.json')]:
                 (pass-through loop)
-                if p.is_symlink():
-                  call: jot_diagKv(p_str, f'-> {os.readlink(p_str)}')
-                    jot_diagKv()  [common/scripts/jot_lib.py:278]
-                      -> L#256 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
-                if p.exists():
-                  try:
-                  except OSError:
-                  call: jot_diagKv(p_str, f'present ({size} bytes)')
-                    jot_diagKv()  [common/scripts/jot_lib.py:278]
-                      -> L#257 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
-                else: (of p.exists())
-                  call: jot_diagKv(p_str, 'MISSING')
-                    jot_diagKv()  [common/scripts/jot_lib.py:278]
-                      -> L#258 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+                  if p.is_symlink():
+                    call: jot_diagKv(p_str, f'-> {os.readlink(p_str)}')
+                      jot_diagKv()  [common/scripts/jot_lib.py:278]
+                        -> L#256 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#257  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              for p_str in [os.path.join(plugin_root, 'scripts/jot_plugin_orchestrator.py'), os.path.join(plugin_root, 'scripts'), os.path.join(plugin_root, 'hooks/hooks.json')]:
+                (pass-through loop)
+                  if p.exists():
+                    call: jot_diagKv(p_str, f'present ({size} bytes)')
+                      jot_diagKv()  [common/scripts/jot_lib.py:278]
+                        -> L#257 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#258  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
+              for p_str in [os.path.join(plugin_root, 'scripts/jot_plugin_orchestrator.py'), os.path.join(plugin_root, 'scripts'), os.path.join(plugin_root, 'hooks/hooks.json')]:
+                (pass-through loop)
+                  else: (of p.exists())
+                    call: jot_diagKv(p_str, 'MISSING')
+                      jot_diagKv()  [common/scripts/jot_lib.py:278]
+                        -> L#258 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#259  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection('8. Dependency check')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#259 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#260  [return] f'{key:<28} {value}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               for cmd in ('jq', 'python3', 'tmux', 'claude', 'osascript'):
                 (pass-through loop)
-                call: jot_diagKv(cmd, which if which else 'NOT FOUND')
-                  jot_diagKv()  [common/scripts/jot_lib.py:278]
-                    -> L#260 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+                  call: jot_diagKv(cmd, which if which else 'NOT FOUND')
+                    jot_diagKv()  [common/scripts/jot_lib.py:278]
+                      -> L#260 [return] f'{key:<28} {value}\n'  (common/scripts/jot_lib.py:279)
+```
+
+### L#261  [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               call: jot_diagSection('END OF REPORT')
                 jot_diagSection()  [common/scripts/jot_lib.py:263]
                   -> L#261 [return] f'\n{_DIAG_SECTION_RULE}\n{title}\n{_DIAG_SECTION_RULE}\n'  (common/scripts/jot_lib.py:264)
+```
+
+### L#262  [return] out_path
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        via _ARGV_DISPATCH:
+          _ARGV_DISPATCH['jot-diag-collect'] -> jot_collectDiagnostics()
+            jot_collectDiagnostics()  [common/scripts/jot_lib.py:281]
               -> L#262 [return] out_path  (common/scripts/jot_lib.py:547)
+```
+
+### L#263  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
         if fn is not None:
           if rc is not None:
             -> L#263 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:89)
+```
+
+### L#264  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
+        if fn is not None:
           else: (of rc is not None)
             -> L#264 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:91)
+```
+
+### L#265  [return] (False, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
+    call: handleArgvDispatch(argv)
+      handleArgvDispatch()  [scripts/jot_plugin_orchestrator.py:83]
         -> L#265 [return] (False, 0)  (scripts/jot_plugin_orchestrator.py:92)
+```
+
+### L#266  [return] rc
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  if argv:
     if matched:
       -> L#266 [return] rc  (scripts/jot_plugin_orchestrator.py:143)
+```
+
+### L#267  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
   call: handleStdinDispatch()
     handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
-      try:
-      except json.JSONDecodeError:
-      if prompt.startswith('/jot:'):
-        if isinstance(data, dict):
       for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#267 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#268  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#268 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#269  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#269 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#270  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#270 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#271  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#271 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#272  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/jot' -> jot_main()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#272 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#273  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#273 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#274  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#274 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#275  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#275 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#276  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#276 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#277  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#277 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#278  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/plate' -> plate_main()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#278 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#279  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#279 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#280  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#280 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#281  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#281 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#282  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#282 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#283  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#283 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#284  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate' -> debate_launch()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#284 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#285  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#285 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#286  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#286 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#287  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#287 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#288  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#288 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#289  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#289 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#290  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-retry' -> debate_retryMain()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#290 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#291  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#291 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#292  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#292 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#293  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#293 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#294  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#294 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#295  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#295 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#296  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/debate-abort' -> debate_abortMain()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#296 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#297  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#297 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#298  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#298 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#299  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#299 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#300  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#300 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#301  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#301 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#302  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo' -> todo_main()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#302 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
+```
+
+### L#303  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
         for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
           call: _util_matches_prefix(prompt, prefix)
             _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt == prefix:
                 -> L#303 [return] True  (common/scripts/util_lib.py:53)
+```
+
+### L#304  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + ' '):
                 -> L#304 [return] True  (common/scripts/util_lib.py:55)
+```
+
+### L#305  [return] True
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               if prompt.startswith(prefix + '\n'):
                 -> L#305 [return] True  (common/scripts/util_lib.py:57)
+```
+
+### L#306  [return] False
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
+          call: _util_matches_prefix(prompt, prefix)
+            _util_matches_prefix()  [common/scripts/util_lib.py:50]
               -> L#306 [return] False  (common/scripts/util_lib.py:58)
+```
+
+### L#307  [return] (True, int(rc))
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
           if _util_matches_prefix(prompt, prefix):
-            try:
-            finally:
             if rc is not None:
               -> L#307 [return] (True, int(rc))  (scripts/jot_plugin_orchestrator.py:120)
+```
+
+### L#308  [return] (True, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
+      for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])):
+        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): matched key='/todo-list' -> todo_listMain()
+          if _util_matches_prefix(prompt, prefix):
             else: (of rc is not None)
               -> L#308 [return] (True, 0)  (scripts/jot_plugin_orchestrator.py:122)
-        for (prefix, fn) in sorted(_PROMPT_DISPATCH, key=lambda p: -len(p[0])): (loop exhausted, no match)
+```
+
+### L#309  [return] (False, 0)
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
+  call: handleStdinDispatch()
+    handleStdinDispatch()  [scripts/jot_plugin_orchestrator.py:94]
       -> L#309 [return] (False, 0)  (scripts/jot_plugin_orchestrator.py:125)
+```
+
+### L#310  [return] rc
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
   if matched:
     -> L#310 [return] rc  (scripts/jot_plugin_orchestrator.py:147)
+```
+
+### L#311  [return] 0
+
+```
+dispatch_main()  [scripts/jot_plugin_orchestrator.py:128]
   -> L#311 [return] 0  (scripts/jot_plugin_orchestrator.py:150)
 ```
 
